@@ -162,6 +162,7 @@ function renderArticles() {
           <div class="badge-row">
             ${badge(selected.level, "teal")}
             ${badge(selected.source || "manual")}
+            ${badge(selected.content_status === "full" ? `完整正文 · ${selected.content_word_count}词` : `RSS摘要 · ${selected.content_word_count}词`, selected.content_status === "full" ? "teal" : "amber")}
             ${selected.source_tier ? badge(selected.source_tier, selected.source_tier === "核心" ? "teal" : "") : ""}
             ${selected.exam_fit ? badge(`${state.style} 匹配 ${selected.exam_fit}%`, selected.exam_fit >= 90 ? "amber" : "") : ""}
           </div>
@@ -174,11 +175,13 @@ function renderArticles() {
         </div>
       </div>
       ${selected.recommended_today ? `<div class="daily-recommendation"><strong>今日推荐 ${selected.daily_rank}</strong><span>${escapeHtml((selected.recommendation_reasons || []).join(" · "))}</span><small>推荐分 ${selected.recommendation_score}</small></div>` : ""}
+      ${selected.content_status !== "full" ? `<div class="content-notice"><div><strong>当前保存的是 RSS 摘要</strong><span>阅读器已经显示全部本地内容，完整文章需要打开原始来源或补充正文。</span></div>${selected.source_url ? `<a href="${escapeHtml(selected.source_url)}" target="_blank" rel="noreferrer">打开完整原文</a>` : ""}</div>` : ""}
       ${selected.theme_tags?.length ? `<div class="article-themes"><span>文章主题</span>${selected.theme_tags.map(theme => badge(theme, "amber")).join("")}</div>` : ""}
       ${selected.source_topics?.length ? `<div class="source-topics"><span class="topic-label">来源领域</span>${selected.source_topics.map(topic => badge(topic)).join("")}</div>` : ""}
       <article class="article-detail-body">${paragraphs.map(paragraph => `<p class="article-paragraph">${searchableEnglish(paragraph)}</p>`).join("")}</article>
       ${state.showTranslation ? `<section class="translation-panel">${selected.translation_zh ? selected.translation_zh.split(/\n\s*\n/).map(paragraph => `<p>${escapeHtml(paragraph)}</p>`).join("") : `<p class="muted">这篇文章还没有可靠译文。</p>`}</section>` : ""}
       ${selected.source_url ? `<a class="source-link" href="${escapeHtml(selected.source_url)}" target="_blank" rel="noreferrer">打开原始来源</a>` : ""}
+      <details class="content-editor"><summary>${selected.content_status === "full" ? "编辑完整正文" : "补充完整正文"}</summary><textarea id="articleContentInput">${escapeHtml(selected.body)}</textarea><button class="primary" data-save-article-content="${selected.id}">保存为完整正文</button></details>
     `;
   }
 
@@ -201,12 +204,14 @@ function renderReader() {
   if (!article) {
     $("#readerTitle").textContent = "选择一篇文章";
     $("#readerMeta").innerHTML = "";
+    $("#readerContentNotice").innerHTML = "";
     $("#readerBody").innerHTML = `<p class="muted">从文章池选择文章后开始。</p>`;
     $("#analysisPanel").innerHTML = "";
     return;
   }
   $("#readerTitle").textContent = article.title;
-  $("#readerMeta").innerHTML = `${badge(article.level, "teal")}${(article.theme_tags || []).map(theme => badge(theme, "amber")).join("")}${badge(article.source || "manual")}`;
+  $("#readerMeta").innerHTML = `${badge(article.level, "teal")}${badge(article.content_status === "full" ? `完整正文 · ${article.content_word_count}词` : `RSS摘要 · ${article.content_word_count}词`, article.content_status === "full" ? "teal" : "amber")}${(article.theme_tags || []).map(theme => badge(theme, "amber")).join("")}${badge(article.source || "manual")}`;
+  $("#readerContentNotice").innerHTML = article.content_status !== "full" ? `<div class="content-notice compact"><div><strong>当前为 RSS 摘要</strong><span>完整内容请打开原文，或在文章池补充正文。</span></div>${article.source_url ? `<a href="${escapeHtml(article.source_url)}" target="_blank" rel="noreferrer">打开原文</a>` : ""}</div>` : "";
   $("#readerBody").innerHTML = articleParagraphs(article.body, "article-paragraph");
   $("#articleTranslationInput").value = article.translation_zh || "";
   const translationPanel = $("#translationPanel");
@@ -753,6 +758,24 @@ async function saveTranslation() {
   toast("译文已保存");
 }
 
+async function saveArticleContent(id) {
+  const body = $("#articleContentInput")?.value.trim();
+  if (!body) return toast("正文不能为空");
+  const data = await api(`/api/articles/${id}/content`, {
+    method: "POST",
+    body: JSON.stringify({ body, exam: state.style }),
+  });
+  state.selectedPoolArticleId = data.article.id;
+  const index = state.articles.findIndex(item => item.id === data.article.id);
+  if (index >= 0) state.articles[index] = data.article;
+  if (state.selectedArticle?.id === data.article.id) {
+    state.selectedArticle = data.article;
+    state.analysis = data.analysis;
+  }
+  renderAll();
+  toast("已保存完整正文");
+}
+
 async function saveArticle() {
   const body = $("#newArticleBody").value.trim();
   if (!body) return toast("正文不能为空");
@@ -834,6 +857,7 @@ document.addEventListener("click", async event => {
       renderQuizSource();
     }
     if (button.id === "saveTranslationBtn") await saveTranslation();
+    if (button.dataset.saveArticleContent) await saveArticleContent(Number(button.dataset.saveArticleContent));
     if (button.id === "searchArticlesBtn") {
       await loadArticles($("#articleSearch").value.trim());
       renderAll();
