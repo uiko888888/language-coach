@@ -26,6 +26,20 @@ SAMPLE_ARTICLE = """Smart devices promise convenience, but they also create a qu
 
 The central challenge is not whether technology should be rejected. It is whether companies can design useful products while giving people meaningful control over their own data. Clearer consent, shorter privacy notices, and stronger limits on data sharing would make smart devices easier to trust. Without those safeguards, convenience may gradually become a form of surveillance."""
 
+SAMPLE_TRANSLATION = """智能设备承诺带来便利，但它们也会悄然记录日常生活。智能音箱可以了解一家人何时在家，手表可以揭示健康规律，门铃摄像头则可能拍到从未同意被记录的人。支持者认为这些工具节省时间并提高安全性。然而，批评者指出，隐私政策往往难以阅读，用户可能并不清楚有多少信息被储存或共享。
+
+核心问题并不是是否应该拒绝技术，而是企业能否在提供实用产品的同时，让人们真正掌控自己的数据。更清晰的同意机制、更简短的隐私声明以及更严格的数据共享限制，会让智能设备更值得信任。缺少这些保障时，便利可能逐渐演变为一种监控。"""
+
+EXAM_QUESTION_TYPES = {
+    "IELTS": [("evidence", "判断与证据定位", "reading"), ("heading", "段落标题匹配", "main-idea"), ("paraphrase", "同义替换", "paraphrase"), ("gap-fill", "选词填空", "cloze")],
+    "TOEFL": [("factual", "事实信息题", "reading"), ("main-idea", "主旨题", "main-idea"), ("simplification", "句子简化", "paraphrase"), ("vocabulary", "语境词义", "cloze")],
+    "TEM4": [("detail", "细节理解", "reading"), ("main-idea", "主旨概括", "main-idea"), ("meaning", "近义改写", "paraphrase"), ("lexico-grammar", "词汇语法", "cloze")],
+    "TEM8": [("inference", "推断与态度", "reading"), ("title", "标题概括", "main-idea"), ("nuance", "长难句释义", "paraphrase"), ("semantic", "语义辨析", "cloze")],
+    "GRE": [("implication", "推断题", "reading"), ("central-concern", "中心论点", "main-idea"), ("function", "句间逻辑", "paraphrase"), ("precision", "精确词义", "cloze")],
+    "GMAT": [("support", "论证支持", "reading"), ("argument-role", "论证功能", "main-idea"), ("reasoning", "推理保真", "paraphrase"), ("business-context", "商科语境搭配", "cloze")],
+    "general": [("evidence", "证据定位", "reading"), ("main-idea", "主旨题", "main-idea"), ("paraphrase", "同义改写", "paraphrase"), ("cloze", "选词填空", "cloze"), ("initial", "首字母填空", "initial")],
+}
+
 
 LEXICON = {
     "privacy": ["personal data", "confidentiality", "public exposure"],
@@ -347,6 +361,15 @@ def init_db() -> None:
               value TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS progress (
+              id INTEGER PRIMARY KEY CHECK (id = 1),
+              xp INTEGER NOT NULL DEFAULT 0,
+              correct_count INTEGER NOT NULL DEFAULT 0,
+              reviewed_count INTEGER NOT NULL DEFAULT 0,
+              streak INTEGER NOT NULL DEFAULT 0,
+              last_study_date TEXT NOT NULL DEFAULT ''
+            );
+
             CREATE TABLE IF NOT EXISTS dictionary_entries (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               headword TEXT NOT NULL UNIQUE,
@@ -384,6 +407,11 @@ def init_db() -> None:
             WHERE source_url != '';
             """
         )
+        article_columns = {row[1] for row in conn.execute("PRAGMA table_info(articles)")}
+        if "translation_zh" not in article_columns:
+            conn.execute("ALTER TABLE articles ADD COLUMN translation_zh TEXT NOT NULL DEFAULT ''")
+        conn.execute("UPDATE articles SET translation_zh = ? WHERE source = 'seed' AND translation_zh = ''", (SAMPLE_TRANSLATION,))
+        conn.execute("INSERT OR IGNORE INTO progress (id) VALUES (1)")
         article_count = conn.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
         if article_count == 0:
             now = utc_now()
@@ -394,6 +422,7 @@ def init_db() -> None:
                 """,
                 ("Privacy concerns in the age of smart devices", SAMPLE_ARTICLE, now, now),
             )
+        conn.execute("UPDATE articles SET translation_zh = ? WHERE source = 'seed' AND translation_zh = ''", (SAMPLE_TRANSLATION,))
         now = utc_now()
         conn.execute(
             "UPDATE feeds SET url = ?, active = 1 WHERE name = 'Knowledge at Wharton'",
@@ -697,8 +726,12 @@ def with_options(answer: str, wrong: list[str]) -> list[str]:
     return options
 
 
-def generate_quiz_items(text: str, mode: str, style: str) -> list[dict]:
+def generate_quiz_items(text: str, mode: str, style: str, question_type: str = "") -> list[dict]:
     profile = style_profile(style)
+    configured = next((item for item in EXAM_QUESTION_TYPES.get(style, EXAM_QUESTION_TYPES["general"]) if item[0] == question_type), None)
+    if configured:
+        engine_type = configured[2]
+        mode = engine_type if engine_type in {"cloze", "initial"} else "reading"
     sents = sentences(text)
     ranked = sorted(sents, key=score_sentence, reverse=True)
     evidence = ranked[0] if ranked else ""
@@ -770,6 +803,12 @@ def generate_quiz_items(text: str, mode: str, style: str) -> list[dict]:
                     "note": profile["notes"][4],
                 }
             )
+    if question_type:
+        if configured:
+            _, label, engine_type = configured
+            items = [item for item in items if item["type"] == engine_type]
+            for item in items:
+                item["note"] = f"{style} / {label}"
     return items
 
 
@@ -1067,6 +1106,30 @@ def lexical_search(query: str, limit: int = 30) -> dict:
     return {"query": raw, "count": len(results), "results": results[:limit]}
 
 
+def progress_payload(conn: sqlite3.Connection) -> dict:
+    row = conn.execute("SELECT * FROM progress WHERE id = 1").fetchone()
+    item = dict(row)
+    item["level"] = item["xp"] // 100 + 1
+    item["level_xp"] = item["xp"] % 100
+    item["next_level_xp"] = 100
+    return item
+
+
+def award_progress(conn: sqlite3.Connection, points: int, correct: bool = False, reviewed: bool = False) -> dict:
+    today = datetime.now(timezone.utc).date()
+    row = conn.execute("SELECT * FROM progress WHERE id = 1").fetchone()
+    last = datetime.fromisoformat(row["last_study_date"]).date() if row["last_study_date"] else None
+    streak = row["streak"]
+    if last != today:
+        streak = streak + 1 if last and (today - last).days == 1 else 1
+    conn.execute(
+        """UPDATE progress SET xp = xp + ?, correct_count = correct_count + ?,
+           reviewed_count = reviewed_count + ?, streak = ?, last_study_date = ? WHERE id = 1""",
+        (points, 1 if correct else 0, 1 if reviewed else 0, streak, today.isoformat()),
+    )
+    return progress_payload(conn)
+
+
 def fetch_feed_items(limit_per_feed: int = 4) -> dict:
     imported = 0
     errors: list[str] = []
@@ -1122,6 +1185,13 @@ class App(BaseHTTPRequestHandler):
         try:
             if path == "/api/health":
                 return json_response(self, {"ok": True, "database": str(DB_PATH), "time": utc_now()})
+            if path == "/api/progress":
+                with db() as conn:
+                    return json_response(self, {"progress": progress_payload(conn)})
+            if path == "/api/exam-types":
+                style = query.get("style", ["general"])[0]
+                types = [{"id": key, "label": label, "engine_type": engine} for key, label, engine in EXAM_QUESTION_TYPES.get(style, EXAM_QUESTION_TYPES["general"])]
+                return json_response(self, {"style": style, "types": types})
             if path == "/api/articles":
                 return json_response(self, {"articles": list_articles(query)})
             if path == "/api/lexicon/search":
@@ -1223,7 +1293,19 @@ class App(BaseHTTPRequestHandler):
                         ),
                     )
                     article = conn.execute("SELECT * FROM articles WHERE id = ?", (cursor.lastrowid,)).fetchone()
+                    if payload.get("translation_zh"):
+                        conn.execute("UPDATE articles SET translation_zh = ? WHERE id = ?", (payload["translation_zh"], cursor.lastrowid))
+                        article = conn.execute("SELECT * FROM articles WHERE id = ?", (cursor.lastrowid,)).fetchone()
                 return json_response(self, {"article": dict(article), "analysis": analyze_payload(article)}, 201)
+            match = re.fullmatch(r"/api/articles/(\d+)/translation", path)
+            if match:
+                translation = (payload.get("translation_zh") or "").strip()
+                with db() as conn:
+                    conn.execute("UPDATE articles SET translation_zh = ?, updated_at = ? WHERE id = ?", (translation, utc_now(), match.group(1)))
+                    article = conn.execute("SELECT * FROM articles WHERE id = ?", (match.group(1),)).fetchone()
+                if not article:
+                    return json_response(self, {"error": "Article not found"}, 404)
+                return json_response(self, {"article": dict(article)})
             match = re.fullmatch(r"/api/articles/(\d+)/analyze", path)
             if match:
                 with db() as conn:
@@ -1236,11 +1318,12 @@ class App(BaseHTTPRequestHandler):
                 article_id = int(match.group(1))
                 mode = payload.get("mode") or "mixed"
                 style = payload.get("style") or "IELTS"
+                question_type = payload.get("question_type") or ""
                 with db() as conn:
                     article = conn.execute("SELECT * FROM articles WHERE id = ?", (article_id,)).fetchone()
                     if not article:
                         return json_response(self, {"error": "Article not found"}, 404)
-                    items = generate_quiz_items(article["body"], mode, style)
+                    items = generate_quiz_items(article["body"], mode, style, question_type)
                     now = utc_now()
                     saved = []
                     for item in items:
@@ -1310,6 +1393,8 @@ class App(BaseHTTPRequestHandler):
                             (quiz_id, quiz["prompt"], quiz["answer"], answer, quiz["evidence"], now),
                         )
                     explanation = explain_mistake(dict(quiz), answer)
+                    points = 10 if correct else 2
+                    progress = award_progress(conn, points, correct=correct)
                 return json_response(
                     self,
                     {
@@ -1317,6 +1402,8 @@ class App(BaseHTTPRequestHandler):
                         "answer": quiz["answer"],
                         "evidence": quiz["evidence"],
                         "explanation": explanation,
+                        "points": points,
+                        "progress": progress,
                     },
                 )
             match = re.fullmatch(r"/api/mistakes/(\d+)/similar", path)
@@ -1362,8 +1449,13 @@ class App(BaseHTTPRequestHandler):
             match = re.fullmatch(r"/api/mistakes/(\d+)/solve", path)
             if match:
                 with db() as conn:
+                    current = conn.execute("SELECT solved FROM mistakes WHERE id = ?", (match.group(1),)).fetchone()
+                    if not current:
+                        return json_response(self, {"error": "Mistake not found"}, 404)
+                    becoming_solved = not bool(current["solved"])
                     conn.execute("UPDATE mistakes SET solved = 1 - solved WHERE id = ?", (match.group(1),))
-                return json_response(self, {"ok": True})
+                    progress = award_progress(conn, 5, reviewed=True) if becoming_solved else progress_payload(conn)
+                return json_response(self, {"ok": True, "points": 5 if becoming_solved else 0, "progress": progress})
             if path == "/api/feeds":
                 now = utc_now()
                 with db() as conn:
