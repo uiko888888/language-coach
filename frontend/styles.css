@@ -671,14 +671,28 @@ label {
 .dictionary-section h3 { margin: 0 0 12px; font-size: 15px; }
 .dictionary-section h4 { margin: 16px 0 8px; color: var(--muted); font-size: 13px; }
 .term-grid { display: flex; flex-wrap: wrap; gap: 7px; }
-.term-link { min-height: 31px; padding: 0 9px; text-align: left; }
+.term-link { display: grid; min-height: 38px; padding: 5px 9px; text-align: left; }
+.term-link strong { font-size: 13px; }
+.term-link small { margin-top: 2px; color: var(--muted); font-size: 11px; font-weight: 400; }
 .term-link.family { border-color: #b7d5ce; background: #eef6f3; color: var(--teal-dark); }
 .term-link.synonym { background: #f7f5ed; }
-.phrase-list { display: grid; gap: 6px; }
-.phrase-list button { display: flex; justify-content: space-between; min-height: 38px; text-align: left; }
-.phrase-list span { color: var(--teal); font-weight: 800; }
-.example-list p { margin: 0; padding: 9px 0; border-top: 1px solid var(--line); font-family: Georgia, "Times New Roman", serif; line-height: 1.65; }
-.example-list p:first-child { padding-top: 0; border-top: 0; }
+.term-link.antonym { background: #fff5f5; }
+.phrase-list { display: grid; gap: 13px; }
+.phrase-item { padding: 0 0 13px; border-bottom: 1px solid var(--line); }
+.phrase-item:last-child { padding-bottom: 0; border-bottom: 0; }
+.phrase-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.phrase-head strong { display: block; line-height: 1.45; }
+.phrase-head p { margin: 3px 0 0; color: var(--teal-dark); font-size: 13px; }
+.phrase-head > button { min-width: 32px; min-height: 32px; padding: 0; color: var(--teal-dark); font-size: 18px; }
+.phrase-relation { margin-top: 9px; }
+.phrase-relation > span { display: block; margin-bottom: 5px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.phrase-relation .term-link { min-height: 34px; }
+.example-item { padding: 11px 0; border-top: 1px solid var(--line); }
+.example-item:first-child { padding-top: 0; border-top: 0; }
+.example-item p { margin: 0; line-height: 1.65; }
+.example-en { font-family: Georgia, "Times New Roman", serif; }
+.example-zh { margin-top: 5px !important; color: var(--muted); font-size: 13px; }
+.query-highlight { padding: 0 2px; background: #fff0c9; color: #6f470f; font-weight: 800; }
 .lookup-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .lookup-heading h2 { margin-bottom: 3px; }
 .lookup-heading span { color: var(--muted); font-size: 13px; }
