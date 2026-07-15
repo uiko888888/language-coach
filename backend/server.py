@@ -40,6 +40,36 @@ EXAM_QUESTION_TYPES = {
     "general": [("evidence", "证据定位", "reading"), ("main-idea", "主旨题", "main-idea"), ("paraphrase", "同义改写", "paraphrase"), ("cloze", "选词填空", "cloze"), ("initial", "首字母填空", "initial")],
 }
 
+ARTICLE_THEMES = {
+    "环境保护": ["climate", "environment", "emission", "carbon", "pollution", "conservation", "biodiversity", "exxon", "renewable"],
+    "自然与生态": ["plant", "animal", "species", "forest", "ocean", "mushroom", "wildlife", "ecology"],
+    "健康医学": ["health", "medical", "disease", "medicine", "patient", "biology", "sleep", "hibernate"],
+    "科技创新": ["technology", "digital", "artificial intelligence", "robot", "device", "data", "cyber", "hacker"],
+    "太空探索": ["space", "mars", "planet", "astronaut", "lunar", "nasa", "galaxy"],
+    "经济商业": ["business", "economy", "economic", "market", "company", "trade", "consumer", "industry"],
+    "国际时政": ["government", "election", "war", "diplomatic", "international", "president", "minister", "parliament"],
+    "法律政策": ["law", "court", "trial", "policy", "regulation", "legal", "rights", "justice"],
+    "社会文化": ["society", "culture", "community", "identity", "media", "language", "family"],
+    "历史考古": ["history", "historical", "ancient", "archaeology", "dna", "heritage"],
+    "教育学习": ["education", "school", "student", "teacher", "learning", "university"],
+    "心理行为": ["psychology", "behavior", "mental", "emotion", "decision", "memory"],
+}
+
+
+def normalize_article_text(title: str, body: str) -> str:
+    text = re.sub(r"\s+", " ", body or "").strip()
+    clean_title = re.sub(r"\s+", " ", title or "").strip()
+    if clean_title and text.lower().startswith(clean_title.lower()):
+        text = text[len(clean_title):].lstrip(" .:;-—")
+    if not text:
+        return ""
+    sentence_parts = re.findall(r"[^.!?]+[.!?]+(?:[\"'’”])?|[^.!?]+$", text)
+    sentence_parts = [part.strip() for part in sentence_parts if part.strip()]
+    if len(sentence_parts) <= 2:
+        return " ".join(sentence_parts)
+    paragraphs = [" ".join(sentence_parts[index:index + 2]) for index in range(0, len(sentence_parts), 2)]
+    return "\n\n".join(paragraphs)
+
 
 LEXICON = {
     "privacy": ["personal data", "confidentiality", "public exposure"],
@@ -411,6 +441,10 @@ def init_db() -> None:
         if "translation_zh" not in article_columns:
             conn.execute("ALTER TABLE articles ADD COLUMN translation_zh TEXT NOT NULL DEFAULT ''")
         conn.execute("UPDATE articles SET translation_zh = ? WHERE source = 'seed' AND translation_zh = ''", (SAMPLE_TRANSLATION,))
+        for row in conn.execute("SELECT id, title, body FROM articles").fetchall():
+            normalized = normalize_article_text(row["title"], row["body"])
+            if normalized and normalized != row["body"]:
+                conn.execute("UPDATE articles SET body = ? WHERE id = ?", (normalized, row["id"]))
         conn.execute("INSERT OR IGNORE INTO progress (id) VALUES (1)")
         mistake_columns = {row[1] for row in conn.execute("PRAGMA table_info(mistakes)")}
         if "reward_claimed" not in mistake_columns:
@@ -1036,6 +1070,27 @@ def recommendation_profile(article: dict) -> dict:
     return {"recommendation_score": score, "recommendation_reasons": reasons[:3] or ["主题补充"]}
 
 
+def article_theme_profile(article: dict) -> dict:
+    text = f"{article.get('title', '')} {article.get('body', '')}".lower()
+    scored = []
+    for theme, keywords in ARTICLE_THEMES.items():
+        score = sum(2 if re.search(rf"\b{re.escape(keyword)}\b", text) else 0 for keyword in keywords)
+        if score:
+            scored.append((score, theme))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    themes = [theme for _, theme in scored[:3]] or ["综合阅读"]
+    highlights = focus_sentences(article.get("body", ""), 1)
+    return {"theme_tags": themes, "highlight": highlights[0] if highlights else article.get("body", "")}
+
+
+def enrich_article(article: dict, exam: str = "") -> dict:
+    item = dict(article)
+    item.update(source_profile(item["source"], exam))
+    item.update(article_theme_profile(item))
+    item.update(recommendation_profile(item))
+    return item
+
+
 def list_articles(query: dict[str, list[str]]) -> list[dict]:
     where = []
     params: list[str] = []
@@ -1053,9 +1108,7 @@ def list_articles(query: dict[str, list[str]]) -> list[dict]:
     with db() as conn:
         items = rows_to_dicts(conn.execute(sql, params).fetchall())
     exam = query.get("exam", [""])[0]
-    for item in items:
-        item.update(source_profile(item["source"], exam))
-        item.update(recommendation_profile(item))
+    items = [enrich_article(item, exam) for item in items]
     ranked = sorted(items, key=lambda item: (-item["recommendation_score"], item["id"]))
     daily_ids = {item["id"]: index + 1 for index, item in enumerate(ranked[:3])}
     for item in ranked:
@@ -1063,7 +1116,7 @@ def list_articles(query: dict[str, list[str]]) -> list[dict]:
         item["daily_rank"] = daily_ids.get(item["id"])
     topic = query.get("topic", [""])[0]
     if topic:
-        ranked = [item for item in ranked if topic in item["source_topics"]]
+        ranked = [item for item in ranked if topic in item["theme_tags"]]
     if query.get("recommended", [""])[0] == "1":
         ranked = [item for item in ranked if item["recommended_today"]]
     return ranked
@@ -1192,7 +1245,7 @@ def fetch_feed_items(limit_per_feed: int = 4) -> dict:
                         or entry.findtext("{http://www.w3.org/2005/Atom}summary")
                         or title
                     )
-                    body = clean_html(f"{title}. {summary}")
+                    body = normalize_article_text(clean_html(title), clean_html(summary))
                     now = utc_now()
                     before = conn.total_changes
                     conn.execute(
@@ -1233,7 +1286,7 @@ class App(BaseHTTPRequestHandler):
             if path == "/api/articles":
                 return json_response(self, {"articles": list_articles(query)})
             if path == "/api/article-topics":
-                topics = sorted({topic for profile in SOURCE_PROFILES.values() for topic in profile["topics"]})
+                topics = [*ARTICLE_THEMES.keys(), "综合阅读"]
                 return json_response(self, {"topics": topics})
             if path == "/api/lexicon/search":
                 return json_response(self, lexical_search(query.get("q", [""])[0]))
@@ -1257,7 +1310,8 @@ class App(BaseHTTPRequestHandler):
                     article = conn.execute("SELECT * FROM articles WHERE id = ?", (match.group(1),)).fetchone()
                 if not article:
                     return json_response(self, {"error": "Article not found"}, 404)
-                return json_response(self, {"article": dict(article), "analysis": analyze_payload(article)})
+                item = enrich_article(dict(article), query.get("exam", [""])[0])
+                return json_response(self, {"article": item, "analysis": analyze_payload(item)})
             if path == "/api/cards":
                 with db() as conn:
                     cards = rows_to_dicts(conn.execute("SELECT * FROM cards ORDER BY updated_at DESC, id DESC").fetchall())

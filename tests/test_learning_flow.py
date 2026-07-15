@@ -44,12 +44,25 @@ class LearningFlowTests(unittest.TestCase):
         self.assertTrue(articles[0]["recommendation_reasons"])
 
     def test_article_topic_and_recommended_filters(self):
-        topic_items = server.list_articles({"exam": ["IELTS"], "topic": ["科技"]})
+        topic_items = server.list_articles({"exam": ["IELTS"], "topic": ["科技创新"]})
         self.assertTrue(topic_items)
-        self.assertTrue(all("科技" in item["source_topics"] for item in topic_items))
+        self.assertTrue(all("科技创新" in item["theme_tags"] for item in topic_items))
         recommended = server.list_articles({"exam": ["IELTS"], "recommended": ["1"]})
         self.assertLessEqual(len(recommended), 3)
         self.assertTrue(all(item["recommended_today"] for item in recommended))
+
+    def test_article_themes_support_future_collections(self):
+        article = {"title": "Protecting forests from climate pollution", "body": "New conservation policy could reduce carbon emissions."}
+        profile = server.article_theme_profile(article)
+        self.assertIn("环境保护", profile["theme_tags"])
+        self.assertIn("环境保护", server.ARTICLE_THEMES)
+
+    def test_article_normalization_removes_duplicate_title_and_builds_paragraphs(self):
+        title = "A climate story"
+        body = "A climate story. First sentence. Second sentence. Third sentence. Fourth sentence."
+        normalized = server.normalize_article_text(title, body)
+        self.assertFalse(normalized.lower().startswith(title.lower()))
+        self.assertIn("\n\n", normalized)
 
 
 if __name__ == "__main__":

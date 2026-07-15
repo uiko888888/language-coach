@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.7.0-alpha.2] - 2026-07-16
+
+### Added
+
+- Article-level semantic themes such as environmental protection, space exploration, health, law, history, and technology.
+- Homepage highlight sentences selected from article content instead of raw leading excerpts.
+- Separate labels for article themes and broad source domains.
+
+### Changed
+
+- Existing and newly imported feed summaries remove duplicated titles and are grouped into readable paragraphs.
+- Article pool, reader, and quiz source passages render semantic paragraphs with first-line indentation.
+- Topic filtering now uses article content themes, forming the foundation for later automatic collections.
+
 ## [0.7.0-alpha.1] - 2026-07-16
 
 ### Added
