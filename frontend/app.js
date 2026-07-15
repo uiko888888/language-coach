@@ -15,7 +15,9 @@ const state = {
   mistakes: [],
   feeds: [],
   selectedArticle: null,
+  similarByMistake: {},
   analysis: null,
+  answerFeedback: {},
   showAnswers: false,
   style: localStorage.getItem("lc-v2-style") || "IELTS",
 };
@@ -209,8 +211,90 @@ function renderLookup(word) {
   $("#cardContext").value = context;
 }
 
+function fallbackMistakeExplanation(item) {
+  const type = item.quiz_type || item.type || "reading";
+  const answer = item.answer || "";
+  const selected = item.user_answer || "";
+  const guides = {
+    reading: ["证据定位与同义替换", "正确答案必须与证据句保持同一个主体、动作、范围和语气强度。", ["圈出题干主体和限定词", "回原文定位同义表达", "排除范围、方向或因果被改动的选项"]],
+    "main-idea": ["主旨概括与信息层级", "正确答案覆盖核心对象和主要观点，不会只抓一个例子，也不会扩大原文结论。", ["概括每句功能", "区分主旨和支持细节", "选择覆盖完整且措辞不过强的选项"]],
+    paraphrase: ["句意改写与逻辑保真", "正确改写保留原句逻辑、条件和态度，只改变表达方式。", ["拆出句子主干", "标记转折、因果和条件", "核对改写是否改变语气和方向"]],
+    cloze: ["语境词义、词性与搭配", `把 ${answer} 放回空格后，词义、词性和上下文搭配能够同时成立。`, ["判断空格词性", "读取前后搭配", "用整句含义排除近义干扰词"]],
+    initial: ["语境提取与完整拼写", `语境、首字母和词长共同指向 ${answer}。`, ["根据句意回忆目标词", "用首字母和词长核对", "检查词形和拼写"]],
+  };
+  const guide = guides[type] || guides.reading;
+  const lower = selected.toLowerCase();
+  let trap = "语义相近但逻辑不等价";
+  let whyWrong = "你的答案与主题相关，但没有完整保留证据中的主体、范围、条件或逻辑关系。";
+  if (!selected) {
+    trap = "未作答";
+    whyWrong = "先写出一个候选答案，再用原文证据排除，比直接跳过更能暴露判断卡点。";
+  } else if (["cloze", "initial"].includes(type)) {
+    trap = "词义或词形未同时满足";
+    whyWrong = `${selected} 放回原句后，在语境、词性、搭配或拼写上不能全部成立。`;
+  } else if (["only", "all", "never", "broader", "stronger"].some(word => lower.includes(word))) {
+    trap = "范围扩大或措辞过强";
+    whyWrong = "这个答案把原文有限、带条件的表达改成了更绝对的结论。";
+  } else if (["detail", "example", "minor", "narrow"].some(word => lower.includes(word))) {
+    trap = "用细节冒充主旨";
+    whyWrong = "这个答案可能对应一个细节，但覆盖不了题目要求的中心观点。";
+  }
+  return {
+    test_point: item.quiz_note || item.note || guide[0],
+    trap,
+    why_wrong: whyWrong,
+    why_correct: guide[1],
+    evidence: item.evidence || "",
+    evidence_guide: "确认谁做什么，再核对否定、转折、因果、程度词和范围词。",
+    steps: guide[2],
+    retry: `遮住答案，把“${answer}”换成自己的话复述一次，再重新作答。`,
+  };
+}
+
+function explanationHtml(explanation, compact = false, correct = false) {
+  if (!explanation) return "";
+  const steps = explanation.steps || [];
+  return `
+    <div class="explanation-panel ${compact ? "compact" : ""}">
+      <div class="explanation-title">
+        <strong>${correct ? "答题解析" : "错题讲解"}</strong>
+        <div class="badge-row">
+          ${badge(explanation.test_point || "语境判断", "teal")}
+          ${!correct ? badge(explanation.trap || "干扰项", "amber") : ""}
+        </div>
+      </div>
+      <div class="explanation-grid">
+        ${!correct ? `
+          <section class="wrong-reason">
+            <h4>为什么错</h4>
+            <p>${escapeHtml(explanation.why_wrong || "")}</p>
+          </section>
+        ` : ""}
+        <section class="correct-reason">
+          <h4>为什么对</h4>
+          <p>${escapeHtml(explanation.why_correct || "")}</p>
+        </section>
+      </div>
+      ${!compact ? `
+        <div class="evidence-box">
+          <span>原文证据</span>
+          <p>${escapeHtml(explanation.evidence || "暂无证据句")}</p>
+          <small>${escapeHtml(explanation.evidence_guide || "")}</small>
+        </div>
+        <div class="method-block">
+          <strong>下次这样做</strong>
+          <ol>${steps.map(step => `<li>${escapeHtml(step)}</li>`).join("")}</ol>
+          <p class="retry-line">${escapeHtml(explanation.retry || "")}</p>
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
 function renderQuizzes() {
-  $("#quizList").innerHTML = state.quizzes.map((quiz, index) => `
+  $("#quizList").innerHTML = state.quizzes.map((quiz, index) => {
+    const feedback = state.answerFeedback[quiz.id];
+    return `
     <div class="item" data-quiz-card="${quiz.id}">
       <div class="badge-row">
         ${badge(quiz.style || state.style, "teal")}
@@ -220,7 +304,10 @@ function renderQuizzes() {
       <h3>${index + 1}. ${escapeHtml(quiz.prompt)}</h3>
       ${(quiz.options || []).length ? `
         <div class="options">
-          ${quiz.options.map(option => `<button class="option" data-answer-quiz="${quiz.id}" data-answer="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join("")}
+          ${quiz.options.map(option => {
+            const answerClass = feedback && option === quiz.answer ? "correct" : feedback && option === feedback.userAnswer && !feedback.correct ? "wrong" : "";
+            return `<button class="option ${answerClass}" data-answer-quiz="${quiz.id}" data-answer="${escapeHtml(option)}">${escapeHtml(option)}</button>`;
+          }).join("")}
         </div>
       ` : `
         <div class="answer-row">
@@ -234,8 +321,10 @@ function renderQuizzes() {
           <strong>Evidence:</strong> ${escapeHtml(quiz.evidence || "")}
         </div>
       ` : ""}
+      ${feedback ? explanationHtml(feedback.explanation, true, feedback.correct) : ""}
     </div>
-  `).join("") || `<div class="item muted">暂无题目</div>`;
+  `;
+  }).join("") || `<div class="item muted">暂无题目</div>`;
 }
 
 function renderCards() {
@@ -249,19 +338,54 @@ function renderCards() {
   `).join("") || `<div class="item muted">暂无生词</div>`;
 }
 
+function remedialQuizHtml(quiz, index) {
+  const feedback = state.answerFeedback[quiz.id];
+  return `
+    <div class="remedial-item">
+      <div class="badge-row">${badge(`练习 ${index + 1}`, "teal")}${badge(quiz.type)}</div>
+      <h4>${escapeHtml(quiz.prompt)}</h4>
+      ${(quiz.options || []).length ? `
+        <div class="options">
+          ${quiz.options.map(option => {
+            const answerClass = feedback && option === quiz.answer ? "correct" : feedback && option === feedback.userAnswer && !feedback.correct ? "wrong" : "";
+            return `<button class="option ${answerClass}" data-answer-quiz="${quiz.id}" data-answer="${escapeHtml(option)}">${escapeHtml(option)}</button>`;
+          }).join("")}
+        </div>
+      ` : `
+        <div class="answer-row">
+          <input data-typed-quiz="${quiz.id}" placeholder="输入完整答案" />
+          <button data-submit-typed="${quiz.id}">提交</button>
+        </div>
+      `}
+      ${feedback ? explanationHtml(feedback.explanation, true, feedback.correct) : ""}
+    </div>
+  `;
+}
+
 function renderMistakes() {
-  $("#mistakeList").innerHTML = state.mistakes.map(item => `
-    <div class="item">
+  $("#mistakeList").innerHTML = state.mistakes.map(item => {
+    const similar = state.similarByMistake[item.id] || [];
+    return `
+    <div class="item mistake-item">
       <div class="badge-row">
         ${badge(item.solved ? "已处理" : "待复盘", item.solved ? "teal" : "red")}
+        ${badge(item.style || "通用")}
+        ${badge(item.quiz_type || "reading")}
       </div>
       <h3>${escapeHtml(item.prompt)}</h3>
-      <p>你的答案：${escapeHtml(item.user_answer)}</p>
-      <p>正确答案：${escapeHtml(item.answer)}</p>
-      <div class="answer-box">${escapeHtml(item.evidence || "")}</div>
-      <button data-solve-mistake="${item.id}">${item.solved ? "重新标记" : "标为处理"}</button>
+      <div class="answer-compare">
+        <div class="answer-choice wrong-choice"><span>你的答案</span><strong>${escapeHtml(item.user_answer || "未作答")}</strong></div>
+        <div class="answer-choice correct-choice"><span>正确答案</span><strong>${escapeHtml(item.answer)}</strong></div>
+      </div>
+      ${explanationHtml(item.explanation || fallbackMistakeExplanation(item))}
+      <div class="toolbar mistake-actions">
+        <button class="primary" data-generate-similar="${item.id}">${similar.length ? "换一组同类题" : "生成 3 道同类题"}</button>
+        <button data-solve-mistake="${item.id}">${item.solved ? "重新标记" : "我已理解"}</button>
+      </div>
+      ${similar.length ? `<div class="remedial-list">${similar.map(remedialQuizHtml).join("")}</div>` : ""}
     </div>
-  `).join("") || `<div class="item muted">暂无错题</div>`;
+  `;
+  }).join("") || `<div class="item muted">暂无错题</div>`;
 }
 
 function renderAll() {
@@ -342,8 +466,20 @@ async function submitAnswer(quizId, answer, button = null) {
     method: "POST",
     body: JSON.stringify({ quiz_id: quizId, answer }),
   });
-  if (button) button.classList.add(data.correct ? "correct" : "wrong");
+  const similarQuizzes = Object.values(state.similarByMistake).flat();
+  const quiz = state.quizzes.find(item => item.id === quizId) || similarQuizzes.find(item => item.id === quizId) || {};
+  const explanation = data.explanation || fallbackMistakeExplanation({
+    ...quiz,
+    quiz_type: quiz.type,
+    quiz_note: quiz.note,
+    user_answer: answer,
+    answer: data.answer || quiz.answer,
+    evidence: data.evidence || quiz.evidence,
+  });
+  state.answerFeedback[quizId] = { ...data, explanation, userAnswer: answer };
   await loadMistakes();
+  renderQuizzes();
+  renderMistakes();
   renderStats();
   renderDashboard();
   toast(data.correct ? "答对了" : `错了：${data.answer}`);
@@ -401,6 +537,16 @@ async function toggleMistake(id) {
   renderAll();
 }
 
+async function generateSimilar(mistakeId) {
+  const data = await api(`/api/mistakes/${mistakeId}/similar`, {
+    method: "POST",
+    body: JSON.stringify({ count: 3 }),
+  });
+  state.similarByMistake[mistakeId] = data.quizzes || [];
+  renderMistakes();
+  toast(`已生成 ${state.similarByMistake[mistakeId].length} 道同类题`);
+}
+
 document.addEventListener("click", async event => {
   const button = event.target.closest("button");
   if (!button) return;
@@ -450,6 +596,7 @@ document.addEventListener("click", async event => {
       const input = document.querySelector(`[data-typed-quiz="${button.dataset.submitTyped}"]`);
       await submitAnswer(Number(button.dataset.submitTyped), input.value.trim(), button);
     }
+    if (button.dataset.generateSimilar) await generateSimilar(Number(button.dataset.generateSimilar));
     if (button.dataset.solveMistake) await toggleMistake(button.dataset.solveMistake);
   } catch (error) {
     toast(error.message);

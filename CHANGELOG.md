@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.2.0] - 2026-07-15
+
+### Added
+
+- Immediate answer explanations based on question type and evidence.
+- Structured mistake coaching with test point, distractor trap, evidence, and retry steps.
+- Generation and scoring of three same-skill remedial questions.
+
 ## [0.1.0] - 2026-07-15
 
 ### Added

@@ -515,6 +515,169 @@ def generate_quiz_items(text: str, mode: str, style: str) -> list[dict]:
     return items
 
 
+def explain_mistake(quiz: sqlite3.Row | dict, user_answer: str) -> dict:
+    quiz_type = quiz.get("quiz_type") or quiz.get("type") or "reading"
+    style = quiz.get("style") or "general"
+    answer = str(quiz.get("answer") or "").strip()
+    selected = str(user_answer or "").strip()
+    evidence = str(quiz.get("evidence") or "").strip()
+    note = str(quiz.get("quiz_note") or quiz.get("note") or "").strip()
+
+    type_guides = {
+        "reading": {
+            "point": "证据定位与同义替换",
+            "correct": "正确选项与证据句表达同一个事实关系。关键词可以变化，但主体、动作、范围和语气强度必须一致。",
+            "method": ["圈出题干中的主体和限定词", "回原文定位同义表达", "逐项检查是否偷换范围、方向或因果"],
+        },
+        "main-idea": {
+            "point": "主旨概括与信息层级",
+            "correct": "正确答案覆盖这一部分的核心对象和主要观点，不会只抓一个例子，也不会把结论扩大到原文之外。",
+            "method": ["先概括每句在做什么", "区分中心观点和支持细节", "选择覆盖全文且措辞不过强的选项"],
+        },
+        "paraphrase": {
+            "point": "句意改写与逻辑保真",
+            "correct": "正确改写保留了原句的逻辑关系、条件和态度，只替换表达方式，没有增加或删掉关键含义。",
+            "method": ["先拆出原句主干", "标记转折、因果和条件", "检查改写是否改变确定程度或逻辑方向"],
+        },
+        "cloze": {
+            "point": "语境词义、词性与搭配",
+            "correct": f"把 {answer} 放回空格后，词义、词性和上下文搭配能够同时成立。选词填空不能只看中文近义，还要看句法位置和固定搭配。",
+            "method": ["先判断空格需要的词性", "读取空格前后的搭配", "最后用整句含义排除近义干扰词"],
+        },
+        "initial": {
+            "point": "语境提取与完整拼写",
+            "correct": f"语境指向 {answer}，首字母和词长也与答案一致。这类题同时考词义提取和完整拼写。",
+            "method": ["根据句意回忆目标词", "用首字母和词长核对", "检查词形、单复数和时态"],
+        },
+    }
+    guide = type_guides.get(quiz_type, type_guides["reading"])
+
+    lower = selected.lower()
+    if not selected:
+        trap = "未作答"
+        why_wrong = "这次没有形成可比较的答案。先写出一个候选，再用证据排除，训练效果会比直接跳过更好。"
+    elif quiz_type in {"cloze", "initial"}:
+        trap = "词义或词形未同时满足"
+        why_wrong = f"{selected} 放回原句后，至少有一项不匹配：语境含义、词性、固定搭配或拼写。正确答案是 {answer}。"
+    elif any(word in lower for word in ["not given", "not stated", "does not mention", "outside"]):
+        trap = "无中生有"
+        why_wrong = "这个选项听起来合理，但原文没有提供足够证据。考试只认文章能支持的内容，不认常识推测。"
+    elif any(word in lower for word in ["opposite", "reverse", "contradict", "reject"]):
+        trap = "方向颠倒"
+        why_wrong = "这个选项保留了原文主题词，却把态度、因果或论证方向反过来了。"
+    elif any(word in lower for word in ["only", "all", "never", "extreme", "broader", "stronger"]):
+        trap = "范围扩大或措辞过强"
+        why_wrong = "这个选项把原文有限、带条件的表达改成绝对结论，范围或确定程度超过了证据。"
+    elif any(word in lower for word in ["detail", "example", "minor", "narrow", "partial"]):
+        trap = "用细节冒充主旨"
+        why_wrong = "这个选项可能对应原文中的一个细节，但覆盖不了题目要求的中心观点或完整关系。"
+    else:
+        trap = "语义相近但逻辑不等价"
+        why_wrong = "你的答案与原文主题相关，但没有完整保留证据中的主体、范围、条件或逻辑关系。相似词不等于同义答案。"
+
+    return {
+        "style": style,
+        "question_type": quiz_type,
+        "test_point": note or guide["point"],
+        "trap": trap,
+        "why_wrong": why_wrong,
+        "why_correct": guide["correct"],
+        "evidence_guide": "先在证据句中确认谁做什么，再核对否定、转折、因果、程度词和范围词。正确答案必须能逐项对应。",
+        "steps": guide["method"],
+        "retry": f"遮住答案，把“{answer}”换成自己的话复述一次，再重新作答。",
+        "evidence": evidence,
+    }
+
+
+def generate_similar_items(text: str, original: dict, count: int = 3) -> list[dict]:
+    quiz_type = original.get("type") or original.get("quiz_type") or "reading"
+    style = original.get("style") or "IELTS"
+    original_answer = str(original.get("answer") or "").lower()
+    profile = style_profile(style)
+    sents = [sentence for sentence in sentences(text) if sentence != original.get("evidence")]
+    if not sents:
+        sents = sentences(text)
+    items: list[dict] = []
+
+    if quiz_type == "reading":
+        for sentence in sents[:count]:
+            answer = paraphrase(sentence)
+            items.append(
+                {
+                    "type": "reading",
+                    "prompt": profile["support_prompt"],
+                    "answer": answer,
+                    "options": with_options(answer, profile["support_wrong"]),
+                    "evidence": sentence,
+                    "note": f"同类巩固 / {profile['notes'][0]}",
+                }
+            )
+    elif quiz_type == "main-idea":
+        segments = [part.strip() for part in re.split(r"\n\s*\n", text) if len(part.strip()) > 40]
+        segments.extend(" ".join(sents[index:index + 2]) for index in range(0, len(sents), 2))
+        unique_segments = list(dict.fromkeys(segment for segment in segments if segment))
+        for segment in unique_segments[:count]:
+            first = sentences(segment)[0]
+            answer = paraphrase(first)
+            items.append(
+                {
+                    "type": "main-idea",
+                    "prompt": profile["main_prompt"],
+                    "answer": answer,
+                    "options": with_options(answer, profile["main_wrong"]),
+                    "evidence": segment,
+                    "note": f"同类巩固 / {profile['notes'][1]}",
+                }
+            )
+    elif quiz_type == "paraphrase":
+        for sentence in sents[:count]:
+            answer = paraphrase(sentence)
+            items.append(
+                {
+                    "type": "paraphrase",
+                    "prompt": profile["para_prompt"],
+                    "answer": answer,
+                    "options": with_options(answer, profile["para_wrong"]),
+                    "evidence": sentence,
+                    "note": f"同类巩固 / {profile['notes'][2]}",
+                }
+            )
+    elif quiz_type == "cloze":
+        keywords = [word for word in article_keywords(text) if word != original_answer]
+        for keyword in keywords[:count]:
+            context = sentence_for(text, keyword)
+            prompt = re.sub(rf"\b{re.escape(keyword)}\b", "_____", context, flags=re.I)
+            distractors = [word for word in LEXICON if word != keyword]
+            random.shuffle(distractors)
+            items.append(
+                {
+                    "type": "cloze",
+                    "prompt": prompt,
+                    "answer": keyword,
+                    "options": with_options(keyword, distractors[:3]),
+                    "evidence": context,
+                    "note": f"同类巩固 / {profile['notes'][3]}",
+                }
+            )
+    else:
+        keywords = [word for word in article_keywords(text) if word != original_answer]
+        for keyword in keywords[:count]:
+            context = sentence_for(text, keyword)
+            clue = keyword[0] + "_" * max(2, len(keyword) - 1)
+            prompt = re.sub(rf"\b{re.escape(keyword)}\b", clue, context, flags=re.I)
+            items.append(
+                {
+                    "type": "initial",
+                    "prompt": prompt,
+                    "answer": keyword,
+                    "options": [],
+                    "evidence": context,
+                    "note": f"同类巩固 / {profile['notes'][4]}",
+                }
+            )
+    return items[:count]
+
+
 def analyze_payload(article: sqlite3.Row | dict) -> dict:
     text = article["body"]
     return {
@@ -627,7 +790,21 @@ class App(BaseHTTPRequestHandler):
                 return json_response(self, {"quizzes": quizzes})
             if path == "/api/mistakes":
                 with db() as conn:
-                    mistakes = rows_to_dicts(conn.execute("SELECT * FROM mistakes ORDER BY solved, created_at DESC").fetchall())
+                    rows = conn.execute(
+                        """
+                        SELECT m.*, q.style, q.type AS quiz_type, q.note AS quiz_note,
+                               q.article_id, a.title AS article_title
+                        FROM mistakes m
+                        LEFT JOIN quizzes q ON q.id = m.quiz_id
+                        LEFT JOIN articles a ON a.id = q.article_id
+                        ORDER BY m.solved, m.created_at DESC
+                        """
+                    ).fetchall()
+                    mistakes = []
+                    for row in rows:
+                        item = dict(row)
+                        item["explanation"] = explain_mistake(item, item["user_answer"])
+                        mistakes.append(item)
                 return json_response(self, {"mistakes": mistakes})
             if path == "/api/feeds":
                 with db() as conn:
@@ -754,7 +931,56 @@ class App(BaseHTTPRequestHandler):
                             """,
                             (quiz_id, quiz["prompt"], quiz["answer"], answer, quiz["evidence"], now),
                         )
-                return json_response(self, {"correct": correct, "answer": quiz["answer"], "evidence": quiz["evidence"]})
+                    explanation = explain_mistake(dict(quiz), answer)
+                return json_response(
+                    self,
+                    {
+                        "correct": correct,
+                        "answer": quiz["answer"],
+                        "evidence": quiz["evidence"],
+                        "explanation": explanation,
+                    },
+                )
+            match = re.fullmatch(r"/api/mistakes/(\d+)/similar", path)
+            if match:
+                count = max(1, min(5, int(payload.get("count") or 3)))
+                with db() as conn:
+                    original = conn.execute(
+                        """
+                        SELECT m.id AS mistake_id, m.user_answer, q.id AS quiz_id,
+                               q.article_id, q.style, q.type, q.prompt, q.answer,
+                               q.evidence, q.note, a.body AS article_body
+                        FROM mistakes m
+                        LEFT JOIN quizzes q ON q.id = m.quiz_id
+                        LEFT JOIN articles a ON a.id = q.article_id
+                        WHERE m.id = ?
+                        """,
+                        (match.group(1),),
+                    ).fetchone()
+                    if not original or not original["quiz_id"]:
+                        return json_response(self, {"error": "Original quiz not found"}, 404)
+                    original_item = dict(original)
+                    source_text = original_item.get("article_body") or original_item.get("evidence") or ""
+                    items = generate_similar_items(source_text, original_item, count)
+                    now = utc_now()
+                    saved = []
+                    for item in items:
+                        cursor = conn.execute(
+                            """
+                            INSERT INTO quizzes
+                            (article_id, style, mode, type, prompt, answer, options_json, evidence, note, created_at)
+                            VALUES (?, ?, 'remedial', ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                original_item["article_id"],
+                                original_item["style"] or "IELTS",
+                                item["type"], item["prompt"], item["answer"],
+                                json.dumps(item["options"], ensure_ascii=False),
+                                item["evidence"], item["note"], now,
+                            ),
+                        )
+                        saved.append({**item, "id": cursor.lastrowid, "article_id": original_item["article_id"], "style": original_item["style"] or "IELTS", "mode": "remedial"})
+                return json_response(self, {"quizzes": saved}, 201)
             match = re.fullmatch(r"/api/mistakes/(\d+)/solve", path)
             if match:
                 with db() as conn:
