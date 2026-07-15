@@ -41,6 +41,18 @@ LEXICON = {
 }
 
 
+def lexical_term(term: str, meaning_zh: str, note: str = "") -> dict:
+    return {"term": term, "meaning_zh": meaning_zh, "note": note}
+
+
+def phrase(term: str, meaning_zh: str, synonyms: list[dict] | None = None, antonyms: list[dict] | None = None) -> dict:
+    return {"phrase": term, "meaning_zh": meaning_zh, "synonyms": synonyms or [], "antonyms": antonyms or []}
+
+
+def bilingual_example(text: str, translation: str) -> dict:
+    return {"text": text, "translation": translation}
+
+
 LEXICAL_SEEDS = [
     {
         "headword": "inspect", "pos": "verb", "ipa_uk": "/ɪnˈspekt/", "ipa_us": "/ɪnˈspekt/",
@@ -51,10 +63,17 @@ LEXICAL_SEEDS = [
         "forms": ["inspects", "inspected", "inspecting"],
         "aliases": ["检查", "审查", "查看", "观察"],
         "family": ["inspection", "inspector", "perspective", "prospect", "respect", "suspect"],
-        "collocations": ["inspect the premises", "inspect for damage", "closely inspect"],
-        "synonyms": ["examine（全面细看）", "check（确认是否正确）", "scrutinize（极其仔细地审视）"],
-        "antonyms": ["overlook", "ignore"],
-        "examples": ["Engineers inspect the bridge for structural damage.", "The documents must be inspected before approval."],
+        "collocations": [
+            phrase("inspect the premises", "检查场所", [lexical_term("examine the premises", "勘查场所")], [lexical_term("leave the premises unchecked", "不检查场所")]),
+            phrase("inspect for damage", "检查是否有损坏", [lexical_term("check for damage", "查看有无损坏")], [lexical_term("ignore the damage", "忽视损坏")]),
+            phrase("closely inspect", "仔细检查", [lexical_term("carefully examine", "认真查验")], [lexical_term("glance over", "粗略扫一眼")]),
+        ],
+        "synonyms": [lexical_term("examine", "检查；全面细看"), lexical_term("check", "核对；确认是否正确"), lexical_term("scrutinize", "极其仔细地审视")],
+        "antonyms": [lexical_term("overlook", "忽略；漏看"), lexical_term("ignore", "不理会")],
+        "examples": [
+            bilingual_example("Engineers inspect the bridge for structural damage.", "工程师检查桥梁是否存在结构性损坏。"),
+            bilingual_example("The documents must be inspected before approval.", "这些文件在批准之前必须经过审查。"),
+        ],
         "morphemes": ["in-", "spect"],
     },
     {
@@ -65,9 +84,14 @@ LEXICAL_SEEDS = [
         "breakdown": "in-（向内）+ spect（看）+ -tion（名词后缀）",
         "forms": ["inspections"], "aliases": ["检查", "视察", "检验"],
         "family": ["inspect", "inspector", "inspectional"],
-        "collocations": ["safety inspection", "routine inspection", "conduct an inspection"],
-        "synonyms": ["examination", "review", "audit（正式审计）"], "antonyms": ["neglect"],
-        "examples": ["The building passed its annual safety inspection."], "morphemes": ["in-", "spect", "-tion"],
+        "collocations": [
+            phrase("safety inspection", "安全检查", [lexical_term("safety check", "安全核查")], [lexical_term("unchecked operation", "未经检查的运行")]),
+            phrase("routine inspection", "例行检查", [lexical_term("regular examination", "定期检查")], [lexical_term("exceptional inspection", "临时专项检查")]),
+            phrase("conduct an inspection", "进行检查", [lexical_term("carry out an examination", "开展检查")], [lexical_term("waive an inspection", "免除检查")]),
+        ],
+        "synonyms": [lexical_term("examination", "检查；考察"), lexical_term("review", "审查；复核"), lexical_term("audit", "正式审计")],
+        "antonyms": [lexical_term("neglect", "疏忽；疏于检查")],
+        "examples": [bilingual_example("The building passed its annual safety inspection.", "这栋建筑通过了年度安全检查。")], "morphemes": ["in-", "spect", "-tion"],
     },
     {
         "headword": "respect", "pos": "noun / verb", "ipa_uk": "/rɪˈspekt/", "ipa_us": "/rɪˈspekt/",
@@ -77,9 +101,14 @@ LEXICAL_SEEDS = [
         "breakdown": "re-（回）+ spect（看）→ 回头看、认真看待",
         "forms": ["respects", "respected", "respecting"], "aliases": ["尊重", "敬重", "方面"],
         "family": ["respectful", "respectively", "irrespective"],
-        "collocations": ["show respect for", "with respect to", "mutual respect"],
-        "synonyms": ["admire（钦佩）", "regard（看待）"], "antonyms": ["disrespect", "scorn"],
-        "examples": ["Good arguments respect the limits of the evidence."], "morphemes": ["re-", "spect"],
+        "collocations": [
+            phrase("show respect for", "对……表示尊重", [lexical_term("treat with respect", "以尊重的态度对待")], [lexical_term("show contempt for", "对……表示轻蔑")]),
+            phrase("with respect to", "关于；就……而言", [lexical_term("in relation to", "关于；与……有关")], [lexical_term("regardless of", "不管；不顾")]),
+            phrase("mutual respect", "相互尊重", [lexical_term("reciprocal regard", "彼此尊重")], [lexical_term("mutual distrust", "相互不信任")]),
+        ],
+        "synonyms": [lexical_term("admire", "钦佩"), lexical_term("regard", "尊重；看待")],
+        "antonyms": [lexical_term("disrespect", "不尊重"), lexical_term("scorn", "蔑视")],
+        "examples": [bilingual_example("Good arguments respect the limits of the evidence.", "好的论证会尊重证据本身的限度。")], "morphemes": ["re-", "spect"],
     },
     {
         "headword": "perspective", "pos": "noun", "ipa_uk": "/pəˈspektɪv/", "ipa_us": "/pərˈspektɪv/",
@@ -89,9 +118,13 @@ LEXICAL_SEEDS = [
         "breakdown": "per-（穿过）+ spect（看）+ -ive（名词/形容词后缀）",
         "forms": ["perspectives"], "aliases": ["观点", "角度", "视角"],
         "family": ["prospect", "prospective", "retrospective"],
-        "collocations": ["from a different perspective", "put into perspective", "historical perspective"],
-        "synonyms": ["viewpoint", "standpoint", "outlook"], "antonyms": [],
-        "examples": ["The article examines the issue from a historical perspective."], "morphemes": ["per-", "spect", "-ive"],
+        "collocations": [
+            phrase("from a different perspective", "从不同角度来看", [lexical_term("from another point of view", "从另一个观点来看")], [lexical_term("from the same perspective", "从相同角度来看")]),
+            phrase("put into perspective", "客观看待；正确衡量", [lexical_term("see in context", "结合背景来看")], [lexical_term("blow out of proportion", "夸大其严重性")]),
+            phrase("historical perspective", "历史视角", [lexical_term("historical viewpoint", "历史观点")], [lexical_term("present-day perspective", "当代视角")]),
+        ],
+        "synonyms": [lexical_term("viewpoint", "观点"), lexical_term("standpoint", "立场"), lexical_term("outlook", "看法；展望")], "antonyms": [],
+        "examples": [bilingual_example("The article examines the issue from a historical perspective.", "这篇文章从历史视角审视这个问题。")], "morphemes": ["per-", "spect", "-ive"],
     },
     {
         "headword": "transport", "pos": "noun / verb", "ipa_uk": "/ˈtrænspɔːt/", "ipa_us": "/ˈtrænspɔːrt/",
@@ -99,16 +132,24 @@ LEXICAL_SEEDS = [
         "meaning_zh": "运输；交通运输系统", "level": "B1", "register": "neutral",
         "origin": "Latin transportare, from trans- 'across' + portare 'carry'", "breakdown": "trans-（跨越）+ port（携带）",
         "forms": ["transports", "transported", "transporting", "transportation"], "aliases": ["运输", "交通"],
-        "family": ["portable", "import", "export", "support"], "collocations": ["public transport", "transport goods"],
-        "synonyms": ["carry", "convey"], "antonyms": [], "examples": ["Railways transport goods efficiently."], "morphemes": ["trans-", "port"],
+        "family": ["portable", "import", "export", "support"], "collocations": [
+            phrase("public transport", "公共交通", [lexical_term("public transit", "公共交通系统")], [lexical_term("private transport", "私人交通")]),
+            phrase("transport goods", "运输货物", [lexical_term("carry freight", "运送货物")], [lexical_term("retain goods", "留存货物")]),
+        ],
+        "synonyms": [lexical_term("carry", "携带；运送"), lexical_term("convey", "输送；传达")], "antonyms": [],
+        "examples": [bilingual_example("Railways transport goods efficiently.", "铁路能够高效地运输货物。")], "morphemes": ["trans-", "port"],
     },
     {
         "headword": "predict", "pos": "verb", "ipa_uk": "/prɪˈdɪkt/", "ipa_us": "/prɪˈdɪkt/",
         "core_meaning": "to say what you think will happen in the future", "meaning_zh": "预测；预言", "level": "B1", "register": "neutral",
         "origin": "Latin praedicere, from pre- 'before' + dicere 'say'", "breakdown": "pre-（之前）+ dict（说）",
         "forms": ["predicts", "predicted", "predicting", "prediction"], "aliases": ["预测", "预言"],
-        "family": ["prediction", "predictable", "dictate", "contradict"], "collocations": ["accurately predict", "predict an outcome"],
-        "synonyms": ["forecast", "anticipate"], "antonyms": [], "examples": ["The model cannot accurately predict individual behavior."], "morphemes": ["pre-", "dict"],
+        "family": ["prediction", "predictable", "dictate", "contradict"], "collocations": [
+            phrase("accurately predict", "准确预测", [lexical_term("forecast precisely", "精准预报")], [lexical_term("misjudge completely", "完全误判")]),
+            phrase("predict an outcome", "预测结果", [lexical_term("anticipate a result", "预料结果")], [lexical_term("leave the outcome uncertain", "让结果保持未知")]),
+        ],
+        "synonyms": [lexical_term("forecast", "预测；预报"), lexical_term("anticipate", "预料；预期")], "antonyms": [],
+        "examples": [bilingual_example("The model cannot accurately predict individual behavior.", "该模型无法准确预测个人行为。")], "morphemes": ["pre-", "dict"],
     },
 ]
 
@@ -369,11 +410,20 @@ def init_db() -> None:
         for entry in LEXICAL_SEEDS:
             conn.execute(
                 """
-                INSERT OR IGNORE INTO dictionary_entries
+                INSERT INTO dictionary_entries
                 (headword, pos, ipa_uk, ipa_us, core_meaning, meaning_zh, level, register_label,
                  origin, breakdown, forms_json, aliases_json, family_json, collocations_json,
                  synonyms_json, antonyms_json, examples_json, morphemes_json)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(headword) DO UPDATE SET
+                  pos = excluded.pos, ipa_uk = excluded.ipa_uk, ipa_us = excluded.ipa_us,
+                  core_meaning = excluded.core_meaning, meaning_zh = excluded.meaning_zh,
+                  level = excluded.level, register_label = excluded.register_label,
+                  origin = excluded.origin, breakdown = excluded.breakdown,
+                  forms_json = excluded.forms_json, aliases_json = excluded.aliases_json,
+                  family_json = excluded.family_json, collocations_json = excluded.collocations_json,
+                  synonyms_json = excluded.synonyms_json, antonyms_json = excluded.antonyms_json,
+                  examples_json = excluded.examples_json, morphemes_json = excluded.morphemes_json
                 """,
                 (
                     entry["headword"], entry["pos"], entry["ipa_uk"], entry["ipa_us"], entry["core_meaning"],
@@ -391,13 +441,6 @@ def init_db() -> None:
              for form, kind, meaning, origin, note, examples in MORPHEME_SEEDS],
         )
         conn.execute("DELETE FROM morphemes WHERE form = '-ion'")
-        conn.execute(
-            "UPDATE dictionary_entries SET breakdown = ?, morphemes_json = ? WHERE headword = 'inspection'",
-            (
-                "in-（向内）+ spect（看）+ -tion（名词后缀）",
-                json.dumps(["in-", "spect", "-tion"], ensure_ascii=False),
-            ),
-        )
 
 
 def json_response(handler: BaseHTTPRequestHandler, payload: object, status: int = 200) -> None:
@@ -982,7 +1025,7 @@ def lexical_search(query: str, limit: int = 30) -> dict:
         headword = entry["headword"].lower()
         forms = [value.lower() for value in entry["forms"]]
         aliases = [value.lower() for value in entry["aliases"]]
-        related = [value.lower() for value in entry["family"] + entry["collocations"]]
+        related = json.dumps(entry["family"] + entry["collocations"], ensure_ascii=False).lower()
         roots = [value.lower() for value in entry["morphemes"]]
         score, matched_by = 0, ""
         if not needle:
@@ -997,7 +1040,7 @@ def lexical_search(query: str, limit: int = 30) -> dict:
             score, matched_by = 78, "中文释义匹配"
         elif needle in headword:
             score, matched_by = 68, "单词部分匹配"
-        elif any(needle in value for value in related):
+        elif needle in related:
             score, matched_by = 58, "词族或搭配匹配"
         elif needle in entry["origin"].lower():
             score, matched_by = 72, "词源匹配"
