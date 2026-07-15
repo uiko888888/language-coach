@@ -715,7 +715,8 @@ async function submitAnswer(quizId, answer, button = null) {
   renderMistakes();
   renderStats();
   renderDashboard();
-  toast(data.correct ? `答对了，+${data.points} XP` : `错了：${data.answer}，仍获得 ${data.points} XP`);
+  const rewardText = data.points ? `，+${data.points} XP` : "（本题积分已结算）";
+  toast(data.correct ? `答对了${rewardText}` : `错了：${data.answer}${rewardText}`);
 }
 
 async function saveTranslation() {

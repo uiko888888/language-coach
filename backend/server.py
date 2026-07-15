@@ -412,6 +412,9 @@ def init_db() -> None:
             conn.execute("ALTER TABLE articles ADD COLUMN translation_zh TEXT NOT NULL DEFAULT ''")
         conn.execute("UPDATE articles SET translation_zh = ? WHERE source = 'seed' AND translation_zh = ''", (SAMPLE_TRANSLATION,))
         conn.execute("INSERT OR IGNORE INTO progress (id) VALUES (1)")
+        mistake_columns = {row[1] for row in conn.execute("PRAGMA table_info(mistakes)")}
+        if "reward_claimed" not in mistake_columns:
+            conn.execute("ALTER TABLE mistakes ADD COLUMN reward_claimed INTEGER NOT NULL DEFAULT 0")
         article_count = conn.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
         if article_count == 0:
             now = utc_now()
@@ -1379,6 +1382,7 @@ class App(BaseHTTPRequestHandler):
                     if not quiz:
                         return json_response(self, {"error": "Quiz not found"}, 404)
                     correct = answer.lower() == quiz["answer"].lower()
+                    first_attempt = conn.execute("SELECT COUNT(*) FROM attempts WHERE quiz_id = ?", (quiz_id,)).fetchone()[0] == 0
                     now = utc_now()
                     conn.execute(
                         "INSERT INTO attempts (quiz_id, user_answer, correct, created_at) VALUES (?, ?, ?, ?)",
@@ -1393,8 +1397,8 @@ class App(BaseHTTPRequestHandler):
                             (quiz_id, quiz["prompt"], quiz["answer"], answer, quiz["evidence"], now),
                         )
                     explanation = explain_mistake(dict(quiz), answer)
-                    points = 10 if correct else 2
-                    progress = award_progress(conn, points, correct=correct)
+                    points = (10 if correct else 2) if first_attempt else 0
+                    progress = award_progress(conn, points, correct=correct) if first_attempt else progress_payload(conn)
                 return json_response(
                     self,
                     {
@@ -1449,13 +1453,16 @@ class App(BaseHTTPRequestHandler):
             match = re.fullmatch(r"/api/mistakes/(\d+)/solve", path)
             if match:
                 with db() as conn:
-                    current = conn.execute("SELECT solved FROM mistakes WHERE id = ?", (match.group(1),)).fetchone()
+                    current = conn.execute("SELECT solved, reward_claimed FROM mistakes WHERE id = ?", (match.group(1),)).fetchone()
                     if not current:
                         return json_response(self, {"error": "Mistake not found"}, 404)
                     becoming_solved = not bool(current["solved"])
                     conn.execute("UPDATE mistakes SET solved = 1 - solved WHERE id = ?", (match.group(1),))
-                    progress = award_progress(conn, 5, reviewed=True) if becoming_solved else progress_payload(conn)
-                return json_response(self, {"ok": True, "points": 5 if becoming_solved else 0, "progress": progress})
+                    earns_reward = becoming_solved and not bool(current["reward_claimed"])
+                    if earns_reward:
+                        conn.execute("UPDATE mistakes SET reward_claimed = 1 WHERE id = ?", (match.group(1),))
+                    progress = award_progress(conn, 5, reviewed=True) if earns_reward else progress_payload(conn)
+                return json_response(self, {"ok": True, "points": 5 if earns_reward else 0, "progress": progress})
             if path == "/api/feeds":
                 now = utc_now()
                 with db() as conn:
