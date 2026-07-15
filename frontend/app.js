@@ -15,6 +15,8 @@ const state = {
   mistakes: [],
   feeds: [],
   selectedArticle: null,
+  selectedPoolArticleId: null,
+  selectedMistakeId: null,
   similarByMistake: {},
   analysis: null,
   answerFeedback: {},
@@ -117,24 +119,47 @@ function renderDashboard() {
 }
 
 function renderArticles() {
-  $("#articleList").innerHTML = state.articles.map(article => `
-    <div class="item">
-      <div class="badge-row">
-        ${badge(article.level, "teal")}
-        ${badge(article.source || "manual")}
-        ${article.source_tier ? badge(article.source_tier, article.source_tier === "核心" ? "teal" : "") : ""}
-        ${article.exam_fit ? badge(`${state.style} 匹配 ${article.exam_fit}%`, article.exam_fit >= 90 ? "amber" : "") : ""}
+  const list = $("#articleTitleList");
+  const detail = $("#articleDetail");
+  if (!state.articles.length) {
+    list.innerHTML = `<div class="empty-state">文章池为空</div>`;
+    detail.innerHTML = `<div class="empty-state">更新 RSS 或导入一篇文章。</div>`;
+  } else {
+    if (!state.articles.some(article => article.id === state.selectedPoolArticleId)) {
+      state.selectedPoolArticleId = state.articles[0].id;
+    }
+    const selected = state.articles.find(article => article.id === state.selectedPoolArticleId);
+    list.innerHTML = state.articles.map((article, index) => `
+      <button class="master-list-item ${article.id === selected.id ? "active" : ""}" data-select-article="${article.id}">
+        <span class="master-number">${String(index + 1).padStart(2, "0")}</span>
+        <span class="master-copy">
+          <strong>${escapeHtml(article.title)}</strong>
+          <small>${escapeHtml(article.source || "manual")} · ${escapeHtml(article.level)}</small>
+        </span>
+      </button>
+    `).join("");
+    const paragraphs = String(selected.body || "").split(/\n\s*\n/).filter(Boolean);
+    detail.innerHTML = `
+      <div class="detail-head">
+        <div>
+          <div class="badge-row">
+            ${badge(selected.level, "teal")}
+            ${badge(selected.source || "manual")}
+            ${selected.source_tier ? badge(selected.source_tier, selected.source_tier === "核心" ? "teal" : "") : ""}
+            ${selected.exam_fit ? badge(`${state.style} 匹配 ${selected.exam_fit}%`, selected.exam_fit >= 90 ? "amber" : "") : ""}
+          </div>
+          <h2>${escapeHtml(selected.title)}</h2>
+        </div>
+        <div class="toolbar">
+          <button data-open-article="${selected.id}">进入阅读台</button>
+          <button class="primary" data-quiz-article="${selected.id}">生成题</button>
+        </div>
       </div>
-      <h3>${escapeHtml(article.title)}</h3>
-      <p>${escapeHtml(excerpt(article.body))}</p>
-      ${article.source_topics?.length ? `<div class="source-topics">${article.source_topics.map(topic => badge(topic)).join("")}</div>` : ""}
-      <div class="toolbar">
-        <button data-open-article="${article.id}">阅读</button>
-        <button data-quiz-article="${article.id}">生成题</button>
-        ${article.source_url ? `<a href="${escapeHtml(article.source_url)}" target="_blank" rel="noreferrer">来源</a>` : ""}
-      </div>
-    </div>
-  `).join("") || `<div class="item muted">文章池为空</div>`;
+      ${selected.source_topics?.length ? `<div class="source-topics">${selected.source_topics.map(topic => badge(topic)).join("")}</div>` : ""}
+      <article class="article-detail-body">${paragraphs.map(paragraph => `<p>${escapeHtml(paragraph)}</p>`).join("")}</article>
+      ${selected.source_url ? `<a class="source-link" href="${escapeHtml(selected.source_url)}" target="_blank" rel="noreferrer">打开原始来源</a>` : ""}
+    `;
+  }
 
   $("#feedList").innerHTML = `
     <div class="source-pool-head">
@@ -143,15 +168,8 @@ function renderArticles() {
     </div>
     ${state.feeds.map(feed => `
       <div class="source-row">
-        <div>
-          <strong>${escapeHtml(feed.name)}</strong>
-          <p>${escapeHtml((feed.source_topics || []).join(" · "))}</p>
-        </div>
-        <div class="badge-row">
-          ${badge(feed.source_tier || "其他", feed.source_tier === "核心" ? "teal" : "")}
-          ${badge(feed.level_hint, "amber")}
-          ${badge(`${feed.exam_fit || 0}%`) }
-        </div>
+        <div><strong>${escapeHtml(feed.name)}</strong><p>${escapeHtml((feed.source_topics || []).join(" · "))}</p></div>
+        <div class="badge-row">${badge(feed.source_tier || "其他", feed.source_tier === "核心" ? "teal" : "")}${badge(feed.level_hint, "amber")}${badge(`${feed.exam_fit || 0}%`)}</div>
       </div>
     `).join("")}
   `;
@@ -374,29 +392,52 @@ function remedialQuizHtml(quiz, index) {
 }
 
 function renderMistakes() {
-  $("#mistakeList").innerHTML = state.mistakes.map(item => {
-    const similar = state.similarByMistake[item.id] || [];
-    return `
-    <div class="item mistake-item">
-      <div class="badge-row">
-        ${badge(item.solved ? "已处理" : "待复盘", item.solved ? "teal" : "red")}
-        ${badge(item.style || "通用")}
-        ${badge(item.quiz_type || "reading")}
+  const list = $("#mistakeList");
+  const coach = $("#mistakeCoach");
+  if (!state.mistakes.length) {
+    list.innerHTML = `<div class="empty-state">暂无错题</div>`;
+    coach.innerHTML = `<div class="empty-state">完成题目后，错题会在这里进行实时讲解。</div>`;
+    return;
+  }
+  if (!state.mistakes.some(item => item.id === state.selectedMistakeId)) {
+    state.selectedMistakeId = (state.mistakes.find(item => !item.solved) || state.mistakes[0]).id;
+  }
+  const selected = state.mistakes.find(item => item.id === state.selectedMistakeId);
+  const explanation = selected.explanation || fallbackMistakeExplanation(selected);
+  const similar = state.similarByMistake[selected.id] || [];
+
+  list.innerHTML = state.mistakes.map((item, index) => `
+    <button class="master-list-item ${item.id === selected.id ? "active" : ""}" data-select-mistake="${item.id}">
+      <span class="master-number">${String(index + 1).padStart(2, "0")}</span>
+      <span class="master-copy">
+        <strong>${escapeHtml(excerpt(item.prompt, 72))}</strong>
+        <small>${escapeHtml(item.quiz_note || item.quiz_type || "阅读理解")} · ${item.solved ? "已懂" : "待学"}</small>
+      </span>
+    </button>
+  `).join("");
+
+  coach.innerHTML = `
+    <div class="detail-head">
+      <div>
+        <div class="badge-row">${badge(selected.solved ? "已掌握" : "正在讲解", selected.solved ? "teal" : "red")}${badge(selected.style || "通用")}${badge(selected.quiz_type || "reading")}</div>
+        <h2>${escapeHtml(selected.prompt)}</h2>
       </div>
-      <h3>${escapeHtml(item.prompt)}</h3>
-      <div class="answer-compare">
-        <div class="answer-choice wrong-choice"><span>你的答案</span><strong>${escapeHtml(item.user_answer || "未作答")}</strong></div>
-        <div class="answer-choice correct-choice"><span>正确答案</span><strong>${escapeHtml(item.answer)}</strong></div>
-      </div>
-      ${explanationHtml(item.explanation || fallbackMistakeExplanation(item))}
-      <div class="toolbar mistake-actions">
-        <button class="primary" data-generate-similar="${item.id}">${similar.length ? "换一组同类题" : "生成 3 道同类题"}</button>
-        <button data-solve-mistake="${item.id}">${item.solved ? "重新标记" : "我已理解"}</button>
-      </div>
-      ${similar.length ? `<div class="remedial-list">${similar.map(remedialQuizHtml).join("")}</div>` : ""}
+      ${selected.article_id ? `<button data-open-article="${selected.article_id}">回到原文</button>` : ""}
     </div>
+    <div class="answer-compare">
+      <div class="answer-choice wrong-choice"><span>你的答案</span><strong>${escapeHtml(selected.user_answer || "未作答")}</strong></div>
+      <div class="answer-choice correct-choice"><span>正确答案</span><strong>${escapeHtml(selected.answer)}</strong></div>
+    </div>
+    ${explanationHtml(explanation)}
+    <div class="toolbar mistake-actions">
+      <button class="primary" data-generate-similar="${selected.id}">${similar.length ? "换一组同类题" : "生成 3 道同类题"}</button>
+      <button data-solve-mistake="${selected.id}">${selected.solved ? "重新标记待学" : "这题我学会了"}</button>
+    </div>
+    <section class="remedial-section">
+      <div class="remedial-head"><div><span class="muted">Same skill, new evidence</span><h3>同考点巩固</h3></div>${similar.length ? badge(`${similar.length} 题`, "teal") : ""}</div>
+      ${similar.length ? `<div class="remedial-list">${similar.map(remedialQuizHtml).join("")}</div>` : `<div class="empty-state">讲解看懂后，再用新证据做一组；连续做对才算真正掌握。</div>`}
+    </section>
   `;
-  }).join("") || `<div class="item muted">暂无错题</div>`;
 }
 
 function renderAll() {
@@ -512,6 +553,7 @@ async function saveArticle() {
   });
   state.articles.unshift(data.article);
   state.selectedArticle = data.article;
+  state.selectedPoolArticleId = data.article.id;
   state.analysis = data.analysis;
   renderAll();
   toast("已存入文章库");
@@ -592,6 +634,10 @@ document.addEventListener("click", async event => {
       renderAll();
     }
     if (button.dataset.openArticle) await openArticle(button.dataset.openArticle);
+    if (button.dataset.selectArticle) {
+      state.selectedPoolArticleId = Number(button.dataset.selectArticle);
+      renderArticles();
+    }
     if (button.dataset.quizArticle) {
       await openArticle(button.dataset.quizArticle);
       await generateQuizzes(button.dataset.quizArticle);
@@ -607,6 +653,10 @@ document.addEventListener("click", async event => {
     if (button.dataset.submitTyped) {
       const input = document.querySelector(`[data-typed-quiz="${button.dataset.submitTyped}"]`);
       await submitAnswer(Number(button.dataset.submitTyped), input.value.trim(), button);
+    }
+    if (button.dataset.selectMistake) {
+      state.selectedMistakeId = Number(button.dataset.selectMistake);
+      renderMistakes();
     }
     if (button.dataset.generateSimilar) await generateSimilar(Number(button.dataset.generateSimilar));
     if (button.dataset.solveMistake) await toggleMistake(button.dataset.solveMistake);

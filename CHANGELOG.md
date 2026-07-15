@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.4.0] - 2026-07-15
+
+### Changed
+
+- Article pool now uses a title list on the left and selected article content on the right.
+- Mistake review now uses a title list on the left and selected coaching content on the right.
+- Desktop and in-app browser widths retain the original fixed global sidebar; panels collapse only on phone widths.
+
 ## [0.3.0] - 2026-07-15
 
 ### Added
