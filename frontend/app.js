@@ -23,6 +23,7 @@ const state = {
   articleTopics: [],
   articleTopic: "",
   recommendedOnly: false,
+  bridge: null,
   selectedArticle: null,
   selectedPoolArticleId: null,
   selectedMistakeId: null,
@@ -673,6 +674,13 @@ async function loadCards() {
   state.cards = data.cards || [];
 }
 
+async function loadBridgeConfig() {
+  const data = await api("/api/browser/token");
+  state.bridge = data;
+  $("#bridgeToken").value = data.token || "";
+  $("#bridgeStatus").innerHTML = `${badge("本地桥接已启用", "teal")}${badge(data.translation?.configured ? "DeepL 已配置" : "DeepL 未配置", data.translation?.configured ? "teal" : "amber")}`;
+}
+
 async function loadMistakes() {
   const data = await api("/api/mistakes");
   state.mistakes = data.mistakes || [];
@@ -879,6 +887,10 @@ document.addEventListener("click", async event => {
       await loadCards();
       renderAll();
     }
+    if (button.id === "copyBridgeTokenBtn") {
+      await navigator.clipboard.writeText($("#bridgeToken").value);
+      toast("连接令牌已复制");
+    }
     if (button.id === "loadMistakesBtn") {
       await loadMistakes();
       renderAll();
@@ -1006,7 +1018,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 
 async function boot() {
   await loadHealth();
-  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadProgress(), loadExamTypes(), loadArticleTopics(), searchLexicon("", { open: false })]);
+  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadProgress(), loadExamTypes(), loadArticleTopics(), loadBridgeConfig(), searchLexicon("", { open: false })]);
   if (!state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);
     state.selectedArticle = data.article;

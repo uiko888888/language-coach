@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import html
+import hashlib
 import json
 import mimetypes
 import random
 import re
+import os
+import secrets
 import sqlite3
 import sys
 import urllib.parse
@@ -401,6 +404,33 @@ def init_db() -> None:
               last_study_date TEXT NOT NULL DEFAULT ''
             );
 
+            CREATE TABLE IF NOT EXISTS translation_cache (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              text_hash TEXT NOT NULL,
+              source_lang TEXT NOT NULL,
+              target_lang TEXT NOT NULL,
+              provider TEXT NOT NULL,
+              source_text TEXT NOT NULL,
+              translated_text TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              UNIQUE(text_hash, source_lang, target_lang, provider)
+            );
+
+            CREATE TABLE IF NOT EXISTS browser_clips (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              kind TEXT NOT NULL,
+              source_text TEXT NOT NULL,
+              translated_text TEXT NOT NULL DEFAULT '',
+              context TEXT NOT NULL DEFAULT '',
+              page_title TEXT NOT NULL DEFAULT '',
+              page_url TEXT NOT NULL DEFAULT '',
+              card_id INTEGER,
+              article_id INTEGER,
+              created_at TEXT NOT NULL,
+              FOREIGN KEY (card_id) REFERENCES cards(id),
+              FOREIGN KEY (article_id) REFERENCES articles(id)
+            );
+
             CREATE TABLE IF NOT EXISTS dictionary_entries (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               headword TEXT NOT NULL UNIQUE,
@@ -450,6 +480,8 @@ def init_db() -> None:
             if normalized and normalized != row["body"]:
                 conn.execute("UPDATE articles SET body = ? WHERE id = ?", (normalized, row["id"]))
         conn.execute("INSERT OR IGNORE INTO progress (id) VALUES (1)")
+        if not conn.execute("SELECT 1 FROM settings WHERE key = 'browser_bridge_token'").fetchone():
+            conn.execute("INSERT INTO settings (key, value) VALUES ('browser_bridge_token', ?)", (secrets.token_urlsafe(24),))
         mistake_columns = {row[1] for row in conn.execute("PRAGMA table_info(mistakes)")}
         if "reward_claimed" not in mistake_columns:
             conn.execute("ALTER TABLE mistakes ADD COLUMN reward_claimed INTEGER NOT NULL DEFAULT 0")
@@ -1228,6 +1260,57 @@ def award_progress(conn: sqlite3.Connection, points: int, correct: bool = False,
     return progress_payload(conn)
 
 
+def browser_bridge_token() -> str:
+    with db() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key = 'browser_bridge_token'").fetchone()
+    return row["value"] if row else ""
+
+
+def translation_status() -> dict:
+    configured = bool(os.environ.get("DEEPL_API_KEY", "").strip())
+    return {"provider": "DeepL", "configured": configured, "target_language": "ZH-HANS"}
+
+
+def translate_text(text: str, source_lang: str = "EN", target_lang: str = "ZH-HANS") -> dict:
+    source_text = (text or "").strip()
+    if not source_text:
+        raise ValueError("Text is required")
+    if len(source_text) > 8000:
+        raise ValueError("Selection is too long; translate at most 8000 characters at a time")
+    provider = "deepl"
+    digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
+    with db() as conn:
+        cached = conn.execute(
+            "SELECT translated_text FROM translation_cache WHERE text_hash = ? AND source_lang = ? AND target_lang = ? AND provider = ?",
+            (digest, source_lang, target_lang, provider),
+        ).fetchone()
+    if cached:
+        return {"source_text": source_text, "translated_text": cached["translated_text"], "provider": "DeepL", "cached": True}
+
+    api_key = os.environ.get("DEEPL_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("DeepL API key is not configured. Set DEEPL_API_KEY before starting the server.")
+    endpoint = os.environ.get("DEEPL_API_URL", "https://api-free.deepl.com/v2/translate")
+    form = urllib.parse.urlencode({"text": source_text, "source_lang": source_lang, "target_lang": target_lang}).encode("utf-8")
+    request = urllib.request.Request(
+        endpoint,
+        data=form,
+        headers={"Authorization": f"DeepL-Auth-Key {api_key}", "Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    translated = payload["translations"][0]["text"]
+    with db() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO translation_cache
+               (text_hash, source_lang, target_lang, provider, source_text, translated_text, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (digest, source_lang, target_lang, provider, source_text, translated, utc_now()),
+        )
+    return {"source_text": source_text, "translated_text": translated, "provider": "DeepL", "cached": False}
+
+
 def fetch_feed_items(limit_per_feed: int = 4) -> dict:
     imported = 0
     errors: list[str] = []
@@ -1286,6 +1369,26 @@ def fetch_feed_items(limit_per_feed: int = 4) -> dict:
 class App(BaseHTTPRequestHandler):
     server_version = "LanguageCoachV2/0.1"
 
+    def end_headers(self) -> None:
+        origin = self.headers.get("Origin", "")
+        if origin.startswith(("chrome-extension://", "edge-extension://", "http://127.0.0.1:", "http://localhost:")):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Private-Network", "true")
+        super().end_headers()
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Language-Coach-Token")
+        self.send_header("Access-Control-Max-Age", "600")
+        self.end_headers()
+
+    def browser_authorized(self) -> bool:
+        supplied = self.headers.get("X-Language-Coach-Token", "")
+        expected = browser_bridge_token()
+        return bool(supplied and expected and secrets.compare_digest(supplied, expected))
+
     def log_message(self, fmt: str, *args: object) -> None:
         sys.stderr.write("[%s] %s\n" % (self.log_date_time_string(), fmt % args))
 
@@ -1299,6 +1402,19 @@ class App(BaseHTTPRequestHandler):
             if path == "/api/progress":
                 with db() as conn:
                     return json_response(self, {"progress": progress_payload(conn)})
+            if path == "/api/browser/status":
+                return json_response(self, {"ok": True, "translation": translation_status()})
+            if path == "/api/browser/token":
+                origin = self.headers.get("Origin", "")
+                if origin and not origin.startswith(("http://127.0.0.1:", "http://localhost:")):
+                    return json_response(self, {"error": "Token is only available to the local app"}, 403)
+                return json_response(self, {"token": browser_bridge_token(), "translation": translation_status()})
+            if path == "/api/browser/clips":
+                if not self.browser_authorized():
+                    return json_response(self, {"error": "Invalid browser bridge token"}, 401)
+                with db() as conn:
+                    clips = rows_to_dicts(conn.execute("SELECT * FROM browser_clips ORDER BY id DESC LIMIT 100").fetchall())
+                return json_response(self, {"clips": clips})
             if path == "/api/exam-types":
                 style = query.get("style", ["general"])[0]
                 types = [{"id": key, "label": label, "engine_type": engine} for key, label, engine in EXAM_QUESTION_TYPES.get(style, EXAM_QUESTION_TYPES["general"])]
@@ -1382,6 +1498,51 @@ class App(BaseHTTPRequestHandler):
         path = parsed.path
         try:
             payload = read_json(self)
+            if path == "/api/browser/translate":
+                if not self.browser_authorized():
+                    return json_response(self, {"error": "Invalid browser bridge token"}, 401)
+                try:
+                    result = translate_text(payload.get("text") or "", payload.get("source_lang") or "EN", payload.get("target_lang") or "ZH-HANS")
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                except RuntimeError as exc:
+                    return json_response(self, {"error": str(exc), "translation": translation_status()}, 503)
+                return json_response(self, result)
+            if path == "/api/browser/clips":
+                if not self.browser_authorized():
+                    return json_response(self, {"error": "Invalid browser bridge token"}, 401)
+                source_text = (payload.get("text") or "").strip()
+                if not source_text:
+                    return json_response(self, {"error": "Clip text is required"}, 400)
+                kind = payload.get("kind") or "selection"
+                if kind not in {"word", "selection"}:
+                    return json_response(self, {"error": "Unsupported clip kind"}, 400)
+                context = (payload.get("context") or "").strip()
+                page_title = (payload.get("page_title") or "").strip()
+                page_url = (payload.get("page_url") or "").strip()
+                translated = (payload.get("translation") or "").strip()
+                note_parts = ["浏览器摘录", page_title, page_url]
+                note = " · ".join(part for part in note_parts if part)
+                now = utc_now()
+                with db() as conn:
+                    card_id = None
+                    if payload.get("save_to", "wordbook") == "wordbook":
+                        term = source_text if len(source_text) <= 180 else source_text[:177] + "..."
+                        cursor = conn.execute(
+                            """INSERT INTO cards (term, context, status, note, created_at, updated_at)
+                               VALUES (?, ?, 'new', ?, ?, ?)""",
+                            (term, context or source_text, note, now, now),
+                        )
+                        card_id = cursor.lastrowid
+                    cursor = conn.execute(
+                        """INSERT INTO browser_clips
+                           (kind, source_text, translated_text, context, page_title, page_url, card_id, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (kind, source_text, translated, context, page_title, page_url, card_id, now),
+                    )
+                    clip = conn.execute("SELECT * FROM browser_clips WHERE id = ?", (cursor.lastrowid,)).fetchone()
+                    card = conn.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone() if card_id else None
+                return json_response(self, {"clip": dict(clip), "card": dict(card) if card else None}, 201)
             if path == "/api/articles":
                 now = utc_now()
                 body = (payload.get("body") or "").strip()

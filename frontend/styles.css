@@ -335,6 +335,12 @@ label {
   gap: 14px;
 }
 
+.bridge-panel { margin-top: 2px; }
+.bridge-token { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; max-width: 620px; }
+.bridge-token input { width: 100%; font-family: Consolas, monospace; }
+.bridge-meta { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 12px; margin-top: 14px; font-size: 13px; }
+.bridge-meta span { color: var(--muted); }
+
 .reader-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
