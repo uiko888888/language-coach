@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.7.0-alpha.6] - 2026-07-16
+
+### Added
+
+- WXT + TypeScript browser-extension foundation inspired by the architecture evaluated in Read Frog.
+- Defuddle-based full-page article extraction through the browser context menu.
+- Direct import of extracted webpage originals into the full-content article pool.
+- Third-party license notices separating MIT foundations from Read Frog's GPL-3.0 business code.
+
+### Changed
+
+- The native Manifest V3 prototype is replaced by a reproducible WXT build while preserving lookup, translation, clipping, local tokens, and options.
+
+### Licensing
+
+- WXT and Defuddle are used under MIT licenses.
+- No GPL-3.0 Read Frog business-logic source is copied into Language Coach.
+
 ## [0.7.0-alpha.5] - 2026-07-16
 
 ### Added
