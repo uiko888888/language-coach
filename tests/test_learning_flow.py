@@ -56,6 +56,8 @@ class LearningFlowTests(unittest.TestCase):
         profile = server.article_theme_profile(article)
         self.assertIn("环境保护", profile["theme_tags"])
         self.assertIn("环境保护", server.ARTICLE_THEMES)
+        generic = server.article_theme_profile({"title": "A changing political environment", "body": "The government changed its media policy."})
+        self.assertNotIn("环境保护", generic["theme_tags"])
 
     def test_article_normalization_removes_duplicate_title_and_builds_paragraphs(self):
         title = "A climate story"

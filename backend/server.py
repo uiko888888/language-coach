@@ -41,7 +41,7 @@ EXAM_QUESTION_TYPES = {
 }
 
 ARTICLE_THEMES = {
-    "环境保护": ["climate", "environment", "emission", "carbon", "pollution", "conservation", "biodiversity", "exxon", "renewable"],
+    "环境保护": ["climate", "emission", "carbon", "pollution", "conservation", "biodiversity", "exxon", "renewable"],
     "自然与生态": ["plant", "animal", "species", "forest", "ocean", "mushroom", "wildlife", "ecology"],
     "健康医学": ["health", "medical", "disease", "medicine", "patient", "biology", "sleep", "hibernate"],
     "科技创新": ["technology", "digital", "artificial intelligence", "robot", "device", "data", "cyber", "hacker"],
