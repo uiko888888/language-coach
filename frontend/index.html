@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Language Coach v2</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">LC</span>
+      <div>
+        <strong>Language Coach</strong>
+        <small>v2 local-first</small>
+      </div>
+    </div>
+    <nav class="nav">
+      <button class="nav-item active" data-view="dashboard">今日</button>
+      <button class="nav-item" data-view="articles">文章池</button>
+      <button class="nav-item" data-view="reader">阅读台</button>
+      <button class="nav-item" data-view="quiz">题目</button>
+      <button class="nav-item" data-view="cards">生词本</button>
+      <button class="nav-item" data-view="mistakes">错题</button>
+    </nav>
+    <div class="server-pill" id="serverStatus">连接中</div>
+  </aside>
+
+  <main class="app">
+    <header class="topbar">
+      <div>
+        <h1 id="viewTitle">今日训练</h1>
+        <p id="viewSubtitle">文章、词汇、题目和错题都走本地数据库。</p>
+      </div>
+      <div class="top-actions">
+        <select id="globalStyle">
+          <option value="IELTS">IELTS</option>
+          <option value="TOEFL">TOEFL</option>
+          <option value="TEM4">专四</option>
+          <option value="TEM8">专八</option>
+          <option value="GRE">GRE</option>
+          <option value="GMAT">GMAT</option>
+          <option value="general">通用</option>
+        </select>
+        <button id="refreshAllBtn">刷新</button>
+      </div>
+    </header>
+
+    <section class="view active" id="view-dashboard">
+      <div class="metric-grid">
+        <div class="metric"><span>文章</span><strong id="statArticles">0</strong></div>
+        <div class="metric"><span>生词</span><strong id="statCards">0</strong></div>
+        <div class="metric"><span>题目</span><strong id="statQuizzes">0</strong></div>
+        <div class="metric"><span>错题</span><strong id="statMistakes">0</strong></div>
+      </div>
+      <section class="band">
+        <div class="band-head">
+          <h2>最近文章</h2>
+          <button data-view-jump="articles">打开文章池</button>
+        </div>
+        <div class="list compact" id="recentArticles"></div>
+      </section>
+      <section class="band">
+        <div class="band-head">
+          <h2>待复盘错题</h2>
+          <button data-view-jump="mistakes">打开错题</button>
+        </div>
+        <div class="list compact" id="recentMistakes"></div>
+      </section>
+    </section>
+
+    <section class="view" id="view-articles">
+      <div class="split">
+        <section class="band">
+          <div class="band-head">
+            <h2>文章池</h2>
+            <div class="toolbar">
+              <input id="articleSearch" placeholder="搜索标题或正文" />
+              <button id="searchArticlesBtn">搜索</button>
+              <button id="refreshFeedsBtn">更新 RSS</button>
+            </div>
+          </div>
+          <div class="list" id="articleList"></div>
+        </section>
+        <section class="band">
+          <h2>导入文章</h2>
+          <label>标题</label>
+          <input id="newArticleTitle" value="A short article for today" />
+          <label>正文</label>
+          <textarea id="newArticleBody"></textarea>
+          <div class="toolbar">
+            <select id="newArticleLevel">
+              <option value="">自动分级</option>
+              <option value="A2">A2</option>
+              <option value="B1">B1</option>
+              <option value="B2">B2</option>
+              <option value="C1">C1</option>
+            </select>
+            <button class="primary" id="saveArticleBtn">存入文章库</button>
+          </div>
+          <div class="feed-box" id="feedList"></div>
+        </section>
+      </div>
+    </section>
+
+    <section class="view" id="view-reader">
+      <div class="reader-layout">
+        <section class="band">
+          <div class="band-head">
+            <div>
+              <h2 id="readerTitle">选择一篇文章</h2>
+              <div class="badge-row" id="readerMeta"></div>
+            </div>
+            <div class="toolbar">
+              <select id="quizMode">
+                <option value="mixed">综合拆解</option>
+                <option value="reading">阅读题</option>
+                <option value="cloze">选词填空</option>
+                <option value="initial">首字母填空</option>
+              </select>
+              <button id="analyzeBtn">分析</button>
+              <button class="primary" id="generateQuizBtn">生成题</button>
+            </div>
+          </div>
+          <article class="reader-text" id="readerBody"></article>
+        </section>
+        <aside class="band">
+          <h2>拆解</h2>
+          <div class="analysis" id="analysisPanel"></div>
+          <div class="lookup" id="lookupPanel">
+            <span class="muted">点文章里的词</span>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="view" id="view-quiz">
+      <section class="band">
+        <div class="band-head">
+          <h2>题目</h2>
+          <div class="toolbar">
+            <button id="loadQuizzesBtn">载入题目</button>
+            <button id="showAnswersBtn">显示答案</button>
+          </div>
+        </div>
+        <div class="list quiz-list" id="quizList"></div>
+      </section>
+    </section>
+
+    <section class="view" id="view-cards">
+      <div class="split">
+        <section class="band">
+          <h2>添加生词</h2>
+          <label>词 / 词块</label>
+          <input id="cardTerm" placeholder="privacy concern" />
+          <label>语境</label>
+          <textarea id="cardContext"></textarea>
+          <button class="primary" id="saveCardBtn">加入生词本</button>
+        </section>
+        <section class="band">
+          <div class="band-head">
+            <h2>生词本</h2>
+            <button id="loadCardsBtn">刷新</button>
+          </div>
+          <div class="list" id="cardList"></div>
+        </section>
+      </div>
+    </section>
+
+    <section class="view" id="view-mistakes">
+      <section class="band">
+        <div class="band-head">
+          <h2>错题本</h2>
+          <button id="loadMistakesBtn">刷新</button>
+        </div>
+        <div class="list" id="mistakeList"></div>
+      </section>
+    </section>
+  </main>
+
+  <div class="toast" id="toast"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
