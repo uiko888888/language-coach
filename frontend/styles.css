@@ -674,6 +674,26 @@ label {
 .daily-recommendation span { color: var(--text); }
 .daily-recommendation small { color: var(--muted); }
 
+.content-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 10px 0 16px;
+  padding: 11px 13px;
+  border-left: 3px solid var(--amber);
+  background: #fff8ed;
+}
+.content-notice div { min-width: 0; }
+.content-notice strong,
+.content-notice span { display: block; }
+.content-notice span { margin-top: 3px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.content-notice a { color: var(--teal-dark); font-weight: 700; white-space: nowrap; }
+.content-notice.compact { margin-top: 0; }
+.content-editor { margin-top: 18px; padding-top: 13px; border-top: 1px solid var(--line); }
+.content-editor summary { cursor: pointer; color: var(--teal-dark); font-weight: 700; }
+.content-editor textarea { min-height: 280px; margin: 10px 0; }
+
 .article-detail-body {
   max-width: 82ch;
   margin-top: 18px;
@@ -840,6 +860,7 @@ label {
   .detail-head,
   .remedial-head { flex-direction: column; }
   .daily-recommendation { grid-template-columns: 1fr; }
+  .content-notice { align-items: flex-start; flex-direction: column; }
   .lexicon-tabs { overflow-x: auto; }
   .dictionary-hero { flex-direction: column; }
 }

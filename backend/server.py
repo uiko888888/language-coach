@@ -322,6 +322,7 @@ def init_db() -> None:
               topic TEXT NOT NULL DEFAULT 'general',
               source TEXT NOT NULL DEFAULT 'manual',
               source_url TEXT NOT NULL DEFAULT '',
+              content_status TEXT NOT NULL DEFAULT 'summary',
               body TEXT NOT NULL,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
@@ -440,7 +441,10 @@ def init_db() -> None:
         article_columns = {row[1] for row in conn.execute("PRAGMA table_info(articles)")}
         if "translation_zh" not in article_columns:
             conn.execute("ALTER TABLE articles ADD COLUMN translation_zh TEXT NOT NULL DEFAULT ''")
+        if "content_status" not in article_columns:
+            conn.execute("ALTER TABLE articles ADD COLUMN content_status TEXT NOT NULL DEFAULT 'summary'")
         conn.execute("UPDATE articles SET translation_zh = ? WHERE source = 'seed' AND translation_zh = ''", (SAMPLE_TRANSLATION,))
+        conn.execute("UPDATE articles SET content_status = 'full' WHERE source IN ('seed', 'manual')")
         for row in conn.execute("SELECT id, title, body FROM articles").fetchall():
             normalized = normalize_article_text(row["title"], row["body"])
             if normalized and normalized != row["body"]:
@@ -460,6 +464,7 @@ def init_db() -> None:
                 ("Privacy concerns in the age of smart devices", SAMPLE_ARTICLE, now, now),
             )
         conn.execute("UPDATE articles SET translation_zh = ? WHERE source = 'seed' AND translation_zh = ''", (SAMPLE_TRANSLATION,))
+        conn.execute("UPDATE articles SET content_status = 'full' WHERE source IN ('seed', 'manual')")
         now = utc_now()
         conn.execute(
             "UPDATE feeds SET url = ?, active = 1 WHERE name = 'Knowledge at Wharton'",
@@ -1088,6 +1093,8 @@ def enrich_article(article: dict, exam: str = "") -> dict:
     item.update(source_profile(item["source"], exam))
     item.update(article_theme_profile(item))
     item.update(recommendation_profile(item))
+    item["content_status"] = item.get("content_status") or ("full" if item["source"] in {"seed", "manual"} else "summary")
+    item["content_word_count"] = len(words(item.get("body", "")))
     return item
 
 
@@ -1245,16 +1252,29 @@ def fetch_feed_items(limit_per_feed: int = 4) -> dict:
                         or entry.findtext("{http://www.w3.org/2005/Atom}summary")
                         or title
                     )
-                    body = normalize_article_text(clean_html(title), clean_html(summary))
+                    encoded = (
+                        entry.findtext("{http://purl.org/rss/1.0/modules/content/}encoded")
+                        or entry.findtext("{http://www.w3.org/2005/Atom}content")
+                        or ""
+                    )
+                    summary_text = clean_html(summary)
+                    encoded_text = clean_html(encoded)
+                    use_full = len(words(encoded_text)) >= 250 and len(encoded_text) > len(summary_text)
+                    body = normalize_article_text(clean_html(title), encoded_text if use_full else summary_text)
+                    content_status = "full" if use_full else "summary"
                     now = utc_now()
                     before = conn.total_changes
                     conn.execute(
                         """
-                        INSERT OR IGNORE INTO articles
-                        (title, language, level, topic, source, source_url, body, created_at, updated_at)
-                        VALUES (?, ?, ?, 'feed', ?, ?, ?, ?, ?)
+                        INSERT INTO articles
+                        (title, language, level, topic, source, source_url, content_status, body, created_at, updated_at)
+                        VALUES (?, ?, ?, 'feed', ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(source_url) WHERE source_url != '' DO UPDATE SET
+                          body = CASE WHEN length(excluded.body) > length(articles.body) THEN excluded.body ELSE articles.body END,
+                          content_status = CASE WHEN excluded.content_status = 'full' THEN 'full' ELSE articles.content_status END,
+                          updated_at = excluded.updated_at
                         """,
-                        (clean_html(title), feed["language"], feed["level_hint"], feed["name"], link, body, now, now),
+                        (clean_html(title), feed["language"], feed["level_hint"], feed["name"], link, content_status, body, now, now),
                     )
                     if conn.total_changes > before:
                         imported += 1
@@ -1388,6 +1408,8 @@ class App(BaseHTTPRequestHandler):
                         ),
                     )
                     article = conn.execute("SELECT * FROM articles WHERE id = ?", (cursor.lastrowid,)).fetchone()
+                    conn.execute("UPDATE articles SET content_status = 'full' WHERE id = ?", (cursor.lastrowid,))
+                    article = conn.execute("SELECT * FROM articles WHERE id = ?", (cursor.lastrowid,)).fetchone()
                     if payload.get("translation_zh"):
                         conn.execute("UPDATE articles SET translation_zh = ? WHERE id = ?", (payload["translation_zh"], cursor.lastrowid))
                         article = conn.execute("SELECT * FROM articles WHERE id = ?", (cursor.lastrowid,)).fetchone()
@@ -1401,6 +1423,20 @@ class App(BaseHTTPRequestHandler):
                 if not article:
                     return json_response(self, {"error": "Article not found"}, 404)
                 return json_response(self, {"article": dict(article)})
+            match = re.fullmatch(r"/api/articles/(\d+)/content", path)
+            if match:
+                body = normalize_article_text(payload.get("title") or "", (payload.get("body") or "").strip())
+                if not body:
+                    return json_response(self, {"error": "Article body is required"}, 400)
+                with db() as conn:
+                    current = conn.execute("SELECT * FROM articles WHERE id = ?", (match.group(1),)).fetchone()
+                    if not current:
+                        return json_response(self, {"error": "Article not found"}, 404)
+                    body = normalize_article_text(current["title"], body)
+                    conn.execute("UPDATE articles SET body = ?, content_status = 'full', updated_at = ? WHERE id = ?", (body, utc_now(), match.group(1)))
+                    article = conn.execute("SELECT * FROM articles WHERE id = ?", (match.group(1),)).fetchone()
+                item = enrich_article(dict(article), payload.get("exam") or "")
+                return json_response(self, {"article": item, "analysis": analyze_payload(item)})
             match = re.fullmatch(r"/api/articles/(\d+)/analyze", path)
             if match:
                 with db() as conn:

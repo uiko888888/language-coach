@@ -21,6 +21,7 @@ class LearningFlowTests(unittest.TestCase):
             article = conn.execute("SELECT * FROM articles WHERE source = 'seed'").fetchone()
         self.assertIn("智能设备", article["translation_zh"])
         self.assertIn("Smart devices", article["body"])
+        self.assertEqual(article["content_status"], "full")
 
     def test_exam_question_type_filters_engine_output(self):
         items = server.generate_quiz_items(server.SAMPLE_ARTICLE, "mixed", "IELTS", "heading")
@@ -65,6 +66,14 @@ class LearningFlowTests(unittest.TestCase):
         normalized = server.normalize_article_text(title, body)
         self.assertFalse(normalized.lower().startswith(title.lower()))
         self.assertIn("\n\n", normalized)
+
+    def test_article_completeness_is_explicit(self):
+        item = server.enrich_article({
+            "id": 99, "title": "Short feed item", "body": "A short RSS summary.",
+            "source": "Guardian Science", "content_status": "summary", "created_at": server.utc_now(), "level": "B2",
+        }, "IELTS")
+        self.assertEqual(item["content_status"], "summary")
+        self.assertEqual(item["content_word_count"], 4)
 
 
 if __name__ == "__main__":
