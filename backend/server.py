@@ -10,6 +10,7 @@ import sys
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -208,11 +209,16 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def db() -> sqlite3.Connection:
+@contextmanager
+def db():
     DATA.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 def rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict]:
@@ -383,6 +389,14 @@ def init_db() -> None:
             """,
             [(form, kind, meaning, origin, note, json.dumps(examples, ensure_ascii=False))
              for form, kind, meaning, origin, note, examples in MORPHEME_SEEDS],
+        )
+        conn.execute("DELETE FROM morphemes WHERE form = '-ion'")
+        conn.execute(
+            "UPDATE dictionary_entries SET breakdown = ?, morphemes_json = ? WHERE headword = 'inspection'",
+            (
+                "in-（向内）+ spect（看）+ -tion（名词后缀）",
+                json.dumps(["in-", "spect", "-tion"], ensure_ascii=False),
+            ),
         )
 
 
