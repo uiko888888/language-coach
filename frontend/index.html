@@ -125,6 +125,10 @@
             <input id="articleSearch" placeholder="搜索标题或正文" />
             <button id="searchArticlesBtn">搜索</button>
           </div>
+          <div class="article-filters">
+            <select id="articleTopicFilter" aria-label="文章主题"><option value="">全部主题</option></select>
+            <label class="filter-toggle"><input type="checkbox" id="recommendedOnly" /> 今日推荐</label>
+          </div>
           <div class="master-list" id="articleTitleList"></div>
           <details class="source-drawer">
             <summary>文章来源</summary>

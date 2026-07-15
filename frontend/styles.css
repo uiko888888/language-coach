@@ -579,6 +579,28 @@ label {
   margin-bottom: 10px;
 }
 
+.article-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 10px;
+}
+.filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  margin: 0;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  white-space: nowrap;
+}
+.filter-toggle input { min-height: auto; }
+
 .master-list {
   display: grid;
   gap: 5px;
@@ -631,6 +653,20 @@ label {
   font-size: 22px;
   line-height: 1.4;
 }
+
+.daily-recommendation {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 14px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--amber);
+  background: #fff8ed;
+}
+.daily-recommendation strong { color: var(--amber); }
+.daily-recommendation span { color: var(--text); }
+.daily-recommendation small { color: var(--muted); }
 
 .article-detail-body {
   max-width: 82ch;
@@ -797,6 +833,7 @@ label {
   .master-list { max-height: 320px; }
   .detail-head,
   .remedial-head { flex-direction: column; }
+  .daily-recommendation { grid-template-columns: 1fr; }
   .lexicon-tabs { overflow-x: auto; }
   .dictionary-hero { flex-direction: column; }
 }

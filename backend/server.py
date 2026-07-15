@@ -1012,6 +1012,30 @@ def source_profile(source: str, exam: str = "") -> dict:
     }
 
 
+def recommendation_profile(article: dict) -> dict:
+    try:
+        created = datetime.fromisoformat(article["created_at"].replace("Z", "+00:00"))
+        age_days = max(0, (datetime.now(timezone.utc) - created).days)
+    except (TypeError, ValueError):
+        age_days = 30
+    freshness = max(0, 20 - min(20, age_days))
+    source_quality = 25 if article["source_tier"] == "核心" else 17 if article["source_tier"] == "补充" else 12
+    depth = min(15, len(words(article.get("body", ""))) // 18)
+    level_fit = 10 if article.get("level") in {"B2", "B2-C1", "C1"} else 7
+    exam_score = round(article["exam_fit"] * 0.3)
+    score = source_quality + freshness + depth + level_fit + exam_score
+    reasons = []
+    if article["exam_fit"] >= 90:
+        reasons.append("考试匹配")
+    if freshness >= 15:
+        reasons.append("近期更新")
+    if source_quality >= 25:
+        reasons.append("核心来源")
+    if depth >= 10:
+        reasons.append("适合精读")
+    return {"recommendation_score": score, "recommendation_reasons": reasons[:3] or ["主题补充"]}
+
+
 def list_articles(query: dict[str, list[str]]) -> list[dict]:
     where = []
     params: list[str] = []
@@ -1031,7 +1055,18 @@ def list_articles(query: dict[str, list[str]]) -> list[dict]:
     exam = query.get("exam", [""])[0]
     for item in items:
         item.update(source_profile(item["source"], exam))
-    return sorted(items, key=lambda item: item["exam_fit"], reverse=True)
+        item.update(recommendation_profile(item))
+    ranked = sorted(items, key=lambda item: (-item["recommendation_score"], item["id"]))
+    daily_ids = {item["id"]: index + 1 for index, item in enumerate(ranked[:3])}
+    for item in ranked:
+        item["recommended_today"] = item["id"] in daily_ids
+        item["daily_rank"] = daily_ids.get(item["id"])
+    topic = query.get("topic", [""])[0]
+    if topic:
+        ranked = [item for item in ranked if topic in item["source_topics"]]
+    if query.get("recommended", [""])[0] == "1":
+        ranked = [item for item in ranked if item["recommended_today"]]
+    return ranked
 
 
 LEXICAL_JSON_FIELDS = {
@@ -1197,6 +1232,9 @@ class App(BaseHTTPRequestHandler):
                 return json_response(self, {"style": style, "types": types})
             if path == "/api/articles":
                 return json_response(self, {"articles": list_articles(query)})
+            if path == "/api/article-topics":
+                topics = sorted({topic for profile in SOURCE_PROFILES.values() for topic in profile["topics"]})
+                return json_response(self, {"topics": topics})
             if path == "/api/lexicon/search":
                 return json_response(self, lexical_search(query.get("q", [""])[0]))
             match = re.fullmatch(r"/api/lexicon/entries/(\d+)", path)

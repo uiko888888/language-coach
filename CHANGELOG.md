@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.7.0-alpha.1] - 2026-07-16
+
+### Added
+
+- Article topic filtering based on curated source profiles.
+- A daily top-three recommendation ranking using exam fit, source quality, freshness, level, and reading depth.
+- Visible recommendation rank, score, and reasons in the article master-detail workspace.
+- A one-click filter for showing only today's recommended articles.
+
+### Notes
+
+- This is the first feedback release for the content-library redesign. Collections, URL imports, and new current-affairs sources are intentionally deferred until the discovery workflow is validated.
+
 ## [0.6.0] - 2026-07-16
 
 ### Added

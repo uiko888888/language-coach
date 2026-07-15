@@ -20,6 +20,9 @@ const state = {
   progress: { xp: 0, level: 1, level_xp: 0, streak: 0 },
   examTypes: [],
   showTranslation: false,
+  articleTopics: [],
+  articleTopic: "",
+  recommendedOnly: false,
   selectedArticle: null,
   selectedPoolArticleId: null,
   selectedMistakeId: null,
@@ -110,7 +113,7 @@ function renderStats() {
 function renderDashboard() {
   $("#recentArticles").innerHTML = state.articles.slice(0, 4).map(article => `
     <div class="item">
-      <div class="badge-row">${badge(article.level, "teal")}${badge(article.source || "manual")}</div>
+      <div class="badge-row">${article.recommended_today ? badge(`今日推荐 ${article.daily_rank}`, "amber") : ""}${badge(article.level, "teal")}${badge(article.source || "manual")}</div>
       <h3>${escapeHtml(article.title)}</h3>
       <p>${escapeHtml(excerpt(article.body, 120))}</p>
       <button data-open-article="${article.id}">阅读</button>
@@ -143,7 +146,8 @@ function renderArticles() {
         <span class="master-number">${String(index + 1).padStart(2, "0")}</span>
         <span class="master-copy">
           <strong>${escapeHtml(article.title)}</strong>
-          <small>${escapeHtml(article.source || "manual")} · ${escapeHtml(article.level)}</small>
+          <small>${article.recommended_today ? `推荐 ${article.daily_rank} · ` : ""}${escapeHtml(article.source || "manual")} · ${escapeHtml(article.level)}</small>
+          ${article.recommended_today ? `<em>${escapeHtml((article.recommendation_reasons || []).join(" · "))}</em>` : ""}
         </span>
       </button>
     `).join("");
@@ -165,6 +169,7 @@ function renderArticles() {
           <button class="primary" data-quiz-article="${selected.id}">生成题</button>
         </div>
       </div>
+      ${selected.recommended_today ? `<div class="daily-recommendation"><strong>今日推荐 ${selected.daily_rank}</strong><span>${escapeHtml((selected.recommendation_reasons || []).join(" · "))}</span><small>推荐分 ${selected.recommendation_score}</small></div>` : ""}
       ${selected.source_topics?.length ? `<div class="source-topics">${selected.source_topics.map(topic => badge(topic)).join("")}</div>` : ""}
       <article class="article-detail-body">${paragraphs.map(paragraph => `<p>${searchableEnglish(paragraph)}</p>`).join("")}</article>
       ${state.showTranslation ? `<section class="translation-panel">${selected.translation_zh ? selected.translation_zh.split(/\n\s*\n/).map(paragraph => `<p>${escapeHtml(paragraph)}</p>`).join("") : `<p class="muted">这篇文章还没有可靠译文。</p>`}</section>` : ""}
@@ -639,8 +644,18 @@ async function loadExamTypes() {
 async function loadArticles(q = "") {
   const params = new URLSearchParams({ exam: state.style });
   if (q) params.set("q", q);
+  if (state.articleTopic) params.set("topic", state.articleTopic);
+  if (state.recommendedOnly) params.set("recommended", "1");
   const data = await api(`/api/articles?${params.toString()}`);
   state.articles = data.articles || [];
+}
+
+async function loadArticleTopics() {
+  const data = await api("/api/article-topics");
+  state.articleTopics = data.topics || [];
+  $("#articleTopicFilter").innerHTML = `<option value="">全部主题</option>${state.articleTopics.map(topic => `<option value="${escapeHtml(topic)}">${escapeHtml(topic)}</option>`).join("")}`;
+  $("#articleTopicFilter").value = state.articleTopic;
+  $("#recommendedOnly").checked = state.recommendedOnly;
 }
 
 async function loadCards() {
@@ -922,6 +937,18 @@ $("#articleSearch").addEventListener("keydown", async event => {
   }
 });
 
+$("#articleTopicFilter").addEventListener("change", async event => {
+  state.articleTopic = event.target.value;
+  await loadArticles($("#articleSearch").value.trim());
+  renderAll();
+});
+
+$("#recommendedOnly").addEventListener("change", async event => {
+  state.recommendedOnly = event.target.checked;
+  await loadArticles($("#articleSearch").value.trim());
+  renderAll();
+});
+
 $("#globalSearchForm").addEventListener("submit", async event => {
   event.preventDefault();
   await searchLexicon($("#globalLexiconSearch").value);
@@ -950,7 +977,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 
 async function boot() {
   await loadHealth();
-  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadProgress(), loadExamTypes(), searchLexicon("", { open: false })]);
+  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadProgress(), loadExamTypes(), loadArticleTopics(), searchLexicon("", { open: false })]);
   if (!state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}`);
     state.selectedArticle = data.article;
