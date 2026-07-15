@@ -40,6 +40,89 @@ LEXICON = {
 }
 
 
+LEXICAL_SEEDS = [
+    {
+        "headword": "inspect", "pos": "verb", "ipa_uk": "/ɪnˈspekt/", "ipa_us": "/ɪnˈspekt/",
+        "core_meaning": "to examine something carefully in order to check its condition or quality",
+        "meaning_zh": "仔细检查；审查", "level": "B2", "register": "neutral",
+        "origin": "Latin inspicere, from in- 'into' + specere 'to look'",
+        "breakdown": "in-（向内）+ spect（看）→ 向里面仔细看",
+        "forms": ["inspects", "inspected", "inspecting"],
+        "aliases": ["检查", "审查", "查看", "观察"],
+        "family": ["inspection", "inspector", "perspective", "prospect", "respect", "suspect"],
+        "collocations": ["inspect the premises", "inspect for damage", "closely inspect"],
+        "synonyms": ["examine（全面细看）", "check（确认是否正确）", "scrutinize（极其仔细地审视）"],
+        "antonyms": ["overlook", "ignore"],
+        "examples": ["Engineers inspect the bridge for structural damage.", "The documents must be inspected before approval."],
+        "morphemes": ["in-", "spect"],
+    },
+    {
+        "headword": "inspection", "pos": "noun", "ipa_uk": "/ɪnˈspekʃən/", "ipa_us": "/ɪnˈspekʃən/",
+        "core_meaning": "the act of examining something carefully",
+        "meaning_zh": "检查；视察；审查", "level": "B2", "register": "neutral",
+        "origin": "Late Latin inspectio, from inspicere 'to look into'",
+        "breakdown": "in-（向内）+ spect（看）+ -tion（名词后缀）",
+        "forms": ["inspections"], "aliases": ["检查", "视察", "检验"],
+        "family": ["inspect", "inspector", "inspectional"],
+        "collocations": ["safety inspection", "routine inspection", "conduct an inspection"],
+        "synonyms": ["examination", "review", "audit（正式审计）"], "antonyms": ["neglect"],
+        "examples": ["The building passed its annual safety inspection."], "morphemes": ["in-", "spect", "-tion"],
+    },
+    {
+        "headword": "respect", "pos": "noun / verb", "ipa_uk": "/rɪˈspekt/", "ipa_us": "/rɪˈspekt/",
+        "core_meaning": "admiration for someone, or careful attention to a right or principle",
+        "meaning_zh": "尊重；敬意；重视", "level": "B1", "register": "neutral",
+        "origin": "Latin respicere, literally 'to look back at'",
+        "breakdown": "re-（回）+ spect（看）→ 回头看、认真看待",
+        "forms": ["respects", "respected", "respecting"], "aliases": ["尊重", "敬重", "方面"],
+        "family": ["respectful", "respectively", "irrespective"],
+        "collocations": ["show respect for", "with respect to", "mutual respect"],
+        "synonyms": ["admire（钦佩）", "regard（看待）"], "antonyms": ["disrespect", "scorn"],
+        "examples": ["Good arguments respect the limits of the evidence."], "morphemes": ["re-", "spect"],
+    },
+    {
+        "headword": "perspective", "pos": "noun", "ipa_uk": "/pəˈspektɪv/", "ipa_us": "/pərˈspektɪv/",
+        "core_meaning": "a particular way of viewing or judging a situation",
+        "meaning_zh": "观点；视角；透视法", "level": "B2", "register": "neutral",
+        "origin": "Latin perspicere 'to look through or see clearly'",
+        "breakdown": "per-（穿过）+ spect（看）+ -ive（名词/形容词后缀）",
+        "forms": ["perspectives"], "aliases": ["观点", "角度", "视角"],
+        "family": ["prospect", "prospective", "retrospective"],
+        "collocations": ["from a different perspective", "put into perspective", "historical perspective"],
+        "synonyms": ["viewpoint", "standpoint", "outlook"], "antonyms": [],
+        "examples": ["The article examines the issue from a historical perspective."], "morphemes": ["per-", "spect", "-ive"],
+    },
+    {
+        "headword": "transport", "pos": "noun / verb", "ipa_uk": "/ˈtrænspɔːt/", "ipa_us": "/ˈtrænspɔːrt/",
+        "core_meaning": "to carry people or goods from one place to another",
+        "meaning_zh": "运输；交通运输系统", "level": "B1", "register": "neutral",
+        "origin": "Latin transportare, from trans- 'across' + portare 'carry'", "breakdown": "trans-（跨越）+ port（携带）",
+        "forms": ["transports", "transported", "transporting", "transportation"], "aliases": ["运输", "交通"],
+        "family": ["portable", "import", "export", "support"], "collocations": ["public transport", "transport goods"],
+        "synonyms": ["carry", "convey"], "antonyms": [], "examples": ["Railways transport goods efficiently."], "morphemes": ["trans-", "port"],
+    },
+    {
+        "headword": "predict", "pos": "verb", "ipa_uk": "/prɪˈdɪkt/", "ipa_us": "/prɪˈdɪkt/",
+        "core_meaning": "to say what you think will happen in the future", "meaning_zh": "预测；预言", "level": "B1", "register": "neutral",
+        "origin": "Latin praedicere, from pre- 'before' + dicere 'say'", "breakdown": "pre-（之前）+ dict（说）",
+        "forms": ["predicts", "predicted", "predicting", "prediction"], "aliases": ["预测", "预言"],
+        "family": ["prediction", "predictable", "dictate", "contradict"], "collocations": ["accurately predict", "predict an outcome"],
+        "synonyms": ["forecast", "anticipate"], "antonyms": [], "examples": ["The model cannot accurately predict individual behavior."], "morphemes": ["pre-", "dict"],
+    },
+]
+
+MORPHEME_SEEDS = [
+    ("spect", "root", "看", "Latin specere / spectare", "与视觉、观察和看待有关", ["inspect", "respect", "perspective", "prospect", "suspect"]),
+    ("in-", "prefix", "向内；进入；在……上", "Latin in", "方向性前缀；在部分单词中也可表示否定", ["inspect", "include", "inject"]),
+    ("re-", "prefix", "回；再次", "Latin re", "表示返回、重复或反向", ["respect", "review", "rewrite"]),
+    ("-tion", "suffix", "行为、过程或结果", "Latin -io / -ionem", "常把动词变为抽象名词；也可见 -ion、-sion 等拼写", ["inspection", "prediction", "observation"]),
+    ("port", "root", "携带；运送", "Latin portare", "与携带和运输有关", ["transport", "portable", "import", "export"]),
+    ("dict", "root", "说；宣告", "Latin dicere / dictus", "与说话、断言和命令有关", ["predict", "dictate", "contradict"]),
+    ("scrib", "root", "写", "Latin scribere", "词形常变为 script", ["describe", "manuscript", "transcript"]),
+    ("struct", "root", "建造；排列", "Latin struere / structus", "与结构和建造有关", ["construct", "structure", "instruct"]),
+]
+
+
 DEFAULT_FEEDS = [
     {
         "name": "The Conversation",
@@ -217,6 +300,38 @@ def init_db() -> None:
               value TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS dictionary_entries (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              headword TEXT NOT NULL UNIQUE,
+              pos TEXT NOT NULL DEFAULT '',
+              ipa_uk TEXT NOT NULL DEFAULT '',
+              ipa_us TEXT NOT NULL DEFAULT '',
+              core_meaning TEXT NOT NULL DEFAULT '',
+              meaning_zh TEXT NOT NULL DEFAULT '',
+              level TEXT NOT NULL DEFAULT '',
+              register_label TEXT NOT NULL DEFAULT '',
+              origin TEXT NOT NULL DEFAULT '',
+              breakdown TEXT NOT NULL DEFAULT '',
+              forms_json TEXT NOT NULL DEFAULT '[]',
+              aliases_json TEXT NOT NULL DEFAULT '[]',
+              family_json TEXT NOT NULL DEFAULT '[]',
+              collocations_json TEXT NOT NULL DEFAULT '[]',
+              synonyms_json TEXT NOT NULL DEFAULT '[]',
+              antonyms_json TEXT NOT NULL DEFAULT '[]',
+              examples_json TEXT NOT NULL DEFAULT '[]',
+              morphemes_json TEXT NOT NULL DEFAULT '[]'
+            );
+
+            CREATE TABLE IF NOT EXISTS morphemes (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              form TEXT NOT NULL UNIQUE,
+              kind TEXT NOT NULL,
+              meaning_zh TEXT NOT NULL,
+              origin TEXT NOT NULL DEFAULT '',
+              note TEXT NOT NULL DEFAULT '',
+              examples_json TEXT NOT NULL DEFAULT '[]'
+            );
+
             CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_source_url
             ON articles(source_url)
             WHERE source_url != '';
@@ -244,6 +359,30 @@ def init_db() -> None:
             VALUES (:name, :url, :language, :level_hint, 1, :created_at)
             """,
             [{**feed, "created_at": now} for feed in DEFAULT_FEEDS],
+        )
+        for entry in LEXICAL_SEEDS:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO dictionary_entries
+                (headword, pos, ipa_uk, ipa_us, core_meaning, meaning_zh, level, register_label,
+                 origin, breakdown, forms_json, aliases_json, family_json, collocations_json,
+                 synonyms_json, antonyms_json, examples_json, morphemes_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    entry["headword"], entry["pos"], entry["ipa_uk"], entry["ipa_us"], entry["core_meaning"],
+                    entry["meaning_zh"], entry["level"], entry["register"], entry["origin"], entry["breakdown"],
+                    *[json.dumps(entry[key], ensure_ascii=False) for key in
+                      ("forms", "aliases", "family", "collocations", "synonyms", "antonyms", "examples", "morphemes")],
+                ),
+            )
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO morphemes (form, kind, meaning_zh, origin, note, examples_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [(form, kind, meaning, origin, note, json.dumps(examples, ensure_ascii=False))
+             for form, kind, meaning, origin, note, examples in MORPHEME_SEEDS],
         )
 
 
@@ -796,6 +935,81 @@ def list_articles(query: dict[str, list[str]]) -> list[dict]:
     return sorted(items, key=lambda item: item["exam_fit"], reverse=True)
 
 
+LEXICAL_JSON_FIELDS = {
+    "forms_json": "forms", "aliases_json": "aliases", "family_json": "family",
+    "collocations_json": "collocations", "synonyms_json": "synonyms",
+    "antonyms_json": "antonyms", "examples_json": "examples", "morphemes_json": "morphemes",
+}
+
+
+def lexical_entry(row: sqlite3.Row) -> dict:
+    item = dict(row)
+    for source, target in LEXICAL_JSON_FIELDS.items():
+        item[target] = json.loads(item.pop(source) or "[]")
+    return item
+
+
+def morpheme_entry(row: sqlite3.Row) -> dict:
+    item = dict(row)
+    item["examples"] = json.loads(item.pop("examples_json") or "[]")
+    return item
+
+
+def lexical_search(query: str, limit: int = 30) -> dict:
+    raw = (query or "").strip()
+    needle = raw.lower()
+    compact = needle.strip("-")
+    with db() as conn:
+        entries = [lexical_entry(row) for row in conn.execute("SELECT * FROM dictionary_entries ORDER BY headword")]
+        morphemes = [morpheme_entry(row) for row in conn.execute("SELECT * FROM morphemes ORDER BY kind, form")]
+
+    results: list[dict] = []
+    for entry in entries:
+        headword = entry["headword"].lower()
+        forms = [value.lower() for value in entry["forms"]]
+        aliases = [value.lower() for value in entry["aliases"]]
+        related = [value.lower() for value in entry["family"] + entry["collocations"]]
+        roots = [value.lower() for value in entry["morphemes"]]
+        score, matched_by = 0, ""
+        if not needle:
+            score, matched_by = 10, "推荐词条"
+        elif needle == headword:
+            score, matched_by = 100, "单词完全匹配"
+        elif needle in roots or compact in [root.strip("-") for root in roots]:
+            score, matched_by = 92, "构词成分匹配"
+        elif needle in forms:
+            score, matched_by = 86, "词形匹配"
+        elif any(needle == alias or needle in alias for alias in aliases) or needle in entry["meaning_zh"].lower():
+            score, matched_by = 78, "中文释义匹配"
+        elif needle in headword:
+            score, matched_by = 68, "单词部分匹配"
+        elif any(needle in value for value in related):
+            score, matched_by = 58, "词族或搭配匹配"
+        elif needle in entry["origin"].lower():
+            score, matched_by = 72, "词源匹配"
+        if score:
+            results.append({"type": "entry", "score": score, "matched_by": matched_by, **entry})
+
+    for morpheme in morphemes:
+        form = morpheme["form"].lower()
+        score, matched_by = 0, ""
+        if not needle:
+            score, matched_by = 9, "推荐构词成分"
+        elif needle == form or compact == form.strip("-"):
+            score, matched_by = 96, "词根词缀完全匹配"
+        elif needle in morpheme["origin"].lower():
+            score, matched_by = 90, "拉丁/希腊词源匹配"
+        elif needle in morpheme["meaning_zh"] or needle in morpheme["note"].lower():
+            score, matched_by = 80, "中文含义匹配"
+        elif needle in form or any(needle in value.lower() for value in morpheme["examples"]):
+            score, matched_by = 60, "相关词匹配"
+        if score:
+            results.append({"type": "morpheme", "score": score, "matched_by": matched_by, **morpheme})
+
+    results.sort(key=lambda item: (-item["score"], item.get("headword", item.get("form", ""))))
+    return {"query": raw, "count": len(results), "results": results[:limit]}
+
+
 def fetch_feed_items(limit_per_feed: int = 4) -> dict:
     imported = 0
     errors: list[str] = []
@@ -853,6 +1067,22 @@ class App(BaseHTTPRequestHandler):
                 return json_response(self, {"ok": True, "database": str(DB_PATH), "time": utc_now()})
             if path == "/api/articles":
                 return json_response(self, {"articles": list_articles(query)})
+            if path == "/api/lexicon/search":
+                return json_response(self, lexical_search(query.get("q", [""])[0]))
+            match = re.fullmatch(r"/api/lexicon/entries/(\d+)", path)
+            if match:
+                with db() as conn:
+                    row = conn.execute("SELECT * FROM dictionary_entries WHERE id = ?", (match.group(1),)).fetchone()
+                if not row:
+                    return json_response(self, {"error": "Dictionary entry not found"}, 404)
+                return json_response(self, {"entry": {"type": "entry", **lexical_entry(row)}})
+            match = re.fullmatch(r"/api/lexicon/morphemes/(\d+)", path)
+            if match:
+                with db() as conn:
+                    row = conn.execute("SELECT * FROM morphemes WHERE id = ?", (match.group(1),)).fetchone()
+                if not row:
+                    return json_response(self, {"error": "Morpheme not found"}, 404)
+                return json_response(self, {"entry": {"type": "morpheme", **morpheme_entry(row)}})
             match = re.fullmatch(r"/api/articles/(\d+)", path)
             if match:
                 with db() as conn:
