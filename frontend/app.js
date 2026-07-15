@@ -224,7 +224,7 @@ async function renderLookup(word) {
     <div class="lookup-heading"><div><h2>${escapeHtml(info?.headword || clean)}</h2>${info ? `<span>${escapeHtml(info.ipa_uk)} · ${escapeHtml(info.pos)}</span>` : ""}</div><button data-speak="${escapeHtml(info?.headword || clean)}" title="播放发音" aria-label="播放发音">▶</button></div>
     <p>${escapeHtml(info?.meaning_zh || "当前本地词库还没有完整词条，可以先连同语境保存。")}</p>
     ${info?.breakdown ? `<div class="morph-line">${escapeHtml(info.breakdown)}</div>` : ""}
-    <div class="badge-row">${(info?.collocations || []).map(item => badge(item, "amber")).join("")}</div>
+    <div class="badge-row">${(info?.collocations || []).map(item => badge(termText(item), "amber")).join("")}</div>
     ${context ? `<div class="answer-box">${escapeHtml(context)}</div>` : ""}
     <div class="toolbar"><button class="primary" data-save-lookup="${escapeHtml(clean)}">加入生词本</button><button data-search-query="${escapeHtml(clean)}" data-open-lexicon="true">完整词条</button></div>
   `;
@@ -246,8 +246,56 @@ function matchesLexiconFilter(item) {
   return item.type === "morpheme" && item.kind === state.lexiconFilter;
 }
 
+function termText(item) {
+  if (typeof item === "string") return item.split("（")[0];
+  return item?.term || item?.phrase || "";
+}
+
+function termChinese(item) {
+  if (typeof item === "string") {
+    const match = item.match(/（(.+)）/);
+    return match?.[1] || "";
+  }
+  return item?.meaning_zh || "";
+}
+
 function termButtons(items, kind = "") {
-  return (items || []).map(item => `<button class="term-link ${kind}" data-search-query="${escapeHtml(String(item).split("（")[0])}">${escapeHtml(item)}</button>`).join("");
+  return (items || []).map(item => {
+    const term = termText(item);
+    const chinese = termChinese(item);
+    return `<button class="term-link ${kind}" data-search-query="${escapeHtml(term)}"><strong>${escapeHtml(term)}</strong>${chinese ? `<small>${escapeHtml(chinese)}</small>` : ""}</button>`;
+  }).join("");
+}
+
+function highlightLexicalText(text, item) {
+  const terms = [item.headword, ...(item.forms || []), ...(item.family || [])]
+    .map(termText)
+    .filter(value => /^[A-Za-z][A-Za-z'-]*$/.test(value))
+    .sort((a, b) => b.length - a.length);
+  if (!terms.length) return escapeHtml(text);
+  const escaped = terms.map(value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const pattern = new RegExp(`\\b(${escaped.join("|")})\\b`, "gi");
+  return String(text).split(pattern).map(part => terms.some(term => term.toLowerCase() === part.toLowerCase())
+    ? `<strong class="query-highlight">${escapeHtml(part)}</strong>`
+    : escapeHtml(part)).join("");
+}
+
+function phraseCards(items) {
+  return (items || []).map(item => {
+    const current = typeof item === "string" ? { phrase: item, meaning_zh: "", synonyms: [], antonyms: [] } : item;
+    return `<article class="phrase-item">
+      <div class="phrase-head"><div><strong>${escapeHtml(current.phrase)}</strong><p>${escapeHtml(current.meaning_zh || "")}</p></div><button data-save-phrase="${escapeHtml(current.phrase)}" title="加入生词本" aria-label="加入生词本">＋</button></div>
+      ${current.synonyms?.length ? `<div class="phrase-relation"><span>近义表达</span><div class="term-grid">${termButtons(current.synonyms, "synonym")}</div></div>` : ""}
+      ${current.antonyms?.length ? `<div class="phrase-relation"><span>反义表达</span><div class="term-grid">${termButtons(current.antonyms, "antonym")}</div></div>` : ""}
+    </article>`;
+  }).join("");
+}
+
+function bilingualExamples(examples, item) {
+  return (examples || []).map(example => {
+    const current = typeof example === "string" ? { text: example, translation: "" } : example;
+    return `<article class="example-item"><p class="example-en">${highlightLexicalText(current.text, item)}</p>${current.translation ? `<p class="example-zh">${escapeHtml(current.translation)}</p>` : ""}</article>`;
+  }).join("");
 }
 
 function renderLexicalDetail(item) {
@@ -276,9 +324,9 @@ function renderLexicalDetail(item) {
     <div class="morph-origin"><span>构词拆解</span><strong>${escapeHtml(item.breakdown)}</strong><p>${escapeHtml(item.origin)}</p></div>
     <div class="dictionary-columns">
       <section class="dictionary-section"><h3>词形与词族</h3><div class="term-grid">${termButtons(item.forms)}${termButtons(item.family, "family")}</div></section>
-      <section class="dictionary-section"><h3>词组与搭配</h3><div class="phrase-list">${(item.collocations || []).map(value => `<button data-save-phrase="${escapeHtml(value)}">${escapeHtml(value)} <span>＋</span></button>`).join("")}</div></section>
+      <section class="dictionary-section phrase-section"><h3>词组与搭配</h3><div class="phrase-list">${phraseCards(item.collocations)}</div></section>
       <section class="dictionary-section"><h3>近义词辨析</h3><div class="term-grid">${termButtons(item.synonyms, "synonym")}</div>${item.antonyms?.length ? `<h4>反义词</h4><div class="term-grid">${termButtons(item.antonyms)}</div>` : ""}</section>
-      <section class="dictionary-section"><h3>真实语境</h3><div class="example-list">${(item.examples || []).map(value => `<p>${escapeHtml(value)}</p>`).join("")}</div></section>
+      <section class="dictionary-section"><h3>真实语境</h3><div class="example-list">${bilingualExamples(item.examples, item)}</div></section>
     </div>
   `;
 }
@@ -748,7 +796,10 @@ document.addEventListener("click", async event => {
       renderLexicon();
     }
     if (button.dataset.speak) speak(button.dataset.speak, button.dataset.voice || "en-US");
-    if (button.dataset.savePhrase) await saveCard(button.dataset.savePhrase, state.selectedLexicalItem?.examples?.[0] || "");
+    if (button.dataset.savePhrase) {
+      const example = state.selectedLexicalItem?.examples?.[0];
+      await saveCard(button.dataset.savePhrase, typeof example === "string" ? example : example?.text || "");
+    }
     if (button.dataset.saveLookup) {
       const articleBody = state.selectedArticle?.body || "";
       const context = articleBody.toLowerCase().includes(button.dataset.saveLookup.toLowerCase()) ? sentenceFor(articleBody, button.dataset.saveLookup) : "";
