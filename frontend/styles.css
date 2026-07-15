@@ -445,6 +445,26 @@ label {
 .remedial-item:first-child { padding-top: 0; border-top: 0; }
 .remedial-item h4 { margin: 9px 0; font-size: 16px; line-height: 1.5; }
 
+.source-topics {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+
+.source-pool-head,
+.source-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.source-pool-head { margin-bottom: 8px; }
+.source-pool-head h2 { margin: 3px 0 0; }
+.source-row { align-items: center; padding: 11px 0; border-top: 1px solid var(--line); }
+.source-row p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+
 .feed-box {
   margin-top: 16px;
   display: grid;
@@ -490,7 +510,8 @@ label {
   }
 
   .topbar,
-  .band-head {
+  .band-head,
+  .source-row {
     flex-direction: column;
     align-items: stretch;
   }

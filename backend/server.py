@@ -42,16 +42,58 @@ LEXICON = {
 
 DEFAULT_FEEDS = [
     {
-        "name": "BBC Learning English",
-        "url": "https://feeds.bbci.co.uk/learningenglish/english/features/rss.xml",
-        "language": "en",
-        "level_hint": "B1-B2",
-    },
-    {
         "name": "The Conversation",
         "url": "https://theconversation.com/global/articles.atom",
         "language": "en",
         "level_hint": "B2-C1",
+    },
+    {
+        "name": "JSTOR Daily",
+        "url": "https://daily.jstor.org/feed/",
+        "language": "en",
+        "level_hint": "C1",
+    },
+    {
+        "name": "Guardian Science",
+        "url": "https://www.theguardian.com/science/rss",
+        "language": "en",
+        "level_hint": "B2-C1",
+    },
+    {
+        "name": "Guardian Environment",
+        "url": "https://www.theguardian.com/environment/rss",
+        "language": "en",
+        "level_hint": "B2-C1",
+    },
+    {
+        "name": "MIT Technology Review",
+        "url": "https://www.technologyreview.com/feed/",
+        "language": "en",
+        "level_hint": "C1",
+    },
+    {
+        "name": "ScienceDaily",
+        "url": "https://www.sciencedaily.com/rss/all.xml",
+        "language": "en",
+        "level_hint": "B2-C1",
+    },
+    {
+        "name": "Aeon",
+        "url": "https://aeon.co/feed.rss",
+        "language": "en",
+        "level_hint": "C1",
+    },
+    {
+        "name": "Knowledge at Wharton",
+        "url": "https://knowledge.wharton.upenn.edu/feed",
+        "language": "en",
+        "level_hint": "C1",
+    },
+    {
+        "name": "The Economist Business",
+        "url": "https://www.economist.com/business/rss.xml",
+        "language": "en",
+        "level_hint": "C1",
     },
     {
         "name": "NPR",
@@ -60,6 +102,23 @@ DEFAULT_FEEDS = [
         "level_hint": "B2",
     },
 ]
+
+
+SOURCE_PROFILES = {
+    "The Conversation": {"tier": "核心", "topics": ["科学", "社会", "教育"], "exams": ["IELTS", "TOEFL", "TEM8", "GRE"]},
+    "JSTOR Daily": {"tier": "核心", "topics": ["历史", "人文", "社会科学"], "exams": ["TOEFL", "TEM8", "GRE"]},
+    "Guardian Science": {"tier": "核心", "topics": ["科学", "健康"], "exams": ["IELTS", "TOEFL", "TEM4", "TEM8"]},
+    "Guardian Environment": {"tier": "核心", "topics": ["环境", "社会"], "exams": ["IELTS", "TOEFL", "TEM4", "TEM8"]},
+    "MIT Technology Review": {"tier": "核心", "topics": ["科技", "商业"], "exams": ["TOEFL", "GRE", "GMAT", "TEM8"]},
+    "ScienceDaily": {"tier": "核心", "topics": ["自然科学", "健康"], "exams": ["IELTS", "TOEFL", "GRE"]},
+    "Aeon": {"tier": "核心", "topics": ["哲学", "心理", "文化"], "exams": ["TEM8", "GRE"]},
+    "Knowledge at Wharton": {"tier": "核心", "topics": ["商业", "经济", "管理"], "exams": ["GMAT", "GRE", "TEM8"]},
+    "The Economist Business": {"tier": "核心", "topics": ["商业", "经济", "政策"], "exams": ["GMAT", "GRE", "TEM8"]},
+    "BBC Learning English": {"tier": "补充", "topics": ["语言", "时事"], "exams": ["IELTS", "TEM4"]},
+    "NPR": {"tier": "补充", "topics": ["时事", "社会"], "exams": ["IELTS", "TOEFL", "TEM4", "TEM8"]},
+    "manual": {"tier": "个人", "topics": ["自选"], "exams": ["IELTS", "TOEFL", "TEM4", "TEM8", "GRE", "GMAT"]},
+    "seed": {"tier": "示例", "topics": ["科技", "社会"], "exams": ["IELTS", "TOEFL", "TEM4", "TEM8", "GRE", "GMAT"]},
+}
 
 
 def utc_now() -> str:
@@ -173,16 +232,19 @@ def init_db() -> None:
                 """,
                 ("Privacy concerns in the age of smart devices", SAMPLE_ARTICLE, now, now),
             )
-        feed_count = conn.execute("SELECT COUNT(*) FROM feeds").fetchone()[0]
-        if feed_count == 0:
-            now = utc_now()
-            conn.executemany(
-                """
-                INSERT OR IGNORE INTO feeds (name, url, language, level_hint, active, created_at)
-                VALUES (:name, :url, :language, :level_hint, 1, :created_at)
-                """,
-                [{**feed, "created_at": now} for feed in DEFAULT_FEEDS],
-            )
+        now = utc_now()
+        conn.execute(
+            "UPDATE feeds SET url = ?, active = 1 WHERE name = 'Knowledge at Wharton'",
+            ("https://knowledge.wharton.upenn.edu/feed",),
+        )
+        conn.execute("UPDATE feeds SET active = 0 WHERE name = 'BBC Learning English'")
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO feeds (name, url, language, level_hint, active, created_at)
+            VALUES (:name, :url, :language, :level_hint, 1, :created_at)
+            """,
+            [{**feed, "created_at": now} for feed in DEFAULT_FEEDS],
+        )
 
 
 def json_response(handler: BaseHTTPRequestHandler, payload: object, status: int = 200) -> None:
@@ -691,6 +753,27 @@ def analyze_payload(article: sqlite3.Row | dict) -> dict:
     }
 
 
+def source_profile(source: str, exam: str = "") -> dict:
+    profile = SOURCE_PROFILES.get(
+        source,
+        {"tier": "其他", "topics": ["综合"], "exams": ["IELTS", "TOEFL", "TEM4", "TEM8", "GRE", "GMAT"]},
+    )
+    if source in {"manual", "seed"}:
+        fit = 95
+    elif not exam or exam == "general":
+        fit = 80 if profile["tier"] == "核心" else 60
+    elif exam in profile["exams"]:
+        fit = 100 if profile["tier"] == "核心" else 75
+    else:
+        fit = 35
+    return {
+        "source_tier": profile["tier"],
+        "source_topics": profile["topics"],
+        "source_exams": profile["exams"],
+        "exam_fit": fit,
+    }
+
+
 def list_articles(query: dict[str, list[str]]) -> list[dict]:
     where = []
     params: list[str] = []
@@ -706,7 +789,11 @@ def list_articles(query: dict[str, list[str]]) -> list[dict]:
         sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY created_at DESC, id DESC"
     with db() as conn:
-        return rows_to_dicts(conn.execute(sql, params).fetchall())
+        items = rows_to_dicts(conn.execute(sql, params).fetchall())
+    exam = query.get("exam", [""])[0]
+    for item in items:
+        item.update(source_profile(item["source"], exam))
+    return sorted(items, key=lambda item: item["exam_fit"], reverse=True)
 
 
 def fetch_feed_items(limit_per_feed: int = 4) -> dict:
@@ -808,7 +895,11 @@ class App(BaseHTTPRequestHandler):
                 return json_response(self, {"mistakes": mistakes})
             if path == "/api/feeds":
                 with db() as conn:
-                    feeds = rows_to_dicts(conn.execute("SELECT * FROM feeds ORDER BY id").fetchall())
+                    feeds = rows_to_dicts(conn.execute("SELECT * FROM feeds WHERE active = 1 ORDER BY id").fetchall())
+                exam = query.get("exam", [""])[0]
+                for feed in feeds:
+                    feed.update(source_profile(feed["name"], exam))
+                feeds.sort(key=lambda item: item["exam_fit"], reverse=True)
                 return json_response(self, {"feeds": feeds})
             return self.serve_static(path)
         except Exception as exc:

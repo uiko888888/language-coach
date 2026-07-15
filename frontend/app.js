@@ -121,11 +121,13 @@ function renderArticles() {
     <div class="item">
       <div class="badge-row">
         ${badge(article.level, "teal")}
-        ${badge(article.language)}
         ${badge(article.source || "manual")}
+        ${article.source_tier ? badge(article.source_tier, article.source_tier === "核心" ? "teal" : "") : ""}
+        ${article.exam_fit ? badge(`${state.style} 匹配 ${article.exam_fit}%`, article.exam_fit >= 90 ? "amber" : "") : ""}
       </div>
       <h3>${escapeHtml(article.title)}</h3>
       <p>${escapeHtml(excerpt(article.body))}</p>
+      ${article.source_topics?.length ? `<div class="source-topics">${article.source_topics.map(topic => badge(topic)).join("")}</div>` : ""}
       <div class="toolbar">
         <button data-open-article="${article.id}">阅读</button>
         <button data-quiz-article="${article.id}">生成题</button>
@@ -135,12 +137,21 @@ function renderArticles() {
   `).join("") || `<div class="item muted">文章池为空</div>`;
 
   $("#feedList").innerHTML = `
-    <h2>RSS 源</h2>
+    <div class="source-pool-head">
+      <div><span class="muted">Exam-aligned sources</span><h2>${state.style} 来源池</h2></div>
+      ${badge("仅保存摘要与链接", "teal")}
+    </div>
     ${state.feeds.map(feed => `
-      <div class="item">
-        <strong>${escapeHtml(feed.name)}</strong>
-        <p>${escapeHtml(feed.url)}</p>
-        <div class="badge-row">${badge(feed.language)}${badge(feed.level_hint, "amber")}</div>
+      <div class="source-row">
+        <div>
+          <strong>${escapeHtml(feed.name)}</strong>
+          <p>${escapeHtml((feed.source_topics || []).join(" · "))}</p>
+        </div>
+        <div class="badge-row">
+          ${badge(feed.source_tier || "其他", feed.source_tier === "核心" ? "teal" : "")}
+          ${badge(feed.level_hint, "amber")}
+          ${badge(`${feed.exam_fit || 0}%`) }
+        </div>
       </div>
     `).join("")}
   `;
@@ -406,8 +417,9 @@ async function loadHealth() {
 }
 
 async function loadArticles(q = "") {
-  const query = q ? `?q=${encodeURIComponent(q)}` : "";
-  const data = await api(`/api/articles${query}`);
+  const params = new URLSearchParams({ exam: state.style });
+  if (q) params.set("q", q);
+  const data = await api(`/api/articles?${params.toString()}`);
   state.articles = data.articles || [];
 }
 
@@ -422,7 +434,7 @@ async function loadMistakes() {
 }
 
 async function loadFeeds() {
-  const data = await api("/api/feeds");
+  const data = await api(`/api/feeds?exam=${encodeURIComponent(state.style)}`);
   state.feeds = data.feeds || [];
 }
 
@@ -608,9 +620,13 @@ document.addEventListener("click", event => {
   if (word) renderLookup(word.dataset.word);
 });
 
-$("#globalStyle").addEventListener("change", event => {
+$("#globalStyle").addEventListener("change", async event => {
   state.style = event.target.value;
   localStorage.setItem("lc-v2-style", state.style);
+  await Promise.all([loadArticles(), loadFeeds()]);
+  renderArticles();
+  renderDashboard();
+  toast(`文章池已切换为 ${state.style} 来源`);
 });
 
 $("#articleSearch").addEventListener("keydown", async event => {
