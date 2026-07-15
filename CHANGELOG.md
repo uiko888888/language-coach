@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.6.0] - 2026-07-16
+
+### Added
+
+- Reader and article-pool translation toggles with persistent, editable Chinese translations.
+- Sticky source passage beside questions so reading evidence remains available during practice.
+- Exam-specific question type selectors for IELTS, TOEFL, TEM4, TEM8, GRE, GMAT, and general practice.
+- Persistent XP, levels, daily streaks, correct-answer totals, and mistake-review rewards.
+- Universal English lookup through clickable reading text and selection-based phrase search.
+- End-to-end tests for translations, exam question generation, answer scoring, and progression.
+
+### Changed
+
+- Repeated submissions and repeated mistake toggles no longer award duplicate XP.
+- The seeded privacy article includes a reviewed Chinese translation; untranslated articles clearly report that no reliable translation is available.
+
 ## [0.5.1] - 2026-07-15
 
 ### Added
