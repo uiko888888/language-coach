@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.5.0] - 2026-07-15
+
+### Added
+
+- Persistent dictionary and morphology data for headwords, forms, Chinese aliases, roots, prefixes, suffixes, word families, collocations, synonyms, antonyms, etymology, IPA, and examples.
+- Ranked mixed search for English headwords, inflected forms, Chinese meanings, morphemes, and Latin etymons.
+- Always-available top search with lightweight suggestions and a full left-list/right-detail dictionary workspace.
+- Root, prefix, suffix, word-family, pronunciation, phrase-saving, and article lookup interactions.
+- Automated coverage for `inspect`, `inspection`, `inspected`, `观察`, `spect`, `specere`, `re-`, and `-tion`.
+
+### Changed
+
+- Global navigation is grouped into daily learning, vocabulary, and exam sections.
+- Article word lookup now uses the persistent dictionary instead of a hard-coded browser-only mini lexicon.
+- SQLite connections now close after each operation so repeated instant searches do not accumulate resources.
+
 ## [0.4.1] - 2026-07-15
 
 ### Added

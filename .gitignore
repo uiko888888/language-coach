@@ -2,7 +2,7 @@ data/*.sqlite
 data/*.sqlite-*
 data/*.log
 backend/__pycache__/
+artifacts/
 *.py[cod]
 .DS_Store
 Thumbs.db
-
