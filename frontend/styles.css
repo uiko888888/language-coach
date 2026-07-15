@@ -404,6 +404,8 @@ label {
   line-height: 1.9;
   font-size: 17px;
 }
+.article-paragraph { margin: 0 0 1.15em; text-indent: 2em; }
+.article-paragraph:last-child { margin-bottom: 0; }
 
 .translation-panel {
   margin-top: 16px;
@@ -539,12 +541,16 @@ label {
 .remedial-item:first-child { padding-top: 0; border-top: 0; }
 .remedial-item h4 { margin: 9px 0; font-size: 16px; line-height: 1.5; }
 
+.article-themes,
 .source-topics {
   display: flex;
+  align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-  margin: 8px 0;
+  margin: 9px 0;
 }
+.article-themes > span:first-child,
+.topic-label { min-width: 58px; color: var(--muted); font-size: 12px; }
 
 .source-pool-head,
 .source-row {

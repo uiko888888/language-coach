@@ -101,6 +101,10 @@ function searchableEnglish(text, clickable = true) {
   }).join("");
 }
 
+function articleParagraphs(text, className = "") {
+  return String(text || "").split(/\n\s*\n/).filter(Boolean).map(paragraph => `<p class="${className}">${searchableEnglish(paragraph)}</p>`).join("");
+}
+
 function renderStats() {
   $("#statArticles").textContent = state.articles.length;
   $("#statCards").textContent = state.cards.length;
@@ -113,9 +117,9 @@ function renderStats() {
 function renderDashboard() {
   $("#recentArticles").innerHTML = state.articles.slice(0, 4).map(article => `
     <div class="item">
-      <div class="badge-row">${article.recommended_today ? badge(`今日推荐 ${article.daily_rank}`, "amber") : ""}${badge(article.level, "teal")}${badge(article.source || "manual")}</div>
+      <div class="badge-row">${article.recommended_today ? badge(`今日推荐 ${article.daily_rank}`, "amber") : ""}${badge(article.level, "teal")}${(article.theme_tags || []).slice(0, 2).map(theme => badge(theme)).join("")}</div>
       <h3>${escapeHtml(article.title)}</h3>
-      <p>${escapeHtml(excerpt(article.body, 120))}</p>
+      <p>${escapeHtml(excerpt(article.highlight || article.body, 145))}</p>
       <button data-open-article="${article.id}">阅读</button>
     </div>
   `).join("") || `<div class="item muted">暂无文章</div>`;
@@ -170,8 +174,9 @@ function renderArticles() {
         </div>
       </div>
       ${selected.recommended_today ? `<div class="daily-recommendation"><strong>今日推荐 ${selected.daily_rank}</strong><span>${escapeHtml((selected.recommendation_reasons || []).join(" · "))}</span><small>推荐分 ${selected.recommendation_score}</small></div>` : ""}
-      ${selected.source_topics?.length ? `<div class="source-topics">${selected.source_topics.map(topic => badge(topic)).join("")}</div>` : ""}
-      <article class="article-detail-body">${paragraphs.map(paragraph => `<p>${searchableEnglish(paragraph)}</p>`).join("")}</article>
+      ${selected.theme_tags?.length ? `<div class="article-themes"><span>文章主题</span>${selected.theme_tags.map(theme => badge(theme, "amber")).join("")}</div>` : ""}
+      ${selected.source_topics?.length ? `<div class="source-topics"><span class="topic-label">来源领域</span>${selected.source_topics.map(topic => badge(topic)).join("")}</div>` : ""}
+      <article class="article-detail-body">${paragraphs.map(paragraph => `<p class="article-paragraph">${searchableEnglish(paragraph)}</p>`).join("")}</article>
       ${state.showTranslation ? `<section class="translation-panel">${selected.translation_zh ? selected.translation_zh.split(/\n\s*\n/).map(paragraph => `<p>${escapeHtml(paragraph)}</p>`).join("") : `<p class="muted">这篇文章还没有可靠译文。</p>`}</section>` : ""}
       ${selected.source_url ? `<a class="source-link" href="${escapeHtml(selected.source_url)}" target="_blank" rel="noreferrer">打开原始来源</a>` : ""}
     `;
@@ -201,8 +206,8 @@ function renderReader() {
     return;
   }
   $("#readerTitle").textContent = article.title;
-  $("#readerMeta").innerHTML = `${badge(article.level, "teal")}${badge(article.topic || "general")}${badge(article.source || "manual")}`;
-  $("#readerBody").innerHTML = searchableEnglish(article.body);
+  $("#readerMeta").innerHTML = `${badge(article.level, "teal")}${(article.theme_tags || []).map(theme => badge(theme, "amber")).join("")}${badge(article.source || "manual")}`;
+  $("#readerBody").innerHTML = articleParagraphs(article.body, "article-paragraph");
   $("#articleTranslationInput").value = article.translation_zh || "";
   const translationPanel = $("#translationPanel");
   translationPanel.hidden = !state.showTranslation;
@@ -215,7 +220,7 @@ function renderReader() {
 function renderQuizSource() {
   const article = state.selectedArticle;
   $("#quizSourceTitle").textContent = article?.title || "原文";
-  $("#quizSourceText").innerHTML = article ? searchableEnglish(article.body) : `<p class="muted">先从文章池选择文章。</p>`;
+  $("#quizSourceText").innerHTML = article ? articleParagraphs(article.body, "article-paragraph") : `<p class="muted">先从文章池选择文章。</p>`;
   const translation = $("#quizTranslationPanel");
   translation.hidden = !state.showTranslation;
   translation.innerHTML = article?.translation_zh ? article.translation_zh.split(/\n\s*\n/).map(value => `<p>${escapeHtml(value)}</p>`).join("") : `<p class="muted">暂无可靠译文。</p>`;
@@ -680,7 +685,7 @@ async function loadQuizzes() {
 }
 
 async function openArticle(id) {
-  const data = await api(`/api/articles/${id}`);
+  const data = await api(`/api/articles/${id}?exam=${encodeURIComponent(state.style)}`);
   state.selectedArticle = data.article;
   state.analysis = data.analysis;
   await loadQuizzes();
@@ -979,7 +984,7 @@ async function boot() {
   await loadHealth();
   await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadProgress(), loadExamTypes(), loadArticleTopics(), searchLexicon("", { open: false })]);
   if (!state.selectedArticle && state.articles[0]) {
-    const data = await api(`/api/articles/${state.articles[0].id}`);
+    const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);
     state.selectedArticle = data.article;
     state.analysis = data.analysis;
   }
