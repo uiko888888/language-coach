@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.4.1] - 2026-07-15
+
+### Added
+
+- One-click Windows launcher that discovers Python from `PATH` and opens the app.
+- Repository line-ending policy for stable cross-platform commits.
+
 ## [0.4.0] - 2026-07-15
 
 ### Changed

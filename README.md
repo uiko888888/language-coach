@@ -4,6 +4,10 @@
 
 ## 运行
 
+Windows 可以直接双击 `start-language-coach.bat`，并保持服务器窗口打开。
+
+也可以使用 PowerShell：
+
 ```powershell
 cd C:\Users\hususu\Documents\Codex\2026-07-15\new-chat\outputs\language-coach-v2
 .\run.ps1
