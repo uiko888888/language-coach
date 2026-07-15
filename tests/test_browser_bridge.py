@@ -64,6 +64,20 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(data["clip"]["translated_text"], payload["translation"])
         self.assertEqual(data["card"]["context"], payload["context"])
 
+    def test_extracted_article_enters_full_content_pool(self):
+        text = "First paragraph about climate policy. Second paragraph explains the evidence. " * 8
+        payload = {
+            "kind": "article",
+            "text": text,
+            "page_title": "Extracted climate article",
+            "page_url": "https://example.test/full-article",
+            "save_to": "articles",
+        }
+        data, _ = self.request("/api/browser/clips", "POST", payload, self.token)
+        self.assertEqual(data["article"]["content_status"], "full")
+        self.assertEqual(data["article"]["source_url"], payload["page_url"])
+        self.assertIn("环境保护", data["article"]["theme_tags"])
+
     def test_translation_cache_works_without_network(self):
         text = "A cached translation"
         digest = hashlib.sha256(text.encode("utf-8")).hexdigest()

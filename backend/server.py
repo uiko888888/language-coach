@@ -1515,7 +1515,7 @@ class App(BaseHTTPRequestHandler):
                 if not source_text:
                     return json_response(self, {"error": "Clip text is required"}, 400)
                 kind = payload.get("kind") or "selection"
-                if kind not in {"word", "selection"}:
+                if kind not in {"word", "selection", "article"}:
                     return json_response(self, {"error": "Unsupported clip kind"}, 400)
                 context = (payload.get("context") or "").strip()
                 page_title = (payload.get("page_title") or "").strip()
@@ -1526,7 +1526,30 @@ class App(BaseHTTPRequestHandler):
                 now = utc_now()
                 with db() as conn:
                     card_id = None
-                    if payload.get("save_to", "wordbook") == "wordbook":
+                    article_id = None
+                    if kind == "article":
+                        title = page_title or "Browser article"
+                        body = normalize_article_text(title, source_text)
+                        if page_url:
+                            existing = conn.execute("SELECT id FROM articles WHERE source_url = ?", (page_url,)).fetchone()
+                        else:
+                            existing = None
+                        if existing:
+                            article_id = existing["id"]
+                            conn.execute(
+                                """UPDATE articles SET title = ?, body = ?, translation_zh = ?, content_status = 'full',
+                                   source = 'browser', updated_at = ? WHERE id = ?""",
+                                (title, body, translated, now, article_id),
+                            )
+                        else:
+                            cursor = conn.execute(
+                                """INSERT INTO articles
+                                   (title, language, level, topic, source, source_url, content_status, body, translation_zh, created_at, updated_at)
+                                   VALUES (?, 'en', ?, 'browser', 'browser', ?, 'full', ?, ?, ?, ?)""",
+                                (title, estimate_level(body), page_url, body, translated, now, now),
+                            )
+                            article_id = cursor.lastrowid
+                    elif payload.get("save_to", "wordbook") == "wordbook":
                         term = source_text if len(source_text) <= 180 else source_text[:177] + "..."
                         cursor = conn.execute(
                             """INSERT INTO cards (term, context, status, note, created_at, updated_at)
@@ -1536,13 +1559,18 @@ class App(BaseHTTPRequestHandler):
                         card_id = cursor.lastrowid
                     cursor = conn.execute(
                         """INSERT INTO browser_clips
-                           (kind, source_text, translated_text, context, page_title, page_url, card_id, created_at)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (kind, source_text, translated, context, page_title, page_url, card_id, now),
+                           (kind, source_text, translated_text, context, page_title, page_url, card_id, article_id, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (kind, source_text, translated, context, page_title, page_url, card_id, article_id, now),
                     )
                     clip = conn.execute("SELECT * FROM browser_clips WHERE id = ?", (cursor.lastrowid,)).fetchone()
                     card = conn.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone() if card_id else None
-                return json_response(self, {"clip": dict(clip), "card": dict(card) if card else None}, 201)
+                article = None
+                if article_id:
+                    with db() as conn:
+                        row = conn.execute("SELECT * FROM articles WHERE id = ?", (article_id,)).fetchone()
+                    article = enrich_article(dict(row), payload.get("exam") or "") if row else None
+                return json_response(self, {"clip": dict(clip), "card": dict(card) if card else None, "article": article}, 201)
             if path == "/api/articles":
                 now = utc_now()
                 body = (payload.get("body") or "").strip()
