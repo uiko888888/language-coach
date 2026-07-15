@@ -16,12 +16,17 @@
       </div>
     </div>
     <nav class="nav">
+      <span class="nav-group">日常学习</span>
       <button class="nav-item active" data-view="dashboard">今日</button>
       <button class="nav-item" data-view="articles">文章池</button>
       <button class="nav-item" data-view="reader">阅读台</button>
-      <button class="nav-item" data-view="quiz">题目</button>
+      <span class="nav-group">词汇中心</span>
+      <button class="nav-item" data-view="lexicon" data-lexicon-filter="all">综合查词</button>
+      <button class="nav-item" data-view="lexicon" data-lexicon-filter="morpheme">词根词缀</button>
       <button class="nav-item" data-view="cards">生词本</button>
-      <button class="nav-item" data-view="mistakes">错题</button>
+      <span class="nav-group">训练与考试</span>
+      <button class="nav-item" data-view="quiz">练习中心</button>
+      <button class="nav-item" data-view="mistakes">错题本</button>
     </nav>
     <div class="server-pill" id="serverStatus">连接中</div>
   </aside>
@@ -31,6 +36,14 @@
       <div>
         <h1 id="viewTitle">今日训练</h1>
         <p id="viewSubtitle">文章、词汇、题目和错题都走本地数据库。</p>
+      </div>
+      <div class="global-search-wrap">
+        <form class="global-search" id="globalSearchForm" role="search">
+          <span class="search-symbol" aria-hidden="true">⌕</span>
+          <input id="globalLexiconSearch" autocomplete="off" placeholder="查单词、中文、词根或词源" aria-label="全局查词" />
+          <button type="submit" title="查词">查词</button>
+        </form>
+        <div class="quick-results" id="quickLexiconResults" hidden></div>
       </div>
       <div class="top-actions">
         <select id="globalStyle">
@@ -45,6 +58,37 @@
         <button id="refreshAllBtn">刷新</button>
       </div>
     </header>
+
+    <section class="view" id="view-lexicon">
+      <div class="lexicon-tabs" role="tablist" aria-label="词汇分类">
+        <button class="lexicon-tab active" data-lexicon-tab="all">全部</button>
+        <button class="lexicon-tab" data-lexicon-tab="morpheme">构词总览</button>
+        <button class="lexicon-tab" data-lexicon-tab="root">词根</button>
+        <button class="lexicon-tab" data-lexicon-tab="prefix">前缀</button>
+        <button class="lexicon-tab" data-lexicon-tab="suffix">后缀</button>
+        <button class="lexicon-tab" data-lexicon-tab="family">词族</button>
+      </div>
+      <div class="master-detail lexicon-layout">
+        <aside class="band master-list-panel">
+          <div class="band-head">
+            <div><span class="eyebrow">Dictionary & morphology</span><h2>查询结果</h2></div>
+            <span class="result-count" id="lexiconResultCount">0</span>
+          </div>
+          <form class="toolbar master-search" id="lexiconSearchForm">
+            <input id="lexiconSearch" placeholder="inspect / 观察 / spect / specere" />
+            <button type="submit">搜索</button>
+          </form>
+          <div class="search-examples">
+            <button data-search-query="inspect">inspect</button>
+            <button data-search-query="观察">观察</button>
+            <button data-search-query="spect">spect</button>
+            <button data-search-query="specere">specere</button>
+          </div>
+          <div class="master-list" id="lexiconResultList"></div>
+        </aside>
+        <section class="band master-content-panel" id="lexiconDetail"></section>
+      </div>
+    </section>
 
     <section class="view active" id="view-dashboard">
       <div class="metric-grid">

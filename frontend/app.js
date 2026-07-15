@@ -14,6 +14,9 @@ const state = {
   quizzes: [],
   mistakes: [],
   feeds: [],
+  lexiconResults: [],
+  selectedLexicalItem: null,
+  lexiconFilter: "all",
   selectedArticle: null,
   selectedPoolArticleId: null,
   selectedMistakeId: null,
@@ -31,17 +34,7 @@ const titles = {
   quiz: ["题目", "先做题，再看证据和解析，错题会自动收集。"],
   cards: ["生词本", "主动添加或从文章里点词添加，后面可做词块复习。"],
   mistakes: ["错题", "保存你的错误答案、正确答案和原文证据。"],
-};
-
-const miniLexicon = {
-  privacy: { cn: "隐私；个人信息边界", family: ["private", "privately"], collocations: ["privacy policy", "privacy concern"] },
-  concern: { cn: "担忧；关切；涉及", family: ["concerning", "concerned"], collocations: ["raise concerns", "privacy concerns"] },
-  evidence: { cn: "证据；根据", family: ["evident", "evidently"], collocations: ["strong evidence", "evidence suggests"] },
-  significant: { cn: "显著的；重要的", family: ["significance", "significantly"], collocations: ["significant impact", "significant difference"] },
-  convenience: { cn: "便利；省事", family: ["convenient", "inconvenient"], collocations: ["for convenience", "consumer convenience"] },
-  surveillance: { cn: "监控；监督", family: ["survey", "surveil"], collocations: ["mass surveillance", "digital surveillance"] },
-  consent: { cn: "同意；许可", family: ["consensual"], collocations: ["informed consent", "without consent"] },
-  policy: { cn: "政策；规则", family: ["politics", "policymaker"], collocations: ["privacy policy", "public policy"] },
+  lexicon: ["词汇中心", "从单词、中文、词形或词源进入同一张词汇网络。"],
 };
 
 const sampleImport = `A useful study plan should connect vocabulary with context. If a learner only memorizes isolated words, she may recognize them in reading but still hesitate when using them in speaking or writing. A better routine is to read a short article, mark repeated phrases, listen to the same passage, and then turn the most important sentences into questions.
@@ -71,7 +64,11 @@ function toast(message) {
 
 function setView(name) {
   document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.id === `view-${name}`));
-  document.querySelectorAll(".nav-item").forEach(item => item.classList.toggle("active", item.dataset.view === name));
+  document.querySelectorAll(".nav-item").forEach(item => {
+    const matchesView = item.dataset.view === name;
+    const matchesLexicon = name !== "lexicon" || item.dataset.lexiconFilter === state.lexiconFilter;
+    item.classList.toggle("active", matchesView && matchesLexicon);
+  });
   $("#viewTitle").textContent = titles[name]?.[0] || "Language Coach";
   $("#viewSubtitle").textContent = titles[name]?.[1] || "";
 }
@@ -218,26 +215,116 @@ function renderAnalysis() {
   `;
 }
 
-function renderLookup(word) {
+async function renderLookup(word) {
   const clean = word.toLowerCase().replace(/^[^a-z]+|[^a-z]+$/g, "");
-  const info = miniLexicon[clean] || {
-    cn: "先按语境保存，后面接词典 API 后会补全释义。",
-    family: [],
-    collocations: [],
-  };
   const context = state.selectedArticle ? sentenceFor(state.selectedArticle.body, clean) : "";
+  const data = await api(`/api/lexicon/search?q=${encodeURIComponent(clean)}`);
+  const info = data.results?.find(item => item.type === "entry") || null;
   $("#lookupPanel").innerHTML = `
-    <h2>${escapeHtml(clean)}</h2>
-    <p>${escapeHtml(info.cn)}</p>
-    <div class="badge-row">
-      ${info.family.map(item => badge(item, "teal")).join("")}
-      ${info.collocations.map(item => badge(item, "amber")).join("")}
-    </div>
+    <div class="lookup-heading"><div><h2>${escapeHtml(info?.headword || clean)}</h2>${info ? `<span>${escapeHtml(info.ipa_uk)} · ${escapeHtml(info.pos)}</span>` : ""}</div><button data-speak="${escapeHtml(info?.headword || clean)}" title="播放发音" aria-label="播放发音">▶</button></div>
+    <p>${escapeHtml(info?.meaning_zh || "当前本地词库还没有完整词条，可以先连同语境保存。")}</p>
+    ${info?.breakdown ? `<div class="morph-line">${escapeHtml(info.breakdown)}</div>` : ""}
+    <div class="badge-row">${(info?.collocations || []).map(item => badge(item, "amber")).join("")}</div>
     ${context ? `<div class="answer-box">${escapeHtml(context)}</div>` : ""}
-    <button class="primary" data-save-lookup="${escapeHtml(clean)}">加入生词本</button>
+    <div class="toolbar"><button class="primary" data-save-lookup="${escapeHtml(clean)}">加入生词本</button><button data-search-query="${escapeHtml(clean)}" data-open-lexicon="true">完整词条</button></div>
   `;
   $("#cardTerm").value = clean;
   $("#cardContext").value = context;
+}
+
+function lexicalLabel(item) {
+  return item.type === "entry" ? item.headword : item.form;
+}
+
+function lexicalSubtitle(item) {
+  return item.type === "entry" ? `${item.pos} · ${item.meaning_zh}` : `${item.kind} · ${item.meaning_zh}`;
+}
+
+function matchesLexiconFilter(item) {
+  if (state.lexiconFilter === "all" || state.lexiconFilter === "family") return item.type === "entry" || state.lexiconFilter === "all";
+  if (state.lexiconFilter === "morpheme") return item.type === "morpheme";
+  return item.type === "morpheme" && item.kind === state.lexiconFilter;
+}
+
+function termButtons(items, kind = "") {
+  return (items || []).map(item => `<button class="term-link ${kind}" data-search-query="${escapeHtml(String(item).split("（")[0])}">${escapeHtml(item)}</button>`).join("");
+}
+
+function renderLexicalDetail(item) {
+  const detail = $("#lexiconDetail");
+  if (!item) {
+    detail.innerHTML = `<div class="empty-state">输入单词、中文、词根或拉丁词源开始查询。</div>`;
+    return;
+  }
+  if (item.type === "morpheme") {
+    const kindNames = { root: "词根", prefix: "前缀", suffix: "后缀" };
+    detail.innerHTML = `
+      <div class="dictionary-hero">
+        <div><div class="badge-row">${badge(kindNames[item.kind] || item.kind, "teal")}${badge(item.matched_by || "构词成分")}</div><h2>${escapeHtml(item.form)}</h2><p class="core-definition">${escapeHtml(item.meaning_zh)}</p></div>
+      </div>
+      <div class="morph-origin"><span>来源</span><strong>${escapeHtml(item.origin)}</strong><p>${escapeHtml(item.note)}</p></div>
+      <section class="dictionary-section"><h3>代表词</h3><div class="term-grid">${termButtons(item.examples, "family")}</div></section>
+    `;
+    return;
+  }
+  detail.innerHTML = `
+    <div class="dictionary-hero">
+      <div><div class="badge-row">${badge(item.level || "词条", "teal")}${badge(item.pos)}${badge(item.register_label)}</div><h2>${escapeHtml(item.headword)}</h2><div class="pronunciation"><span>UK ${escapeHtml(item.ipa_uk)}</span><button data-speak="${escapeHtml(item.headword)}" data-voice="en-GB" title="英式发音">▶ UK</button><span>US ${escapeHtml(item.ipa_us)}</span><button data-speak="${escapeHtml(item.headword)}" data-voice="en-US" title="美式发音">▶ US</button></div></div>
+      <button class="primary" data-save-lookup="${escapeHtml(item.headword)}">加入生词本</button>
+    </div>
+    <p class="core-definition">${escapeHtml(item.core_meaning)}</p><p class="zh-definition">${escapeHtml(item.meaning_zh)}</p>
+    <div class="morph-origin"><span>构词拆解</span><strong>${escapeHtml(item.breakdown)}</strong><p>${escapeHtml(item.origin)}</p></div>
+    <div class="dictionary-columns">
+      <section class="dictionary-section"><h3>词形与词族</h3><div class="term-grid">${termButtons(item.forms)}${termButtons(item.family, "family")}</div></section>
+      <section class="dictionary-section"><h3>词组与搭配</h3><div class="phrase-list">${(item.collocations || []).map(value => `<button data-save-phrase="${escapeHtml(value)}">${escapeHtml(value)} <span>＋</span></button>`).join("")}</div></section>
+      <section class="dictionary-section"><h3>近义词辨析</h3><div class="term-grid">${termButtons(item.synonyms, "synonym")}</div>${item.antonyms?.length ? `<h4>反义词</h4><div class="term-grid">${termButtons(item.antonyms)}</div>` : ""}</section>
+      <section class="dictionary-section"><h3>真实语境</h3><div class="example-list">${(item.examples || []).map(value => `<p>${escapeHtml(value)}</p>`).join("")}</div></section>
+    </div>
+  `;
+}
+
+function renderLexicon() {
+  document.querySelectorAll(".lexicon-tab").forEach(tab => tab.classList.toggle("active", tab.dataset.lexiconTab === state.lexiconFilter));
+  const filtered = state.lexiconResults.filter(matchesLexiconFilter);
+  if (!filtered.some(item => item.type === state.selectedLexicalItem?.type && item.id === state.selectedLexicalItem?.id)) {
+    state.selectedLexicalItem = filtered[0] || null;
+  }
+  $("#lexiconResultCount").textContent = filtered.length;
+  $("#lexiconResultList").innerHTML = filtered.map((item, index) => `
+    <button class="master-list-item ${item.type === state.selectedLexicalItem?.type && item.id === state.selectedLexicalItem?.id ? "active" : ""}" data-lexical-type="${item.type}" data-lexical-id="${item.id}">
+      <span class="master-number">${String(index + 1).padStart(2, "0")}</span><span class="master-copy"><strong>${escapeHtml(lexicalLabel(item))}</strong><small>${escapeHtml(lexicalSubtitle(item))}</small><em>${escapeHtml(item.matched_by || "")}</em></span>
+    </button>`).join("") || `<div class="empty-state">没有匹配结果，换一个词形或中文含义试试。</div>`;
+  renderLexicalDetail(state.selectedLexicalItem);
+}
+
+async function searchLexicon(query, { open = true, quick = false } = {}) {
+  const value = String(query || "").trim();
+  const data = await api(`/api/lexicon/search?q=${encodeURIComponent(value)}`);
+  if (quick) {
+    renderQuickResults(data.results || [], value);
+    return data.results || [];
+  }
+  state.lexiconResults = data.results || [];
+  state.selectedLexicalItem = state.lexiconResults[0] || null;
+  $("#lexiconSearch").value = value;
+  $("#globalLexiconSearch").value = value;
+  if (open) setView("lexicon");
+  renderLexicon();
+  return state.lexiconResults;
+}
+
+function renderQuickResults(results, query) {
+  const panel = $("#quickLexiconResults");
+  const items = results.slice(0, 4);
+  panel.hidden = false;
+  panel.innerHTML = items.length ? `${items.map(item => `<button data-search-query="${escapeHtml(lexicalLabel(item))}" data-open-lexicon="true"><strong>${escapeHtml(lexicalLabel(item))}</strong><span>${escapeHtml(lexicalSubtitle(item))}</span></button>`).join("")}<button class="quick-more" data-search-query="${escapeHtml(query)}" data-open-lexicon="true">查看全部结果</button>` : `<div class="quick-empty">本地词库暂未收录，仍可加入生词本。</div>`;
+}
+
+function speak(text, lang = "en-US") {
+  speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = lang;
+  speechSynthesis.speak(utterance);
 }
 
 function fallbackMistakeExplanation(item) {
@@ -448,6 +535,7 @@ function renderAll() {
   renderQuizzes();
   renderCards();
   renderMistakes();
+  renderLexicon();
 }
 
 async function loadHealth() {
@@ -605,7 +693,9 @@ document.addEventListener("click", async event => {
   const button = event.target.closest("button");
   if (!button) return;
   try {
+    if (button.dataset.lexiconFilter) state.lexiconFilter = button.dataset.lexiconFilter;
     if (button.dataset.view) setView(button.dataset.view);
+    if (button.dataset.lexiconFilter) renderLexicon();
     if (button.dataset.viewJump) setView(button.dataset.viewJump);
     if (button.id === "refreshAllBtn") await boot();
     if (button.id === "searchArticlesBtn") {
@@ -642,9 +732,26 @@ document.addEventListener("click", async event => {
       await openArticle(button.dataset.quizArticle);
       await generateQuizzes(button.dataset.quizArticle);
     }
-    if (button.dataset.word) renderLookup(button.dataset.word);
+    if (button.dataset.word) await renderLookup(button.dataset.word);
+    if (button.dataset.lexiconTab) {
+      state.lexiconFilter = button.dataset.lexiconTab;
+      renderLexicon();
+      setView("lexicon");
+    }
+    if (button.dataset.searchQuery !== undefined) {
+      state.lexiconFilter = button.dataset.openLexicon ? "all" : state.lexiconFilter;
+      await searchLexicon(button.dataset.searchQuery);
+      $("#quickLexiconResults").hidden = true;
+    }
+    if (button.dataset.lexicalId) {
+      state.selectedLexicalItem = state.lexiconResults.find(item => item.type === button.dataset.lexicalType && item.id === Number(button.dataset.lexicalId));
+      renderLexicon();
+    }
+    if (button.dataset.speak) speak(button.dataset.speak, button.dataset.voice || "en-US");
+    if (button.dataset.savePhrase) await saveCard(button.dataset.savePhrase, state.selectedLexicalItem?.examples?.[0] || "");
     if (button.dataset.saveLookup) {
-      const context = state.selectedArticle ? sentenceFor(state.selectedArticle.body, button.dataset.saveLookup) : "";
+      const articleBody = state.selectedArticle?.body || "";
+      const context = articleBody.toLowerCase().includes(button.dataset.saveLookup.toLowerCase()) ? sentenceFor(articleBody, button.dataset.saveLookup) : "";
       await saveCard(button.dataset.saveLookup, context);
     }
     if (button.dataset.answerQuiz) {
@@ -667,7 +774,8 @@ document.addEventListener("click", async event => {
 
 document.addEventListener("click", event => {
   const word = event.target.closest(".reader-word");
-  if (word) renderLookup(word.dataset.word);
+  if (word) renderLookup(word.dataset.word).catch(error => toast(error.message));
+  if (!event.target.closest(".global-search-wrap")) $("#quickLexiconResults").hidden = true;
 });
 
 $("#globalStyle").addEventListener("change", async event => {
@@ -686,9 +794,35 @@ $("#articleSearch").addEventListener("keydown", async event => {
   }
 });
 
+$("#globalSearchForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  await searchLexicon($("#globalLexiconSearch").value);
+  $("#quickLexiconResults").hidden = true;
+});
+
+$("#lexiconSearchForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  await searchLexicon($("#lexiconSearch").value, { open: false });
+});
+
+let quickSearchTimer;
+$("#globalLexiconSearch").addEventListener("input", event => {
+  clearTimeout(quickSearchTimer);
+  const query = event.target.value.trim();
+  if (!query) {
+    $("#quickLexiconResults").hidden = true;
+    return;
+  }
+  quickSearchTimer = setTimeout(() => searchLexicon(query, { quick: true }).catch(error => toast(error.message)), 180);
+});
+
+$("#globalLexiconSearch").addEventListener("focus", event => {
+  if (event.target.value.trim() && $("#quickLexiconResults").innerHTML) $("#quickLexiconResults").hidden = false;
+});
+
 async function boot() {
   await loadHealth();
-  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds()]);
+  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), searchLexicon("", { open: false })]);
   if (!state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}`);
     state.selectedArticle = data.article;
@@ -696,6 +830,10 @@ async function boot() {
   }
   await loadQuizzes();
   renderAll();
+  const startupParams = new URLSearchParams(window.location.search);
+  if (startupParams.get("view") === "lexicon" || startupParams.get("q")) {
+    await searchLexicon(startupParams.get("q") || "", { open: true });
+  }
 }
 
 $("#globalStyle").value = state.style;
