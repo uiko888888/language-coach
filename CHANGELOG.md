@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.5.1] - 2026-07-15
+
+### Added
+
+- Chinese translations for every seeded collocation and lexical relation.
+- Bilingual synonym and antonym phrases grouped under each collocation.
+- Chinese translations below authentic example sentences.
+- Highlighting for the queried headword, inflected forms, and visible family derivatives in context.
+
+### Changed
+
+- Seeded dictionary entries now update existing local databases without requiring a reset.
+- Phrase cards preserve their English context when saved to the vocabulary book.
+
 ## [0.5.0] - 2026-07-15
 
 ### Added
