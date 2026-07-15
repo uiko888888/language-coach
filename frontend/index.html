@@ -46,6 +46,7 @@
         <div class="quick-results" id="quickLexiconResults" hidden></div>
       </div>
       <div class="top-actions">
+        <div class="progress-chip" title="学习进度"><strong id="progressLevel">Lv.1</strong><span id="progressXp">0 XP</span></div>
         <select id="globalStyle">
           <option value="IELTS">IELTS</option>
           <option value="TOEFL">TOEFL</option>
@@ -162,17 +163,25 @@
               <div class="badge-row" id="readerMeta"></div>
             </div>
             <div class="toolbar">
+              <button id="toggleTranslationBtn" aria-pressed="false">显示译文</button>
               <select id="quizMode">
                 <option value="mixed">综合拆解</option>
                 <option value="reading">阅读题</option>
                 <option value="cloze">选词填空</option>
                 <option value="initial">首字母填空</option>
               </select>
+              <select id="examQuestionType" aria-label="考试题型"></select>
               <button id="analyzeBtn">分析</button>
               <button class="primary" id="generateQuizBtn">生成题</button>
             </div>
           </div>
           <article class="reader-text" id="readerBody"></article>
+          <section class="translation-panel" id="translationPanel" hidden></section>
+          <details class="translation-editor">
+            <summary>编辑文章译文</summary>
+            <textarea id="articleTranslationInput" placeholder="在这里保存可靠的中文译文"></textarea>
+            <button id="saveTranslationBtn">保存译文</button>
+          </details>
         </section>
         <aside class="band">
           <h2>拆解</h2>
@@ -185,7 +194,13 @@
     </section>
 
     <section class="view" id="view-quiz">
-      <section class="band">
+      <div class="quiz-workspace">
+      <aside class="band quiz-source-panel">
+        <div class="band-head"><div><span class="eyebrow">Source passage</span><h2 id="quizSourceTitle">原文</h2></div><button id="quizTranslationBtn">显示译文</button></div>
+        <article class="quiz-source-text" id="quizSourceText"></article>
+        <section class="translation-panel compact" id="quizTranslationPanel" hidden></section>
+      </aside>
+      <section class="band quiz-question-panel">
         <div class="band-head">
           <h2>题目</h2>
           <div class="toolbar">
@@ -195,6 +210,7 @@
         </div>
         <div class="list quiz-list" id="quizList"></div>
       </section>
+      </div>
     </section>
 
     <section class="view" id="view-cards">

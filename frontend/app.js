@@ -17,6 +17,9 @@ const state = {
   lexiconResults: [],
   selectedLexicalItem: null,
   lexiconFilter: "all",
+  progress: { xp: 0, level: 1, level_xp: 0, streak: 0 },
+  examTypes: [],
+  showTranslation: false,
   selectedArticle: null,
   selectedPoolArticleId: null,
   selectedMistakeId: null,
@@ -88,11 +91,20 @@ function sentenceFor(text, word) {
   return (found || sentences[0] || "").trim();
 }
 
+function searchableEnglish(text, clickable = true) {
+  return String(text || "").split(/(\b[A-Za-z][A-Za-z'-]*\b)/g).map(token => {
+    if (!/^[A-Za-z][A-Za-z'-]*$/.test(token)) return escapeHtml(token).replace(/\n/g, "<br>");
+    return clickable ? `<span class="reader-word universal-word" data-word="${escapeHtml(token)}">${escapeHtml(token)}</span>` : escapeHtml(token);
+  }).join("");
+}
+
 function renderStats() {
   $("#statArticles").textContent = state.articles.length;
   $("#statCards").textContent = state.cards.length;
   $("#statQuizzes").textContent = state.quizzes.length;
   $("#statMistakes").textContent = state.mistakes.filter(item => !item.solved).length;
+  $("#progressLevel").textContent = `Lv.${state.progress.level || 1}`;
+  $("#progressXp").textContent = `${state.progress.level_xp || 0}/100 XP · ${state.progress.streak || 0} 天`;
 }
 
 function renderDashboard() {
@@ -148,12 +160,14 @@ function renderArticles() {
           <h2>${escapeHtml(selected.title)}</h2>
         </div>
         <div class="toolbar">
+          <button data-toggle-translation="true">${state.showTranslation ? "隐藏译文" : "显示译文"}</button>
           <button data-open-article="${selected.id}">进入阅读台</button>
           <button class="primary" data-quiz-article="${selected.id}">生成题</button>
         </div>
       </div>
       ${selected.source_topics?.length ? `<div class="source-topics">${selected.source_topics.map(topic => badge(topic)).join("")}</div>` : ""}
-      <article class="article-detail-body">${paragraphs.map(paragraph => `<p>${escapeHtml(paragraph)}</p>`).join("")}</article>
+      <article class="article-detail-body">${paragraphs.map(paragraph => `<p>${searchableEnglish(paragraph)}</p>`).join("")}</article>
+      ${state.showTranslation ? `<section class="translation-panel">${selected.translation_zh ? selected.translation_zh.split(/\n\s*\n/).map(paragraph => `<p>${escapeHtml(paragraph)}</p>`).join("") : `<p class="muted">这篇文章还没有可靠译文。</p>`}</section>` : ""}
       ${selected.source_url ? `<a class="source-link" href="${escapeHtml(selected.source_url)}" target="_blank" rel="noreferrer">打开原始来源</a>` : ""}
     `;
   }
@@ -183,14 +197,24 @@ function renderReader() {
   }
   $("#readerTitle").textContent = article.title;
   $("#readerMeta").innerHTML = `${badge(article.level, "teal")}${badge(article.topic || "general")}${badge(article.source || "manual")}`;
-  const tokens = article.body.split(/(\b[A-Za-z][A-Za-z'-]*\b)/g);
-  $("#readerBody").innerHTML = tokens.map(token => {
-    if (/^[A-Za-z][A-Za-z'-]*$/.test(token)) {
-      return `<span class="reader-word" data-word="${escapeHtml(token)}">${escapeHtml(token)}</span>`;
-    }
-    return escapeHtml(token).replace(/\n/g, "<br>");
-  }).join("");
+  $("#readerBody").innerHTML = searchableEnglish(article.body);
+  $("#articleTranslationInput").value = article.translation_zh || "";
+  const translationPanel = $("#translationPanel");
+  translationPanel.hidden = !state.showTranslation;
+  translationPanel.innerHTML = article.translation_zh ? article.translation_zh.split(/\n\s*\n/).map(paragraph => `<p>${escapeHtml(paragraph)}</p>`).join("") : `<p class="muted">这篇文章还没有可靠译文，可以在下方补充。</p>`;
+  $("#toggleTranslationBtn").textContent = state.showTranslation ? "隐藏译文" : "显示译文";
+  $("#toggleTranslationBtn").setAttribute("aria-pressed", String(state.showTranslation));
   renderAnalysis();
+}
+
+function renderQuizSource() {
+  const article = state.selectedArticle;
+  $("#quizSourceTitle").textContent = article?.title || "原文";
+  $("#quizSourceText").innerHTML = article ? searchableEnglish(article.body) : `<p class="muted">先从文章池选择文章。</p>`;
+  const translation = $("#quizTranslationPanel");
+  translation.hidden = !state.showTranslation;
+  translation.innerHTML = article?.translation_zh ? article.translation_zh.split(/\n\s*\n/).map(value => `<p>${escapeHtml(value)}</p>`).join("") : `<p class="muted">暂无可靠译文。</p>`;
+  $("#quizTranslationBtn").textContent = state.showTranslation ? "隐藏译文" : "显示译文";
 }
 
 function renderAnalysis() {
@@ -465,12 +489,12 @@ function renderQuizzes() {
         ${badge(quiz.type)}
         ${badge(quiz.note || "")}
       </div>
-      <h3>${index + 1}. ${escapeHtml(quiz.prompt)}</h3>
+      <h3>${index + 1}. ${searchableEnglish(quiz.prompt)}</h3>
       ${(quiz.options || []).length ? `
         <div class="options">
           ${quiz.options.map(option => {
             const answerClass = feedback && option === quiz.answer ? "correct" : feedback && option === feedback.userAnswer && !feedback.correct ? "wrong" : "";
-            return `<button class="option ${answerClass}" data-answer-quiz="${quiz.id}" data-answer="${escapeHtml(option)}">${escapeHtml(option)}</button>`;
+            return `<button class="option ${answerClass}" data-answer-quiz="${quiz.id}" data-answer="${escapeHtml(option)}">${searchableEnglish(option, false)}</button>`;
           }).join("")}
         </div>
       ` : `
@@ -581,9 +605,17 @@ function renderAll() {
   renderArticles();
   renderReader();
   renderQuizzes();
+  renderQuizSource();
   renderCards();
   renderMistakes();
   renderLexicon();
+}
+
+function renderExamTypes() {
+  const select = $("#examQuestionType");
+  const previous = select.value;
+  select.innerHTML = `<option value="">全部对应题型</option>${state.examTypes.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join("")}`;
+  if (state.examTypes.some(item => item.id === previous)) select.value = previous;
 }
 
 async function loadHealth() {
@@ -591,6 +623,17 @@ async function loadHealth() {
   $("#serverStatus").textContent = "后端已连接";
   $("#serverStatus").classList.add("ok");
   return data;
+}
+
+async function loadProgress() {
+  const data = await api("/api/progress");
+  state.progress = data.progress;
+}
+
+async function loadExamTypes() {
+  const data = await api(`/api/exam-types?style=${encodeURIComponent(state.style)}`);
+  state.examTypes = data.types || [];
+  renderExamTypes();
 }
 
 async function loadArticles(q = "") {
@@ -642,7 +685,7 @@ async function generateQuizzes(id = state.selectedArticle?.id) {
   if (!id) return toast("先选文章");
   const data = await api(`/api/articles/${id}/quizzes`, {
     method: "POST",
-    body: JSON.stringify({ mode: $("#quizMode").value, style: state.style }),
+    body: JSON.stringify({ mode: $("#quizMode").value, style: state.style, question_type: $("#examQuestionType").value }),
   });
   state.quizzes = data.quizzes || [];
   setView("quiz");
@@ -666,12 +709,28 @@ async function submitAnswer(quizId, answer, button = null) {
     evidence: data.evidence || quiz.evidence,
   });
   state.answerFeedback[quizId] = { ...data, explanation, userAnswer: answer };
+  if (data.progress) state.progress = data.progress;
   await loadMistakes();
   renderQuizzes();
   renderMistakes();
   renderStats();
   renderDashboard();
-  toast(data.correct ? "答对了" : `错了：${data.answer}`);
+  const rewardText = data.points ? `，+${data.points} XP` : "（本题积分已结算）";
+  toast(data.correct ? `答对了${rewardText}` : `错了：${data.answer}${rewardText}`);
+}
+
+async function saveTranslation() {
+  if (!state.selectedArticle) return toast("先选文章");
+  const data = await api(`/api/articles/${state.selectedArticle.id}/translation`, {
+    method: "POST",
+    body: JSON.stringify({ translation_zh: $("#articleTranslationInput").value.trim() }),
+  });
+  state.selectedArticle = data.article;
+  const poolItem = state.articles.find(item => item.id === data.article.id);
+  if (poolItem) Object.assign(poolItem, data.article);
+  renderReader();
+  renderArticles();
+  toast("译文已保存");
 }
 
 async function saveArticle() {
@@ -722,9 +781,11 @@ async function refreshFeeds() {
 }
 
 async function toggleMistake(id) {
-  await api(`/api/mistakes/${id}/solve`, { method: "POST", body: "{}" });
+  const data = await api(`/api/mistakes/${id}/solve`, { method: "POST", body: "{}" });
+  if (data.progress) state.progress = data.progress;
   await loadMistakes();
   renderAll();
+  if (data.points) toast(`错题复盘完成，+${data.points} XP`);
 }
 
 async function generateSimilar(mistakeId) {
@@ -746,6 +807,13 @@ document.addEventListener("click", async event => {
     if (button.dataset.lexiconFilter) renderLexicon();
     if (button.dataset.viewJump) setView(button.dataset.viewJump);
     if (button.id === "refreshAllBtn") await boot();
+    if (button.id === "toggleTranslationBtn" || button.id === "quizTranslationBtn" || button.dataset.toggleTranslation) {
+      state.showTranslation = !state.showTranslation;
+      renderReader();
+      renderArticles();
+      renderQuizSource();
+    }
+    if (button.id === "saveTranslationBtn") await saveTranslation();
     if (button.id === "searchArticlesBtn") {
       await loadArticles($("#articleSearch").value.trim());
       renderAll();
@@ -829,10 +897,19 @@ document.addEventListener("click", event => {
   if (!event.target.closest(".global-search-wrap")) $("#quickLexiconResults").hidden = true;
 });
 
+document.addEventListener("dblclick", event => {
+  if (event.target.closest("input, textarea, select, button")) return;
+  const selected = window.getSelection()?.toString().trim().replace(/\s+/g, " ") || "";
+  if (!/^[A-Za-z][A-Za-z' -]{0,79}$/.test(selected) || selected.split(" ").length > 6) return;
+  $("#globalLexiconSearch").value = selected;
+  searchLexicon(selected, { quick: true }).catch(error => toast(error.message));
+  $("#globalLexiconSearch").focus();
+});
+
 $("#globalStyle").addEventListener("change", async event => {
   state.style = event.target.value;
   localStorage.setItem("lc-v2-style", state.style);
-  await Promise.all([loadArticles(), loadFeeds()]);
+  await Promise.all([loadArticles(), loadFeeds(), loadExamTypes()]);
   renderArticles();
   renderDashboard();
   toast(`文章池已切换为 ${state.style} 来源`);
@@ -873,7 +950,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 
 async function boot() {
   await loadHealth();
-  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), searchLexicon("", { open: false })]);
+  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadProgress(), loadExamTypes(), searchLexicon("", { open: false })]);
   if (!state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}`);
     state.selectedArticle = data.article;
