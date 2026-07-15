@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.7.0-alpha.4] - 2026-07-16
+
+### Added
+
+- Explicit RSS-summary and full-content states with visible word counts.
+- Prominent original-article links and an editor for supplementing a summary with full text.
+- Automatic upgrades when an RSS feed legally provides a longer full-content field.
+
+### Fixed
+
+- Short RSS summaries no longer appear to be truncated full articles.
+- Feed refresh can replace an existing summary with longer feed-provided content.
+
 ## [0.7.0-alpha.3] - 2026-07-16
 
 ### Fixed
