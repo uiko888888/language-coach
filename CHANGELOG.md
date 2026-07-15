@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.7.0-alpha.3] - 2026-07-16
+
+### Fixed
+
+- Environmental-protection collections no longer treat generic uses such as “political environment” as ecological content.
+
 ## [0.7.0-alpha.2] - 2026-07-16
 
 ### Added
