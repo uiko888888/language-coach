@@ -36,6 +36,21 @@ class LearningFlowTests(unittest.TestCase):
         self.assertEqual(progress["correct_count"], 1)
         self.assertEqual(progress["streak"], 1)
 
+    def test_articles_receive_daily_recommendation_metadata(self):
+        articles = server.list_articles({"exam": ["IELTS"]})
+        self.assertTrue(articles)
+        self.assertIn("recommendation_score", articles[0])
+        self.assertTrue(articles[0]["recommended_today"])
+        self.assertTrue(articles[0]["recommendation_reasons"])
+
+    def test_article_topic_and_recommended_filters(self):
+        topic_items = server.list_articles({"exam": ["IELTS"], "topic": ["科技"]})
+        self.assertTrue(topic_items)
+        self.assertTrue(all("科技" in item["source_topics"] for item in topic_items))
+        recommended = server.list_articles({"exam": ["IELTS"], "recommended": ["1"]})
+        self.assertLessEqual(len(recommended), 3)
+        self.assertTrue(all(item["recommended_today"] for item in recommended))
+
 
 if __name__ == "__main__":
     unittest.main()
