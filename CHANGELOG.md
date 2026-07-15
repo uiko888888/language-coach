@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.7.0-alpha.5] - 2026-07-16
+
+### Added
+
+- Installable Chrome/Edge Manifest V3 extension for webpage selection lookup, translation, and clipping.
+- Token-protected local browser bridge with restricted extension CORS support.
+- DeepL paragraph translation with SQLite caching and explicit unconfigured-provider errors.
+- Browser clip history preserving source text, translation, surrounding context, page title, and URL.
+- One-click saving from a webpage selection into the Language Coach vocabulary book.
+- Local app panel for copying the extension token and checking translation-provider status.
+
+### Security
+
+- Ordinary webpages cannot write to browser bridge endpoints without the generated local token.
+- Translation credentials remain in the backend environment and are never stored in the extension.
+
 ## [0.7.0-alpha.4] - 2026-07-16
 
 ### Added

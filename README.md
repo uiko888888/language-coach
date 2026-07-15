@@ -39,6 +39,26 @@ http://127.0.0.1:8765
 - 考试题型：IELTS、TOEFL、专四、专八、GRE、GMAT 各自显示对应题型，做题时左侧固定保留原文。
 - 学习进度：首次答题和首次完成错题复盘获得 XP，并记录等级与连续学习天数。
 - 全文查词：阅读文本可直接点词，其他英文内容可双击单词或选中短语进入全局查询。
+- 浏览器插件：网页划词查词、选段翻译，并将原文、译文、上下文、标题和地址保存到本地生词本。
+
+## 浏览器插件
+
+插件源码位于：
+
+```text
+browser-extension
+```
+
+在 Edge 的 `edge://extensions` 或 Chrome 的 `chrome://extensions` 中开启开发人员模式，选择“加载解压缩的扩展”。然后进入 Language Coach 的“生词本”，复制本地连接令牌，并在扩展设置中保存和测试连接。
+
+查词与保存不需要第三方密钥。启用选段翻译时，在启动服务前配置 DeepL：
+
+```powershell
+$env:DEEPL_API_KEY="your-deepl-api-key"
+python .\backend\server.py 8766
+```
+
+翻译结果按文本、语言和服务商缓存在本地 SQLite 中。API Key 只存在于后端进程环境，不会写入扩展或 Git。
 
 ## 词典数据
 
