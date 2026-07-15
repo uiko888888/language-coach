@@ -49,7 +49,17 @@ http://127.0.0.1:8765
 browser-extension
 ```
 
-在 Edge 的 `edge://extensions` 或 Chrome 的 `chrome://extensions` 中开启开发人员模式，选择“加载解压缩的扩展”。然后进入 Language Coach 的“生词本”，复制本地连接令牌，并在扩展设置中保存和测试连接。
+构建并加载插件：
+
+```powershell
+cd browser-extension
+pnpm install
+pnpm build:edge
+```
+
+在 Edge 的 `edge://extensions` 或 Chrome 的 `chrome://extensions` 中开启开发人员模式，选择“加载解压缩的扩展”，指向 `browser-extension/.output/edge-mv3`。然后进入 Language Coach 的“生词本”，复制本地连接令牌，并在扩展设置中保存和测试连接。
+
+插件使用 WXT + TypeScript，并使用 Defuddle 提取网页主要正文。两者均采用 MIT License。陪读蛙（Read Frog）仅用于架构评估，没有复制其 GPL-3.0 业务源码，具体边界见 `browser-extension/THIRD_PARTY_NOTICES.md`。
 
 查词与保存不需要第三方密钥。启用选段翻译时，在启动服务前配置 DeepL：
 

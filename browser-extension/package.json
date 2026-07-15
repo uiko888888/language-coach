@@ -1,0 +1,21 @@
+{
+  "name": "@language-coach/browser-extension",
+  "version": "0.7.0-alpha.6",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "build:edge": "wxt build -b edge",
+    "typecheck": "tsc --noEmit",
+    "zip": "wxt zip"
+  },
+  "dependencies": {
+    "defuddle": "^0.19.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "wxt": "^0.20.27"
+  },
+  "packageManager": "pnpm@11.7.0"
+}

@@ -3,6 +3,10 @@ data/*.sqlite-*
 data/*.log
 backend/__pycache__/
 artifacts/
+browser-extension/node_modules/
+browser-extension/.wxt/
+browser-extension/.output/
+/.wxt/
 *.py[cod]
 .DS_Store
 Thumbs.db
