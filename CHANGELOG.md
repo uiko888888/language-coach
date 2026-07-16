@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [Unreleased]
+
+### Documentation
+
+- Defined Language Coach as a dynamic-profile AI coach spanning interest-led learning and IELTS/TOEFL preparation.
+- Documented separate onboarding paths for users with an existing score and users without one.
+- Established subscribable subtitle, interview, news, novel, and blog content categories.
+- Specified the reusable material pipeline from source validation through vocabulary extraction, exercises, review, and profile updates.
+- Added version scopes and acceptance criteria for `v0.7.0`, `v0.8.0`, `v0.9.0`, and `v1.0.0`.
+- Recorded durable product decisions in `PRODUCT.md`, `ROADMAP.md`, and `DECISIONS.md`.
+
 ## [0.7.0-alpha.6] - 2026-07-16
 
 ### Added
