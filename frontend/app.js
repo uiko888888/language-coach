@@ -78,7 +78,8 @@ function toast(message) {
   setTimeout(() => el.classList.remove("show"), 1500);
 }
 
-function setView(name) {
+function setView(name, { pushHistory = true } = {}) {
+  const currentView = document.querySelector(".view.active")?.id?.replace("view-", "") || "dashboard";
   document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.id === `view-${name}`));
   document.querySelectorAll(".nav-item").forEach(item => {
     const matchesView = item.dataset.view === name;
@@ -87,6 +88,12 @@ function setView(name) {
   });
   $("#viewTitle").textContent = titles[name]?.[0] || "Language Coach";
   $("#viewSubtitle").textContent = titles[name]?.[1] || "";
+  if (pushHistory && currentView !== name) {
+    const params = new URLSearchParams(window.location.search);
+    params.set("view", name);
+    if (name !== "lexicon") params.delete("q");
+    window.history.pushState({ view: name }, "", `${window.location.pathname}?${params.toString()}`);
+  }
 }
 
 function badge(text, kind = "") {
@@ -472,7 +479,7 @@ function renderLexicon() {
   renderLexicalDetail(state.selectedLexicalItem);
 }
 
-async function searchLexicon(query, { open = true, quick = false } = {}) {
+async function searchLexicon(query, { open = true, quick = false, history = true } = {}) {
   const value = String(query || "").trim();
   const data = await api(`/api/lexicon/search?q=${encodeURIComponent(value)}`);
   if (quick) {
@@ -483,16 +490,20 @@ async function searchLexicon(query, { open = true, quick = false } = {}) {
   state.selectedLexicalItem = state.lexiconResults[0] || null;
   $("#lexiconSearch").value = value;
   $("#globalLexiconSearch").value = value;
-  if (open) setView("lexicon");
+  if (open) setView("lexicon", { pushHistory: false });
+  if (!quick && history) {
+    const params = new URLSearchParams(window.location.search);
+    const currentQuery = params.get("q") || "";
+    if (params.get("view") !== "lexicon" || currentQuery !== value) {
+      params.set("view", "lexicon");
+      value ? params.set("q", value) : params.delete("q");
+      window.history.pushState({ view: "lexicon", q: value }, "", `${window.location.pathname}?${params.toString()}`);
+    }
+  }
   renderLexicon();
-  const first = state.lexiconResults[0];
-  if (
-    first?.type === "wordnet"
-    && !first.meaning_zh
-    && state.bridge?.translation?.verified === true
-    && !state.wordnetAutoTranslationFailed
-  ) {
-    translateWordNetEntry(first, { silent: true }).catch(error => {
+  const wordnet = state.lexiconResults.find(item => item.type === "wordnet" && !item.meaning_zh);
+  if (wordnet && state.bridge?.translation?.verified === true && !state.wordnetAutoTranslationFailed) {
+    await translateWordNetEntry(wordnet, { silent: true }).catch(error => {
       state.wordnetAutoTranslationFailed = true;
       toast(error.message);
     });
@@ -880,14 +891,14 @@ async function analyzeArticle() {
   toast("分析完成");
 }
 
-async function generateQuizzes(id = state.selectedArticle?.id) {
+async function generateQuizzes(id = state.selectedArticle?.id, { open = true } = {}) {
   if (!id) return toast("先选文章");
   const data = await api(`/api/articles/${id}/quizzes`, {
     method: "POST",
     body: JSON.stringify({ mode: $("#quizMode").value, style: state.style, question_type: $("#examQuestionType").value }),
   });
   state.quizzes = data.quizzes || [];
-  setView("quiz");
+  if (open) setView("quiz");
   renderAll();
   toast("题目已生成");
 }
@@ -1097,8 +1108,19 @@ document.addEventListener("click", async event => {
     if (button.dataset.lexiconFilter) state.lexiconFilter = button.dataset.lexiconFilter;
     if (button.dataset.learningMode) await setLearningMode(button.dataset.learningMode);
     if (button.dataset.view) setView(button.dataset.view);
+    if (button.id === "backBtn") {
+      if (window.history.length > 1) window.history.back();
+      else setView("dashboard");
+      return;
+    }
     if (button.dataset.lexiconFilter) renderLexicon();
     if (button.dataset.viewJump) setView(button.dataset.viewJump);
+    if (button.dataset.view === "quiz") {
+      await loadQuizzes();
+      if (!state.quizzes.length && state.selectedArticle) await generateQuizzes(state.selectedArticle.id, { open: false });
+      renderQuizzes();
+      renderQuizSource();
+    }
     if (button.id === "refreshAllBtn") await boot();
     if (button.id === "modePrimaryAction") {
       const first = state.today.lanes?.[0]?.article;
@@ -1279,17 +1301,20 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 
 async function boot() {
   await loadHealth();
-  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadExamTypes(), loadArticleTopics(), loadArticleContentTypes(), loadBridgeConfig(), searchLexicon("", { open: false })]);
+  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadExamTypes(), loadArticleTopics(), loadArticleContentTypes(), loadBridgeConfig(), searchLexicon("", { open: false, history: false })]);
   if (!state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);
     state.selectedArticle = data.article;
     state.analysis = data.analysis;
   }
   await loadQuizzes();
+  if (!state.quizzes.length && state.selectedArticle) {
+    await generateQuizzes(state.selectedArticle.id, { open: false });
+  }
   renderAll();
   const startupParams = new URLSearchParams(window.location.search);
   if (startupParams.get("view") === "lexicon" || startupParams.get("q")) {
-    await searchLexicon(startupParams.get("q") || "", { open: true });
+    await searchLexicon(startupParams.get("q") || "", { open: true, history: false });
   }
 }
 
@@ -1299,4 +1324,15 @@ $("#newArticleBody").value = sampleImport;
 boot().catch(error => {
   $("#serverStatus").textContent = "后端未连接";
   toast(error.message);
+});
+
+window.addEventListener("popstate", async () => {
+  const params = new URLSearchParams(window.location.search);
+  const view = params.get("view") || "dashboard";
+  if (view === "lexicon") {
+    await searchLexicon(params.get("q") || "", { open: false, history: false });
+  } else {
+    setView(view, { pushHistory: false });
+    renderAll();
+  }
 });

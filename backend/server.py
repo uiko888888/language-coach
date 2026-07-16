@@ -817,9 +817,11 @@ def read_json(handler: BaseHTTPRequestHandler) -> dict:
     return json.loads(raw)
 
 
-def text_response(handler: BaseHTTPRequestHandler, content: bytes, content_type: str, status: int = 200) -> None:
+def text_response(handler: BaseHTTPRequestHandler, content: bytes, content_type: str, status: int = 200, cache_control: str = "") -> None:
     handler.send_response(status)
     handler.send_header("Content-Type", content_type)
+    if cache_control:
+        handler.send_header("Cache-Control", cache_control)
     handler.send_header("Content-Length", str(len(content)))
     handler.end_headers()
     handler.wfile.write(content)
@@ -2875,7 +2877,7 @@ class App(BaseHTTPRequestHandler):
         if not file_path.exists() or not file_path.is_file():
             return json_response(self, {"error": "Not found"}, 404)
         content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
-        text_response(self, file_path.read_bytes(), content_type)
+        text_response(self, file_path.read_bytes(), content_type, cache_control="no-store, max-age=0")
 
 
 def main() -> None:

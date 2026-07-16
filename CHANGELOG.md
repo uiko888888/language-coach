@@ -8,6 +8,19 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.7.0-alpha.14] - 2026-07-17
+
+### Fixed
+
+- WordNet translation now finds WordNet results even when another dictionary result appears first, and waits for automatic Chinese translation before showing the completed lookup.
+- Added browser history synchronization, a visible back action, and route restoration for lexicon searches.
+- Prevented stale frontend assets from hiding the latest fixes with development no-cache headers.
+- The exercise center reloads the current article's questions and generates a starter set when none exists.
+
+### Changed
+
+- Moved article import and collections to `v0.7.0-alpha.15`; Kaikki/Tatoeba/wordfreq integration moves to `v0.7.0-alpha.16`.
+
 ## [0.7.0-alpha.13] - 2026-07-17
 
 ### Added
