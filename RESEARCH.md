@@ -1,0 +1,84 @@
+# Related Project Research
+
+调研日期：2026-07-16。星标为调研时的近似值，后续会变化。调研用于提取产品机制，不代表复制实现。
+
+## 值得借鉴的项目
+
+### Read Frog
+
+- 仓库：https://github.com/mengxi-ream/read-frog
+- 约 8.5k stars，GPL-3.0
+- 可借鉴：选词工具栏、上下文翻译、自定义 AI 动作、多模型适配、请求批处理与失败重试。
+- 边界：只借鉴产品与架构思想，不复制 GPL-3.0 业务代码。
+
+### LUTE
+
+- 仓库：https://github.com/LuteOrg/lute-v3
+- 约 1.5k stars，MIT
+- 可借鉴：以文本为课程、词汇熟悉状态、已知词覆盖率与阅读材料难度联动。
+
+### asbplayer
+
+- 仓库：https://github.com/asbplayer/asbplayer
+- 约 1.3k stars，MIT
+- 可借鉴：字幕列表定位、自动暂停、跳过无字幕区间、播放速度控制、字幕偏移、句子采集、词汇状态高亮和理解率。
+- 适用：Language Coach 的字幕导入、逐句听力和流媒体学习工作台。
+
+### LinguaCafe
+
+- 仓库：https://github.com/simjanos-dev/LinguaCafe
+- 约 1.4k stars，GPL-3.0
+- 可借鉴：阅读、即时查词、词汇状态和后续复习的连续流程。
+- 边界：不复制 GPL-3.0 实现。
+
+### FSRS
+
+- 仓库：https://github.com/open-spaced-repetition/free-spaced-repetition-scheduler
+- 约 690 stars，MIT
+- 可借鉴：根据记忆难度、稳定性和可提取性调度词汇、词块、错题和听力句子复习。
+
+### IELTS Atlas
+
+- 仓库：https://github.com/sallowayma-git/IELTS-practice
+- 约 500 stars，GPL-3.0
+- 可借鉴：题库导入、单篇与套题、练习记录、错题雷达、本地备份和每日总览。
+- 风险：项目明确提示题源、音频和 PDF 存在第三方版权风险。不得复用其题库或受保护素材。
+
+## 有价值但不直接采用的模式
+
+部分 AI 考试项目使用以下职责拆分：
+
+```text
+Planner -> Generator -> Validator -> Corrector -> Analytics
+```
+
+Language Coach 可采用相同的质量控制思想，但用自己的数据结构和实现：
+
+```text
+素材分析器
+-> 练习规划器
+-> 题目生成器
+-> 答案与证据校验器
+-> 错题讲解器
+-> 画像更新器
+-> 复习调度器
+```
+
+## 产品机会
+
+现有工具通常只覆盖阅读、字幕、复习或题库中的一个环节。Language Coach 的差异化机会是：
+
+- 兴趣模式和备考模式共享动态画像。
+- 字幕、访谈、新闻、小说和博客进入同一素材图谱。
+- 同一素材可以生成阅读、听力、词汇、复述和考试训练。
+- 每一道模拟题保留来源、证据、能力标签和生成版本。
+- 用户投入用 XP 表示，真实能力用独立指标表示。
+- 推荐说明“为什么适合现在的你”，并允许用户纠正。
+
+## 采用原则
+
+1. 优先采用许可证清晰的通用基础和算法。
+2. GPL/AGPL 项目只做研究，除非整个衍生模块接受相同许可并经过明确决策。
+3. 不导入来源不明的真题、音频、字幕、PDF 或商业词典数据。
+4. 借鉴考试结构与教学机制，不复制具体题目表达。
+5. 引入第三方依赖前记录许可证、维护状态、数据流和替换方案。

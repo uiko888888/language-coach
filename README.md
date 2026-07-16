@@ -154,7 +154,7 @@ pnpm build:edge
 - 预发布版本：`vMAJOR.MINOR.PATCH-alpha.N`
 - 提交信息：遵循 Conventional Commits，例如 `feat:`、`fix:`、`docs:`、`test:`、`chore:`
 
-版本历史见 [`CHANGELOG.md`](CHANGELOG.md)，当前版本见 [`VERSION`](VERSION)。产品定位、路线图和关键决定分别见 [`PRODUCT.md`](PRODUCT.md)、[`ROADMAP.md`](ROADMAP.md) 和 [`DECISIONS.md`](DECISIONS.md)。
+版本历史见 [`CHANGELOG.md`](CHANGELOG.md)，当前版本见 [`VERSION`](VERSION)。产品定位、路线图、关键决定和相关项目调研分别见 [`PRODUCT.md`](PRODUCT.md)、[`ROADMAP.md`](ROADMAP.md)、[`DECISIONS.md`](DECISIONS.md) 和 [`RESEARCH.md`](RESEARCH.md)。
 
 ## 路线图
 

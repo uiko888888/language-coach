@@ -14,6 +14,11 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Specified the reusable material pipeline from source validation through vocabulary extraction, exercises, review, and profile updates.
 - Added version scopes and acceptance criteria for `v0.7.0`, `v0.8.0`, `v0.9.0`, and `v1.0.0`.
 - Recorded durable product decisions in `PRODUCT.md`, `ROADMAP.md`, and `DECISIONS.md`.
+- Defined selectable score entry with at least one required total or section score.
+- Added Today content as the first subscription surface and deferred browser nudges to explicit opt-in.
+- Classified streaming material by format and duration.
+- Added evidence-based exam-fit and question-rejection criteria that prohibit copied or deliberately extreme questions.
+- Documented open-source research, reusable ideas, license boundaries, and copyrighted-content risks in `RESEARCH.md`.
 
 ## [0.7.0-alpha.6] - 2026-07-16
 
