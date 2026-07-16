@@ -4,6 +4,7 @@ data/*.log
 .env.local
 backend/__pycache__/
 artifacts/
+data-sources/
 browser-extension/node_modules/
 browser-extension/.wxt/
 browser-extension/.output/

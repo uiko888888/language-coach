@@ -8,6 +8,19 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.7.0-alpha.12] - 2026-07-17
+
+### Added
+
+- Added a repeatable Open English WordNet 2025 importer with checksum, license, attribution, version, and source URL metadata.
+- Added local WordNet synsets, senses, pronunciations, examples, semantic relations, and indexes to SQLite.
+- Added WordNet-backed query results with English definitions, examples, synonyms, semantic relations, personal contexts, translation, and Eudic lookup.
+- Added third-party data attribution documentation and importer tests.
+
+### Changed
+
+- Prioritized the open dictionary foundation before article import and collections; those tasks move to `v0.7.0-alpha.13`.
+
 ## [0.7.0-alpha.11] - 2026-07-17
 
 ### Added

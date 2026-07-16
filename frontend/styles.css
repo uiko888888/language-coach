@@ -864,6 +864,9 @@ label {
 .example-item { padding: 11px 0; border-top: 1px solid var(--line); }
 .example-item:first-child { padding-top: 0; border-top: 0; }
 .example-item p { margin: 0; line-height: 1.65; }
+.sense-list { display: grid; gap: 4px; }
+.sense-list article strong { display: block; margin-bottom: 6px; color: var(--muted); font-size: 12px; }
+.source-note { margin-top: 18px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .example-en { font-family: Georgia, "Times New Roman", serif; }
 .example-zh { margin-top: 5px !important; color: var(--muted); font-size: 13px; }
 .query-highlight { padding: 0 2px; background: #fff0c9; color: #6f470f; font-weight: 800; }

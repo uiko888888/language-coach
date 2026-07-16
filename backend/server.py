@@ -483,6 +483,59 @@ def unique_cards_payload(conn: sqlite3.Connection) -> list[dict]:
     return unique
 
 
+def ensure_wordnet_schema(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS dictionary_sources (
+          source_key TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          version TEXT NOT NULL,
+          license TEXT NOT NULL,
+          attribution TEXT NOT NULL,
+          source_url TEXT NOT NULL,
+          checksum TEXT NOT NULL,
+          imported_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS wordnet_synsets (
+          synset_id TEXT PRIMARY KEY,
+          pos TEXT NOT NULL,
+          definitions_json TEXT NOT NULL DEFAULT '[]',
+          examples_json TEXT NOT NULL DEFAULT '[]',
+          members_json TEXT NOT NULL DEFAULT '[]',
+          ili TEXT NOT NULL DEFAULT '',
+          source_key TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS wordnet_lemmas (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          lemma TEXT NOT NULL,
+          normalized TEXT NOT NULL,
+          pos TEXT NOT NULL,
+          synset_id TEXT NOT NULL,
+          sense_id TEXT NOT NULL,
+          pronunciations_json TEXT NOT NULL DEFAULT '[]',
+          source_key TEXT NOT NULL,
+          UNIQUE(normalized, pos, synset_id, sense_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS wordnet_relations (
+          synset_id TEXT NOT NULL,
+          relation_type TEXT NOT NULL,
+          target_synset_id TEXT NOT NULL,
+          source_key TEXT NOT NULL,
+          PRIMARY KEY (synset_id, relation_type, target_synset_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_wordnet_lemmas_normalized
+        ON wordnet_lemmas(normalized);
+
+        CREATE INDEX IF NOT EXISTS idx_wordnet_relations_source
+        ON wordnet_relations(synset_id, relation_type);
+        """
+    )
+
+
 def init_db() -> None:
     with db() as conn:
         conn.executescript(
@@ -650,6 +703,7 @@ def init_db() -> None:
             WHERE source_url != '';
             """
         )
+        ensure_wordnet_schema(conn)
         article_columns = {row[1] for row in conn.execute("PRAGMA table_info(articles)")}
         if "translation_zh" not in article_columns:
             conn.execute("ALTER TABLE articles ADD COLUMN translation_zh TEXT NOT NULL DEFAULT ''")
@@ -1715,6 +1769,153 @@ def related_term_translation(entries: list[dict], term: str) -> str:
     return ""
 
 
+WORDNET_POS_LABELS = {
+    "n": "noun", "v": "verb", "a": "adjective", "s": "adjective satellite", "r": "adverb",
+}
+
+WORDNET_RELATION_LABELS = {
+    "hypernym": "上位概念",
+    "hyponym": "下位概念",
+    "instance_hypernym": "上位实例",
+    "instance_hyponym": "下位实例",
+    "antonym": "反义关系",
+    "similar": "相似表达",
+    "also": "相关表达",
+    "entails": "蕴含动作",
+    "causes": "导致",
+    "derivation": "派生关系",
+}
+
+
+def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
+    normalized = re.sub(r"\s+", " ", term).strip().casefold()
+    if not normalized:
+        return []
+    with db() as conn:
+        rows = conn.execute(
+            """SELECT l.id, l.lemma, l.pos, l.synset_id, l.sense_id, l.pronunciations_json,
+                      s.definitions_json, s.examples_json, s.members_json, s.ili,
+                      d.name AS source_name, d.version AS source_version, d.license,
+                      d.attribution, d.source_url
+               FROM wordnet_lemmas l
+               JOIN wordnet_synsets s ON s.synset_id = l.synset_id
+               JOIN dictionary_sources d ON d.source_key = l.source_key
+               WHERE l.normalized = ?
+               ORDER BY l.pos, l.id LIMIT 80""",
+            (normalized,),
+        ).fetchall()
+        if not rows:
+            return []
+        synset_ids = list(dict.fromkeys(row["synset_id"] for row in rows))
+        placeholders = ",".join("?" for _ in synset_ids)
+        relation_rows = conn.execute(
+            f"""SELECT synset_id, relation_type, target_synset_id FROM wordnet_relations
+                WHERE synset_id IN ({placeholders})""",
+            synset_ids,
+        ).fetchall()
+        target_ids = list(dict.fromkeys(row["target_synset_id"] for row in relation_rows))
+        target_members: dict[str, list[str]] = {}
+        if target_ids:
+            target_placeholders = ",".join("?" for _ in target_ids)
+            targets = conn.execute(
+                f"SELECT synset_id, members_json FROM wordnet_synsets WHERE synset_id IN ({target_placeholders})",
+                target_ids,
+            ).fetchall()
+            target_members = {row["synset_id"]: json.loads(row["members_json"] or "[]") for row in targets}
+
+    relations_by_synset: dict[str, dict[str, list[str]]] = {}
+    for relation in relation_rows:
+        members = target_members.get(relation["target_synset_id"], [])
+        if not members:
+            continue
+        bucket = relations_by_synset.setdefault(relation["synset_id"], {})
+        bucket.setdefault(relation["relation_type"], []).extend(members)
+
+    learning = lexical_query_context(term)
+    grouped: dict[tuple[str, str], list[sqlite3.Row]] = {}
+    for row in rows:
+        grouped.setdefault((row["lemma"].casefold(), row["pos"]), []).append(row)
+
+    results = []
+    for (_, pos), sense_rows in list(grouped.items())[:limit]:
+        headword = sense_rows[0]["lemma"]
+        pronunciations = []
+        senses = []
+        synonyms = []
+        examples = []
+        semantic_relations: dict[str, list[str]] = {}
+        for row in sense_rows:
+            pronunciations.extend(json.loads(row["pronunciations_json"] or "[]"))
+            definitions = json.loads(row["definitions_json"] or "[]")
+            sense_examples = json.loads(row["examples_json"] or "[]")
+            members = json.loads(row["members_json"] or "[]")
+            synonyms.extend(member for member in members if member.casefold() != normalized)
+            examples.extend(sense_examples)
+            senses.append({
+                "synset_id": row["synset_id"],
+                "definitions": definitions,
+                "examples": sense_examples,
+                "synonyms": members,
+            })
+            for relation_type, members in relations_by_synset.get(row["synset_id"], {}).items():
+                semantic_relations.setdefault(relation_type, []).extend(members)
+
+        unique = lambda values: list(dict.fromkeys(value for value in values if value))
+        pronunciations = unique(pronunciations)
+        synonyms = unique(synonyms)
+        examples = unique(examples)
+        antonyms = unique(semantic_relations.get("antonym", []))
+        family = unique(
+            semantic_relations.get("hypernym", [])
+            + semantic_relations.get("hyponym", [])
+            + semantic_relations.get("derivation", [])
+        )
+        source = sense_rows[0]
+        results.append({
+            "type": "wordnet",
+            "id": sense_rows[0]["id"],
+            "score": 94,
+            "matched_by": "Open English WordNet",
+            "headword": headword,
+            "pos": WORDNET_POS_LABELS.get(pos, pos),
+            "ipa_uk": pronunciations[0] if pronunciations else "",
+            "ipa_us": pronunciations[0] if pronunciations else "",
+            "core_meaning": next((definition for sense in senses for definition in sense["definitions"]), ""),
+            "meaning_zh": learning["translation_zh"],
+            "level": "",
+            "register_label": "开放词典",
+            "origin": "",
+            "breakdown": "",
+            "forms": [],
+            "aliases": [],
+            "family": family[:24],
+            "collocations": [],
+            "synonyms": [{"term": value, "meaning_zh": ""} for value in synonyms[:32]],
+            "antonyms": [{"term": value, "meaning_zh": ""} for value in antonyms[:16]],
+            "examples": [{"text": value, "translation": ""} for value in examples[:16]],
+            "morphemes": [],
+            "senses": senses[:16],
+            "semantic_relations": [
+                {
+                    "type": relation_type,
+                    "label": WORDNET_RELATION_LABELS.get(relation_type, relation_type.replace("_", " ")),
+                    "terms": unique(values)[:20],
+                }
+                for relation_type, values in semantic_relations.items()
+                if values
+            ],
+            "saved": learning["saved"],
+            "card_status": learning["card_status"],
+            "contexts": learning["contexts"],
+            "source_name": source["source_name"],
+            "source_version": source["source_version"],
+            "license": source["license"],
+            "attribution": source["attribution"],
+            "source_url": source["source_url"],
+        })
+    return results
+
+
 def lexical_search(query: str, limit: int = 30) -> dict:
     raw = (query or "").strip()
     needle = raw.lower()
@@ -1769,8 +1970,13 @@ def lexical_search(query: str, limit: int = 30) -> dict:
         if score:
             results.append({"type": "morpheme", "score": score, "matched_by": matched_by, **morpheme})
 
+    wordnet_results = wordnet_lookup(raw) if raw else []
+    if wordnet_results:
+        exact_lexical_match = True
+        results.extend(wordnet_results)
+
     is_english_term = bool(re.fullmatch(r"[A-Za-z][A-Za-z' -]{0,79}", raw)) and len(raw.split()) <= 6
-    if is_english_term and (" " in raw or not exact_lexical_match):
+    if is_english_term and not exact_lexical_match:
         learning = lexical_query_context(raw)
         if not learning["translation_zh"]:
             learning["translation_zh"] = related_term_translation(entries, raw)

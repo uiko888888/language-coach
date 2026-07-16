@@ -296,13 +296,13 @@ async function renderLookup(word) {
   const context = state.selectedArticle ? sentenceFor(state.selectedArticle.body, clean) : "";
   const data = await api(`/api/lexicon/search?q=${encodeURIComponent(clean)}`);
   const queryItem = data.results?.find(item => item.type === "query" && item.term.toLowerCase() === clean) || null;
-  const info = data.results?.find(item => item.type === "entry") || null;
+  const info = data.results?.find(item => ["entry", "wordnet"].includes(item.type)) || null;
   const displayTerm = queryItem?.term || info?.headword || clean;
   const translation = state.lookupTranslations[clean] || queryItem?.translation_zh || info?.meaning_zh || "";
   const saved = queryItem?.saved || state.cards.some(card => card.term.toLowerCase() === clean);
   $("#lookupPanel").innerHTML = `
     <div class="lookup-heading"><div><h2>${escapeHtml(displayTerm)}</h2><span>${queryItem?.kind === "phrase" ? "短语" : info ? `${escapeHtml(info.ipa_uk)} · ${escapeHtml(info.pos)}` : "待补充词条"}</span></div><button data-speak="${escapeHtml(displayTerm)}" title="播放发音" aria-label="播放发音">▶</button></div>
-    <p>${escapeHtml(translation || "当前本地词库还没有完整释义，可以一键翻译并连同语境保存。")}</p>
+    <p>${escapeHtml(translation || info?.core_meaning || "当前本地词库还没有完整释义，可以一键翻译并连同语境保存。")}</p>
     ${info?.breakdown ? `<div class="morph-line">${escapeHtml(info.breakdown)}</div>` : ""}
     <div class="badge-row">${(info?.collocations || []).slice(0, 3).map(item => `<button data-search-query="${escapeHtml(termText(item))}">${escapeHtml(termText(item))}</button>`).join("")}</div>
     ${context ? `<div class="answer-box">${searchableEnglish(context)}</div>` : ""}
@@ -318,18 +318,19 @@ async function renderLookup(word) {
 }
 
 function lexicalLabel(item) {
-  return item.type === "entry" ? item.headword : item.type === "query" ? item.term : item.form;
+  return ["entry", "wordnet"].includes(item.type) ? item.headword : item.type === "query" ? item.term : item.form;
 }
 
 function lexicalSubtitle(item) {
   if (item.type === "entry") return `${item.pos} · ${item.meaning_zh}`;
+  if (item.type === "wordnet") return `${item.pos} · ${item.meaning_zh || item.core_meaning}`;
   if (item.type === "query") return `${item.kind === "phrase" ? "短语" : "单词"} · ${item.translation_zh || (item.saved ? "已在生词本" : "待补充释义")}`;
   return `${item.kind} · ${item.meaning_zh}`;
 }
 
 function matchesLexiconFilter(item) {
   if (state.lexiconFilter === "all") return true;
-  if (state.lexiconFilter === "family") return item.type === "entry";
+  if (state.lexiconFilter === "family") return ["entry", "wordnet"].includes(item.type);
   if (state.lexiconFilter === "morpheme") return item.type === "morpheme";
   return item.type === "morpheme" && item.kind === state.lexiconFilter;
 }
@@ -415,6 +416,26 @@ function renderLexicalDetail(item) {
         <section class="dictionary-section"><h3>你的真实语境</h3>${item.contexts?.length ? item.contexts.map(context => `<article class="example-item"><p class="example-en">${searchableEnglish(context.text)}</p><p class="example-zh">${escapeHtml(context.article_title || context.source)}</p>${context.article_id ? `<button data-open-article="${context.article_id}">回到原文</button>` : ""}</article>`).join("") : `<div class="empty-state">尚未在个人文章中找到这个表达。</div>`}</section>
         <section class="dictionary-section"><h3>下一步</h3><p>先确认当前语境含义，再保存整句。后续开放词典导入会补充高频义项、搭配、近义辨析和词源。</p></section>
       </div>
+    `;
+    return;
+  }
+  if (item.type === "wordnet") {
+    const translated = state.lookupTranslations[item.headword.toLowerCase()] || item.meaning_zh || "";
+    const relationSections = (item.semantic_relations || []).map(relation => `
+      <div class="phrase-relation"><span>${escapeHtml(relation.label)}</span><div class="term-grid">${termButtons(relation.terms, relation.type === "antonym" ? "antonym" : "family")}</div></div>
+    `).join("");
+    detail.innerHTML = `
+      <div class="dictionary-hero">
+        <div><div class="badge-row">${badge("WordNet", "teal")}${badge(item.pos)}${badge(item.source_version || "2025")}</div><h2>${escapeHtml(item.headword)}</h2><div class="pronunciation">${item.ipa_uk ? `<span>${escapeHtml(item.ipa_uk)}</span>` : ""}<button data-speak="${escapeHtml(item.headword)}" data-voice="en-US" title="播放发音">▶ US</button></div></div>
+        <div class="toolbar"><button class="primary" data-save-lookup="${escapeHtml(item.headword)}">${item.saved ? "更新生词语境" : "加入生词本"}</button>${translated ? "" : `<button data-translate-term="${escapeHtml(item.headword)}">翻译词义</button>`}<a class="button-link" href="https://dict.eudic.net/dicts/en/${encodeURIComponent(item.headword)}" target="_blank" rel="noreferrer">在欧路中查看</a></div>
+      </div>
+      <p class="core-definition">${escapeHtml(item.core_meaning || "")}</p>
+      ${translated ? `<p class="zh-definition">${escapeHtml(translated)}</p>` : `<p class="muted">WordNet 提供英文义项；中文确认可使用上方翻译，结果会缓存到本地。</p>`}
+      <div class="dictionary-columns">
+        <section class="dictionary-section"><h3>义项与英文例句</h3><div class="sense-list">${(item.senses || []).map((sense, index) => `<article class="example-item"><strong>Sense ${index + 1}</strong>${(sense.definitions || []).map(definition => `<p class="example-en">${escapeHtml(definition)}</p>`).join("")}${(sense.examples || []).map(example => `<p class="example-en">${searchableEnglish(example)}</p>`).join("")}</article>`).join("") || `<div class="empty-state">暂无义项</div>`}</div></section>
+        <section class="dictionary-section"><h3>语义关系</h3>${relationSections || `<div class="empty-state">暂无关系数据</div>`}<p class="source-note">来源：${escapeHtml(item.source_name || "Open English WordNet")} · ${escapeHtml(item.license || "CC BY 4.0")}</p></section>
+      </div>
+      ${item.contexts?.length ? `<section class="dictionary-section"><h3>你的真实语境</h3>${item.contexts.map(context => `<article class="example-item"><p class="example-en">${searchableEnglish(context.text)}</p><p class="example-zh">${escapeHtml(context.article_title || context.source)}</p>${context.article_id ? `<button data-open-article="${context.article_id}">回到原文</button>` : ""}</article>`).join("")}</section>` : ""}
     `;
     return;
   }
