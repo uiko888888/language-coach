@@ -749,8 +749,9 @@ function renderExamTypes() {
   const practiceSelect = $("#quizPracticeType");
   if (practiceSelect) {
     const practicePrevious = practiceSelect.value;
-    practiceSelect.innerHTML = `<option value="">全部题型</option>${state.examTypes.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join("")}`;
+    practiceSelect.innerHTML = `<option value="">选择专项题型</option>${state.examTypes.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join("")}`;
     if (state.examTypes.some(item => item.id === practicePrevious)) practiceSelect.value = practicePrevious;
+    else if (state.examTypes[0]) practiceSelect.value = state.examTypes[0].id;
   }
 }
 

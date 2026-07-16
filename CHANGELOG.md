@@ -8,6 +8,23 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.7.0-alpha.17] - 2026-07-17
+
+### Added
+
+- Added an exam-question research policy covering official IELTS, TOEFL, CET, and postgraduate entrance structures and open dataset candidates.
+- Added a dedicated IELTS True / False / Not Given template with the official answer format and evidence field.
+- Added TOEFL inference as a separate selectable question type.
+
+### Removed
+
+- Removed initial-letter fill-in from the reader, practice center, general question catalog, and mixed generation engine.
+
+### Changed
+
+- Practice-center question types now default to the first exam-specific specialty instead of an undifferentiated mixed type.
+- Moved article import and collections to `v0.7.0-alpha.18`; Kaikki/Tatoeba/wordfreq integration moves to `v0.7.0-alpha.19`.
+
 ## [0.7.0-alpha.16] - 2026-07-17
 
 ### Added

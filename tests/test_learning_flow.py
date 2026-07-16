@@ -34,6 +34,17 @@ class LearningFlowTests(unittest.TestCase):
         self.assertTrue(all(item["type"] == "main-idea" for item in items))
         self.assertTrue(all("段落标题匹配" in item["note"] for item in items))
 
+    def test_mixed_generation_no_longer_creates_initial_letter_items(self):
+        items = server.generate_quiz_items(server.SAMPLE_ARTICLE, "mixed", "general")
+        self.assertTrue(items)
+        self.assertFalse(any(item["type"] == "initial" for item in items))
+
+    def test_ielts_tfng_uses_official_answer_format(self):
+        items = server.generate_quiz_items(server.SAMPLE_ARTICLE, "mixed", "IELTS", "tfng")
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["options"], ["TRUE", "FALSE", "NOT GIVEN"])
+        self.assertIn(items[0]["answer"], items[0]["options"])
+
     def test_domestic_exam_styles_have_independent_types_and_profiles(self):
         expected = {
             "CET4": ("banked-cloze", "选词填空", "四级"),
