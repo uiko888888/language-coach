@@ -6,10 +6,20 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.7.0-alpha.7] - 2026-07-16
+
 ### Added
 
 - Added CET-4, CET-6, and Chinese postgraduate entrance English as first-class exam styles.
 - Added independent question-type labels, prompt profiles, distractor guidance, coaching notes, and article-source matching for the three domestic exams.
+- Added BBC World, BBC Business, Guardian World, Guardian Opinion, The Conversation Politics, NPR World, and UN News feeds.
+- Added persistent article content types for reports, opinions, explainers, research summaries, institutional updates, and cultural content.
+- Added article content-type filtering, visible type/source labels, and a content-type selector for manual imports.
+
+### Changed
+
+- Existing article databases migrate in place and receive source-backed content classifications without requiring a reset.
+- Source profiles now distinguish news media, public media, academic explainers, research services, cultural commentary, institutions, and personal imports.
 
 ### Documentation
 

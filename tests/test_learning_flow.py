@@ -94,6 +94,38 @@ class LearningFlowTests(unittest.TestCase):
         self.assertEqual(item["content_status"], "summary")
         self.assertEqual(item["content_word_count"], 4)
 
+    def test_current_affairs_sources_have_explicit_classification(self):
+        names = {feed["name"] for feed in server.DEFAULT_FEEDS}
+        self.assertTrue({"BBC World", "Guardian Opinion", "NPR World", "UN News"}.issubset(names))
+        opinion = server.source_profile("Guardian Opinion", "KAOYAN")
+        self.assertEqual(opinion["source_kind"], "新闻媒体")
+        self.assertEqual(opinion["default_content_type"], "opinion")
+        institution = server.source_profile("UN News", "IELTS")
+        self.assertEqual(institution["default_content_type_label"], "机构公告")
+
+    def test_content_type_inference_and_filtering(self):
+        self.assertEqual(server.infer_content_type({"source": "Guardian Opinion", "title": "A measured view"}), "opinion")
+        self.assertEqual(server.infer_content_type({"source": "BBC World", "title": "New study finds a change"}), "research")
+        now = server.utc_now()
+        with server.db() as conn:
+            conn.execute(
+                """INSERT INTO articles
+                   (title, language, level, topic, source, source_url, content_status, content_type, body, created_at, updated_at)
+                   VALUES (?, 'en', 'B2', 'policy', 'manual', '', 'full', 'opinion', ?, ?, ?)""",
+                ("A local policy opinion", "The writer presents a qualified argument about public policy.", now, now),
+            )
+        items = server.list_articles({"content_type": ["opinion"]})
+        self.assertTrue(items)
+        self.assertTrue(all(item["content_type"] == "opinion" for item in items))
+        self.assertTrue(all(item["content_type_label"] == "观点评论" for item in items))
+
+    def test_database_migrates_content_type_column(self):
+        with server.db() as conn:
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(articles)")}
+            seed = conn.execute("SELECT content_type FROM articles WHERE source = 'seed'").fetchone()
+        self.assertIn("content_type", columns)
+        self.assertEqual(seed["content_type"], "explainer")
+
 
 if __name__ == "__main__":
     unittest.main()

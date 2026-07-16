@@ -22,6 +22,8 @@ const state = {
   showTranslation: false,
   articleTopics: [],
   articleTopic: "",
+  articleContentTypes: [],
+  articleContentType: "",
   recommendedOnly: false,
   bridge: null,
   selectedArticle: null,
@@ -151,7 +153,7 @@ function renderArticles() {
         <span class="master-number">${String(index + 1).padStart(2, "0")}</span>
         <span class="master-copy">
           <strong>${escapeHtml(article.title)}</strong>
-          <small>${article.recommended_today ? `推荐 ${article.daily_rank} · ` : ""}${escapeHtml(article.source || "manual")} · ${escapeHtml(article.level)}</small>
+          <small>${article.recommended_today ? `推荐 ${article.daily_rank} · ` : ""}${escapeHtml(article.content_type_label || "学术解释")} · ${escapeHtml(article.source || "manual")} · ${escapeHtml(article.level)}</small>
           ${article.recommended_today ? `<em>${escapeHtml((article.recommendation_reasons || []).join(" · "))}</em>` : ""}
         </span>
       </button>
@@ -163,6 +165,8 @@ function renderArticles() {
           <div class="badge-row">
             ${badge(selected.level, "teal")}
             ${badge(selected.source || "manual")}
+            ${badge(selected.content_type_label || "学术解释", selected.content_type === "opinion" ? "amber" : "teal")}
+            ${selected.source_kind ? badge(selected.source_kind) : ""}
             ${badge(selected.content_status === "full" ? `完整正文 · ${selected.content_word_count}词` : `RSS摘要 · ${selected.content_word_count}词`, selected.content_status === "full" ? "teal" : "amber")}
             ${selected.source_tier ? badge(selected.source_tier, selected.source_tier === "核心" ? "teal" : "") : ""}
             ${selected.exam_fit ? badge(`${state.style} 匹配 ${selected.exam_fit}%`, selected.exam_fit >= 90 ? "amber" : "") : ""}
@@ -194,7 +198,7 @@ function renderArticles() {
     ${state.feeds.map(feed => `
       <div class="source-row">
         <div><strong>${escapeHtml(feed.name)}</strong><p>${escapeHtml((feed.source_topics || []).join(" · "))}</p></div>
-        <div class="badge-row">${badge(feed.source_tier || "其他", feed.source_tier === "核心" ? "teal" : "")}${badge(feed.level_hint, "amber")}${badge(`${feed.exam_fit || 0}%`)}</div>
+        <div class="badge-row">${badge(feed.source_tier || "其他", feed.source_tier === "核心" ? "teal" : "")}${badge(feed.source_kind || "其他来源")}${badge(feed.default_content_type_label || "学术解释")}${badge(feed.level_hint, "amber")}${badge(`${feed.exam_fit || 0}%`)}</div>
       </div>
     `).join("")}
   `;
@@ -211,7 +215,7 @@ function renderReader() {
     return;
   }
   $("#readerTitle").textContent = article.title;
-  $("#readerMeta").innerHTML = `${badge(article.level, "teal")}${badge(article.content_status === "full" ? `完整正文 · ${article.content_word_count}词` : `RSS摘要 · ${article.content_word_count}词`, article.content_status === "full" ? "teal" : "amber")}${(article.theme_tags || []).map(theme => badge(theme, "amber")).join("")}${badge(article.source || "manual")}`;
+  $("#readerMeta").innerHTML = `${badge(article.level, "teal")}${badge(article.content_type_label || "学术解释", article.content_type === "opinion" ? "amber" : "teal")}${badge(article.content_status === "full" ? `完整正文 · ${article.content_word_count}词` : `RSS摘要 · ${article.content_word_count}词`, article.content_status === "full" ? "teal" : "amber")}${(article.theme_tags || []).map(theme => badge(theme, "amber")).join("")}${badge(article.source || "manual")}`;
   $("#readerContentNotice").innerHTML = article.content_status !== "full" ? `<div class="content-notice compact"><div><strong>当前为 RSS 摘要</strong><span>完整内容请打开原文，或在文章池补充正文。</span></div>${article.source_url ? `<a href="${escapeHtml(article.source_url)}" target="_blank" rel="noreferrer">打开原文</a>` : ""}</div>` : "";
   $("#readerBody").innerHTML = articleParagraphs(article.body, "article-paragraph");
   $("#articleTranslationInput").value = article.translation_zh || "";
@@ -656,6 +660,7 @@ async function loadArticles(q = "") {
   const params = new URLSearchParams({ exam: state.style });
   if (q) params.set("q", q);
   if (state.articleTopic) params.set("topic", state.articleTopic);
+  if (state.articleContentType) params.set("content_type", state.articleContentType);
   if (state.recommendedOnly) params.set("recommended", "1");
   const data = await api(`/api/articles?${params.toString()}`);
   state.articles = data.articles || [];
@@ -667,6 +672,13 @@ async function loadArticleTopics() {
   $("#articleTopicFilter").innerHTML = `<option value="">全部主题</option>${state.articleTopics.map(topic => `<option value="${escapeHtml(topic)}">${escapeHtml(topic)}</option>`).join("")}`;
   $("#articleTopicFilter").value = state.articleTopic;
   $("#recommendedOnly").checked = state.recommendedOnly;
+}
+
+async function loadArticleContentTypes() {
+  const data = await api("/api/article-content-types");
+  state.articleContentTypes = data.types || [];
+  $("#articleContentTypeFilter").innerHTML = `<option value="">全部类型</option>${state.articleContentTypes.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join("")}`;
+  $("#articleContentTypeFilter").value = state.articleContentType;
 }
 
 async function loadCards() {
@@ -793,6 +805,7 @@ async function saveArticle() {
       title: $("#newArticleTitle").value.trim() || "Untitled",
       body,
       level: $("#newArticleLevel").value,
+      content_type: $("#newArticleContentType").value,
       source: "manual",
       topic: "personal",
     }),
@@ -984,6 +997,12 @@ $("#articleTopicFilter").addEventListener("change", async event => {
   renderAll();
 });
 
+$("#articleContentTypeFilter").addEventListener("change", async event => {
+  state.articleContentType = event.target.value;
+  await loadArticles($("#articleSearch").value.trim());
+  renderAll();
+});
+
 $("#recommendedOnly").addEventListener("change", async event => {
   state.recommendedOnly = event.target.checked;
   await loadArticles($("#articleSearch").value.trim());
@@ -1018,7 +1037,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 
 async function boot() {
   await loadHealth();
-  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadProgress(), loadExamTypes(), loadArticleTopics(), loadBridgeConfig(), searchLexicon("", { open: false })]);
+  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadProgress(), loadExamTypes(), loadArticleTopics(), loadArticleContentTypes(), loadBridgeConfig(), searchLexicon("", { open: false })]);
   if (!state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);
     state.selectedArticle = data.article;

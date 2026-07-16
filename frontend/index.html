@@ -130,6 +130,7 @@
           </div>
           <div class="article-filters">
             <select id="articleTopicFilter" aria-label="文章主题"><option value="">全部主题</option></select>
+            <select id="articleContentTypeFilter" aria-label="内容类型"><option value="">全部类型</option></select>
             <label class="filter-toggle"><input type="checkbox" id="recommendedOnly" /> 今日推荐</label>
           </div>
           <div class="master-list" id="articleTitleList"></div>
@@ -153,6 +154,14 @@
                 <option value="B1">B1</option>
                 <option value="B2">B2</option>
                 <option value="C1">C1</option>
+              </select>
+              <select id="newArticleContentType" aria-label="内容类型">
+                <option value="explainer">学术解释</option>
+                <option value="report">新闻报道</option>
+                <option value="opinion">观点评论</option>
+                <option value="research">研究摘要</option>
+                <option value="institution">机构公告</option>
+                <option value="culture">文化内容</option>
               </select>
               <button class="primary" id="saveArticleBtn">存入文章库</button>
             </div>

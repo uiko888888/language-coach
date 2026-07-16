@@ -77,6 +77,8 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(data["article"]["content_status"], "full")
         self.assertEqual(data["article"]["source_url"], payload["page_url"])
         self.assertIn("环境保护", data["article"]["theme_tags"])
+        self.assertEqual(data["article"]["content_type"], "explainer")
+        self.assertEqual(data["article"]["source_kind"], "网页导入")
 
     def test_translation_cache_works_without_network(self):
         text = "A cached translation"

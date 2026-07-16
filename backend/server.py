@@ -63,6 +63,15 @@ ARTICLE_THEMES = {
     "心理行为": ["psychology", "behavior", "mental", "emotion", "decision", "memory"],
 }
 
+CONTENT_TYPE_LABELS = {
+    "report": "新闻报道",
+    "opinion": "观点评论",
+    "explainer": "学术解释",
+    "research": "研究摘要",
+    "institution": "机构公告",
+    "culture": "文化内容",
+}
+
 
 def normalize_article_text(title: str, body: str) -> str:
     text = re.sub(r"\s+", " ", body or "").strip()
@@ -278,6 +287,48 @@ DEFAULT_FEEDS = [
         "language": "en",
         "level_hint": "B2",
     },
+    {
+        "name": "BBC World",
+        "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+        "language": "en",
+        "level_hint": "B2",
+    },
+    {
+        "name": "BBC Business",
+        "url": "https://feeds.bbci.co.uk/news/business/rss.xml",
+        "language": "en",
+        "level_hint": "B2",
+    },
+    {
+        "name": "Guardian World",
+        "url": "https://www.theguardian.com/world/rss",
+        "language": "en",
+        "level_hint": "B2-C1",
+    },
+    {
+        "name": "Guardian Opinion",
+        "url": "https://www.theguardian.com/commentisfree/rss",
+        "language": "en",
+        "level_hint": "C1",
+    },
+    {
+        "name": "The Conversation Politics",
+        "url": "https://theconversation.com/us/politics/articles.atom",
+        "language": "en",
+        "level_hint": "B2-C1",
+    },
+    {
+        "name": "NPR World",
+        "url": "https://feeds.npr.org/1004/rss.xml",
+        "language": "en",
+        "level_hint": "B2",
+    },
+    {
+        "name": "UN News",
+        "url": "https://news.un.org/feed/subscribe/en/news/all/rss.xml",
+        "language": "en",
+        "level_hint": "B2-C1",
+    },
 ]
 
 
@@ -293,8 +344,39 @@ SOURCE_PROFILES = {
     "The Economist Business": {"tier": "核心", "topics": ["商业", "经济", "政策"], "exams": ["CET6", "KAOYAN", "GMAT", "GRE", "TEM8"]},
     "BBC Learning English": {"tier": "补充", "topics": ["语言", "时事"], "exams": ["IELTS", "CET4", "CET6", "TEM4"]},
     "NPR": {"tier": "补充", "topics": ["时事", "社会"], "exams": ["IELTS", "TOEFL", "CET4", "CET6", "KAOYAN", "TEM4", "TEM8"]},
+    "BBC World": {"tier": "核心", "topics": ["国际时政", "社会", "公共政策"], "exams": ["IELTS", "TOEFL", "CET4", "CET6", "KAOYAN", "TEM4", "TEM8"]},
+    "BBC Business": {"tier": "核心", "topics": ["商业", "经济", "公共政策"], "exams": ["IELTS", "TOEFL", "CET4", "CET6", "KAOYAN", "GMAT"]},
+    "Guardian World": {"tier": "核心", "topics": ["国际时政", "社会", "法律"], "exams": ["IELTS", "TOEFL", "CET6", "KAOYAN", "TEM8"]},
+    "Guardian Opinion": {"tier": "核心", "topics": ["观点", "文化评论", "公共政策"], "exams": ["IELTS", "CET6", "KAOYAN", "TEM8", "GRE"]},
+    "The Conversation Politics": {"tier": "核心", "topics": ["政治", "公共政策", "社会"], "exams": ["IELTS", "TOEFL", "CET6", "KAOYAN", "TEM8", "GRE"]},
+    "NPR World": {"tier": "补充", "topics": ["国际时政", "社会", "文化"], "exams": ["IELTS", "TOEFL", "CET4", "CET6", "KAOYAN", "TEM4", "TEM8"]},
+    "UN News": {"tier": "核心", "topics": ["国际事务", "公共政策", "健康"], "exams": ["IELTS", "TOEFL", "CET4", "CET6", "KAOYAN", "TEM8"]},
     "manual": {"tier": "个人", "topics": ["自选"], "exams": SUPPORTED_EXAMS},
     "seed": {"tier": "示例", "topics": ["科技", "社会"], "exams": SUPPORTED_EXAMS},
+}
+
+SOURCE_CLASSIFICATION = {
+    "The Conversation": ("学术解释平台", "explainer"),
+    "The Conversation Politics": ("学术解释平台", "explainer"),
+    "JSTOR Daily": ("学术解释平台", "explainer"),
+    "Guardian Science": ("新闻媒体", "report"),
+    "Guardian Environment": ("新闻媒体", "report"),
+    "Guardian World": ("新闻媒体", "report"),
+    "Guardian Opinion": ("新闻媒体", "opinion"),
+    "BBC World": ("新闻媒体", "report"),
+    "BBC Business": ("新闻媒体", "report"),
+    "MIT Technology Review": ("科技媒体", "explainer"),
+    "ScienceDaily": ("研究资讯", "research"),
+    "Aeon": ("文化评论", "culture"),
+    "Knowledge at Wharton": ("学术解释平台", "explainer"),
+    "The Economist Business": ("新闻媒体", "opinion"),
+    "BBC Learning English": ("教育媒体", "explainer"),
+    "NPR": ("公共媒体", "report"),
+    "NPR World": ("公共媒体", "report"),
+    "UN News": ("公共机构", "institution"),
+    "manual": ("个人导入", "explainer"),
+    "browser": ("网页导入", "explainer"),
+    "seed": ("示例内容", "explainer"),
 }
 
 
@@ -331,6 +413,7 @@ def init_db() -> None:
               source TEXT NOT NULL DEFAULT 'manual',
               source_url TEXT NOT NULL DEFAULT '',
               content_status TEXT NOT NULL DEFAULT 'summary',
+              content_type TEXT NOT NULL DEFAULT 'auto',
               body TEXT NOT NULL,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
@@ -478,8 +561,15 @@ def init_db() -> None:
             conn.execute("ALTER TABLE articles ADD COLUMN translation_zh TEXT NOT NULL DEFAULT ''")
         if "content_status" not in article_columns:
             conn.execute("ALTER TABLE articles ADD COLUMN content_status TEXT NOT NULL DEFAULT 'summary'")
+        if "content_type" not in article_columns:
+            conn.execute("ALTER TABLE articles ADD COLUMN content_type TEXT NOT NULL DEFAULT 'auto'")
         conn.execute("UPDATE articles SET translation_zh = ? WHERE source = 'seed' AND translation_zh = ''", (SAMPLE_TRANSLATION,))
         conn.execute("UPDATE articles SET content_status = 'full' WHERE source IN ('seed', 'manual')")
+        for source, (_, content_type) in SOURCE_CLASSIFICATION.items():
+            conn.execute(
+                "UPDATE articles SET content_type = ? WHERE source = ? AND content_type IN ('', 'auto')",
+                (content_type, source),
+            )
         for row in conn.execute("SELECT id, title, body FROM articles").fetchall():
             normalized = normalize_article_text(row["title"], row["body"])
             if normalized and normalized != row["body"]:
@@ -495,8 +585,8 @@ def init_db() -> None:
             now = utc_now()
             conn.execute(
                 """
-                INSERT INTO articles (title, language, level, topic, source, source_url, body, created_at, updated_at)
-                VALUES (?, 'en', 'B2', 'technology', 'seed', '', ?, ?, ?)
+                INSERT INTO articles (title, language, level, topic, source, source_url, content_type, body, created_at, updated_at)
+                VALUES (?, 'en', 'B2', 'technology', 'seed', '', 'explainer', ?, ?, ?)
                 """,
                 ("Privacy concerns in the age of smart devices", SAMPLE_ARTICLE, now, now),
             )
@@ -1143,11 +1233,15 @@ def source_profile(source: str, exam: str = "") -> dict:
         fit = 100 if profile["tier"] == "核心" else 75
     else:
         fit = 35
+    source_kind, default_content_type = SOURCE_CLASSIFICATION.get(source, ("其他来源", "explainer"))
     return {
         "source_tier": profile["tier"],
         "source_topics": profile["topics"],
         "source_exams": profile["exams"],
         "exam_fit": fit,
+        "source_kind": source_kind,
+        "default_content_type": default_content_type,
+        "default_content_type_label": CONTENT_TYPE_LABELS.get(default_content_type, "学术解释"),
     }
 
 
@@ -1188,11 +1282,27 @@ def article_theme_profile(article: dict) -> dict:
     return {"theme_tags": themes, "highlight": highlights[0] if highlights else article.get("body", "")}
 
 
+def infer_content_type(article: dict) -> str:
+    explicit = str(article.get("content_type") or "").strip()
+    if explicit in CONTENT_TYPE_LABELS:
+        return explicit
+    source = str(article.get("source") or "manual")
+    default_type = SOURCE_CLASSIFICATION.get(source, ("其他来源", "explainer"))[1]
+    title = str(article.get("title") or "").lower()
+    if any(marker in title for marker in ("opinion:", "comment:", "editorial:")):
+        return "opinion"
+    if any(marker in title for marker in ("study finds", "researchers find", "new study")):
+        return "research"
+    return default_type if default_type in CONTENT_TYPE_LABELS else "explainer"
+
+
 def enrich_article(article: dict, exam: str = "") -> dict:
     item = dict(article)
     item.update(source_profile(item["source"], exam))
     item.update(article_theme_profile(item))
     item.update(recommendation_profile(item))
+    item["content_type"] = infer_content_type(item)
+    item["content_type_label"] = CONTENT_TYPE_LABELS[item["content_type"]]
     item["content_status"] = item.get("content_status") or ("full" if item["source"] in {"seed", "manual"} else "summary")
     item["content_word_count"] = len(words(item.get("body", "")))
     return item
@@ -1226,6 +1336,9 @@ def list_articles(query: dict[str, list[str]]) -> list[dict]:
         ranked = [item for item in ranked if topic in item["theme_tags"]]
     if query.get("recommended", [""])[0] == "1":
         ranked = [item for item in ranked if item["recommended_today"]]
+    content_type = query.get("content_type", [""])[0]
+    if content_type:
+        ranked = [item for item in ranked if item["content_type"] == content_type]
     return ranked
 
 
@@ -1413,19 +1526,21 @@ def fetch_feed_items(limit_per_feed: int = 4) -> dict:
                     use_full = len(words(encoded_text)) >= 250 and len(encoded_text) > len(summary_text)
                     body = normalize_article_text(clean_html(title), encoded_text if use_full else summary_text)
                     content_status = "full" if use_full else "summary"
+                    content_type = infer_content_type({"source": feed["name"], "title": clean_html(title), "body": body})
                     now = utc_now()
                     before = conn.total_changes
                     conn.execute(
                         """
                         INSERT INTO articles
-                        (title, language, level, topic, source, source_url, content_status, body, created_at, updated_at)
-                        VALUES (?, ?, ?, 'feed', ?, ?, ?, ?, ?, ?)
+                        (title, language, level, topic, source, source_url, content_status, content_type, body, created_at, updated_at)
+                        VALUES (?, ?, ?, 'feed', ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(source_url) WHERE source_url != '' DO UPDATE SET
                           body = CASE WHEN length(excluded.body) > length(articles.body) THEN excluded.body ELSE articles.body END,
                           content_status = CASE WHEN excluded.content_status = 'full' THEN 'full' ELSE articles.content_status END,
+                          content_type = excluded.content_type,
                           updated_at = excluded.updated_at
                         """,
-                        (clean_html(title), feed["language"], feed["level_hint"], feed["name"], link, content_status, body, now, now),
+                        (clean_html(title), feed["language"], feed["level_hint"], feed["name"], link, content_status, content_type, body, now, now),
                     )
                     if conn.total_changes > before:
                         imported += 1
@@ -1492,6 +1607,11 @@ class App(BaseHTTPRequestHandler):
             if path == "/api/article-topics":
                 topics = [*ARTICLE_THEMES.keys(), "综合阅读"]
                 return json_response(self, {"topics": topics})
+            if path == "/api/article-content-types":
+                return json_response(
+                    self,
+                    {"types": [{"id": key, "label": label} for key, label in CONTENT_TYPE_LABELS.items()]},
+                )
             if path == "/api/lexicon/search":
                 return json_response(self, lexical_search(query.get("q", [""])[0]))
             match = re.fullmatch(r"/api/lexicon/entries/(\d+)", path)
@@ -1604,17 +1724,19 @@ class App(BaseHTTPRequestHandler):
                             existing = None
                         if existing:
                             article_id = existing["id"]
+                            content_type = infer_content_type({"source": "browser", "title": title, "body": body})
                             conn.execute(
                                 """UPDATE articles SET title = ?, body = ?, translation_zh = ?, content_status = 'full',
-                                   source = 'browser', updated_at = ? WHERE id = ?""",
-                                (title, body, translated, now, article_id),
+                                   content_type = ?, source = 'browser', updated_at = ? WHERE id = ?""",
+                                (title, body, translated, content_type, now, article_id),
                             )
                         else:
+                            content_type = infer_content_type({"source": "browser", "title": title, "body": body})
                             cursor = conn.execute(
                                 """INSERT INTO articles
-                                   (title, language, level, topic, source, source_url, content_status, body, translation_zh, created_at, updated_at)
-                                   VALUES (?, 'en', ?, 'browser', 'browser', ?, 'full', ?, ?, ?, ?)""",
-                                (title, estimate_level(body), page_url, body, translated, now, now),
+                                   (title, language, level, topic, source, source_url, content_status, content_type, body, translation_zh, created_at, updated_at)
+                                   VALUES (?, 'en', ?, 'browser', 'browser', ?, 'full', ?, ?, ?, ?, ?)""",
+                                (title, estimate_level(body), page_url, content_type, body, translated, now, now),
                             )
                             article_id = cursor.lastrowid
                     elif payload.get("save_to", "wordbook") == "wordbook":
@@ -1646,11 +1768,13 @@ class App(BaseHTTPRequestHandler):
                     return json_response(self, {"error": "Article body is required"}, 400)
                 title = (payload.get("title") or "Untitled").strip()
                 level = payload.get("level") or estimate_level(body)
+                requested_content_type = payload.get("content_type") or "auto"
+                content_type = infer_content_type({"source": payload.get("source") or "manual", "title": title, "body": body, "content_type": requested_content_type})
                 with db() as conn:
                     cursor = conn.execute(
                         """
-                        INSERT INTO articles (title, language, level, topic, source, source_url, body, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO articles (title, language, level, topic, source, source_url, content_type, body, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             title,
@@ -1659,6 +1783,7 @@ class App(BaseHTTPRequestHandler):
                             payload.get("topic") or "manual",
                             payload.get("source") or "manual",
                             payload.get("source_url") or "",
+                            content_type,
                             body,
                             now,
                             now,
