@@ -10,6 +10,7 @@ import os
 import secrets
 import sqlite3
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -23,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
 DATA = ROOT / "data"
 DB_PATH = DATA / "language_coach.sqlite"
+TRANSLATION_RUNTIME = {"verified": None, "last_error": "", "deepl_url": ""}
 
 
 def load_local_environment() -> None:
@@ -1751,6 +1753,27 @@ def lexical_query_context(term: str, limit: int = 5) -> dict:
     }
 
 
+def cached_segment_translations(segments: list[str], source_lang: str = "EN", target_lang: str = "ZH-HANS") -> dict[str, str]:
+    values = list(dict.fromkeys(segment.strip() for segment in segments if segment and segment.strip()))
+    if not values:
+        return {}
+    hashes = {hashlib.sha256(value.encode("utf-8")).hexdigest(): value for value in values}
+    placeholders = ",".join("?" for _ in hashes)
+    with db() as conn:
+        rows = conn.execute(
+            f"""SELECT text_hash, translated_text FROM translation_cache
+                WHERE text_hash IN ({placeholders}) AND source_lang = ? AND target_lang = ?
+                ORDER BY created_at DESC, id DESC""",
+            (*hashes.keys(), source_lang, target_lang),
+        ).fetchall()
+    translated = {}
+    for row in rows:
+        source = hashes.get(row["text_hash"])
+        if source and source not in translated:
+            translated[source] = row["translated_text"]
+    return translated
+
+
 def related_term_translation(entries: list[dict], term: str) -> str:
     needle = term.lower()
     for entry in entries:
@@ -1832,6 +1855,11 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
         bucket.setdefault(relation["relation_type"], []).extend(members)
 
     learning = lexical_query_context(term)
+    source_segments = []
+    for row in rows:
+        source_segments.extend(json.loads(row["definitions_json"] or "[]"))
+        source_segments.extend(json.loads(row["examples_json"] or "[]"))
+    cached_zh = cached_segment_translations(source_segments)
     grouped: dict[tuple[str, str], list[sqlite3.Row]] = {}
     for row in rows:
         grouped.setdefault((row["lemma"].casefold(), row["pos"]), []).append(row)
@@ -1854,7 +1882,9 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
             senses.append({
                 "synset_id": row["synset_id"],
                 "definitions": definitions,
+                "definition_translations": [cached_zh.get(value, "") for value in definitions],
                 "examples": sense_examples,
+                "example_translations": [cached_zh.get(value, "") for value in sense_examples],
                 "synonyms": members,
             })
             for relation_type, members in relations_by_synset.get(row["synset_id"], {}).items():
@@ -1881,7 +1911,7 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
             "ipa_uk": pronunciations[0] if pronunciations else "",
             "ipa_us": pronunciations[0] if pronunciations else "",
             "core_meaning": next((definition for sense in senses for definition in sense["definitions"]), ""),
-            "meaning_zh": learning["translation_zh"],
+            "meaning_zh": next((cached_zh.get(value, "") for value in source_segments if cached_zh.get(value)), learning["translation_zh"]),
             "level": "",
             "register_label": "开放词典",
             "origin": "",
@@ -1892,7 +1922,7 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
             "collocations": [],
             "synonyms": [{"term": value, "meaning_zh": ""} for value in synonyms[:32]],
             "antonyms": [{"term": value, "meaning_zh": ""} for value in antonyms[:16]],
-            "examples": [{"text": value, "translation": ""} for value in examples[:16]],
+            "examples": [{"text": value, "translation": cached_zh.get(value, "")} for value in examples[:16]],
             "morphemes": [],
             "senses": senses[:16],
             "semantic_relations": [
@@ -2035,6 +2065,8 @@ def translation_status() -> dict:
         "provider": "DeepL" if preferred == "deepl" else "LibreTranslate",
         "provider_id": preferred,
         "configured": configured,
+        "verified": TRANSLATION_RUNTIME["verified"] if preferred == "deepl" else None,
+        "last_error": TRANSLATION_RUNTIME["last_error"] if preferred == "deepl" else "",
         "target_language": "ZH-HANS",
         "options": [
             {"id": "deepl", "label": "DeepL API Free", "configured": deepl_configured, "hosted": True},
@@ -2044,11 +2076,44 @@ def translation_status() -> dict:
     }
 
 
+def verify_deepl_configuration() -> dict:
+    key = os.environ.get("DEEPL_API_KEY", "").strip()
+    if not key:
+        TRANSLATION_RUNTIME.update({"verified": False, "last_error": "DeepL API Key 未填写。", "deepl_url": ""})
+        return translation_status()
+    configured_url = os.environ.get("DEEPL_API_URL", "https://api-free.deepl.com/v2/translate").strip()
+    candidates = [configured_url]
+    alternative = (
+        "https://api.deepl.com/v2/translate"
+        if "api-free.deepl.com" in configured_url
+        else "https://api-free.deepl.com/v2/translate"
+    )
+    if alternative not in candidates:
+        candidates.append(alternative)
+    errors = []
+    for endpoint in candidates:
+        usage_url = endpoint.rsplit("/", 1)[0] + "/usage"
+        request = urllib.request.Request(usage_url, headers={"Authorization": f"DeepL-Auth-Key {key}"})
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                response.read()
+            TRANSLATION_RUNTIME.update({"verified": True, "last_error": "", "deepl_url": endpoint})
+            return translation_status()
+        except urllib.error.HTTPError as error:
+            errors.append(error.code)
+            error.close()
+        except Exception as error:
+            errors.append(type(error).__name__)
+    message = "DeepL 拒绝了当前 API Key（403），请使用 DeepL API 账户生成的有效密钥。" if 403 in errors else "无法连接 DeepL 验证接口。"
+    TRANSLATION_RUNTIME.update({"verified": False, "last_error": message, "deepl_url": ""})
+    return translation_status()
+
+
 def translate_with_deepl(missing: list[tuple[int, str, str]], source_lang: str, target_lang: str) -> list[str]:
     api_key = os.environ.get("DEEPL_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("DeepL API key is not configured. Add DEEPL_API_KEY to .env.local and restart the server.")
-    endpoint = os.environ.get("DEEPL_API_URL", "https://api-free.deepl.com/v2/translate")
+    endpoint = TRANSLATION_RUNTIME["deepl_url"] or os.environ.get("DEEPL_API_URL", "https://api-free.deepl.com/v2/translate")
     translated: list[str] = []
     for start in range(0, len(missing), 40):
         batch = missing[start:start + 40]
@@ -2060,9 +2125,22 @@ def translate_with_deepl(missing: list[tuple[int, str, str]], source_lang: str, 
             headers={"Authorization": f"DeepL-Auth-Key {api_key}", "Content-Type": "application/x-www-form-urlencoded"},
             method="POST",
         )
-        with urllib.request.urlopen(request, timeout=30) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as error:
+            if error.code == 403:
+                TRANSLATION_RUNTIME.update({
+                    "verified": False,
+                    "last_error": "DeepL 拒绝了当前 API Key 或接口地址（403）。请重新生成 DeepL API 密钥。",
+                    "deepl_url": "",
+                })
+                raise RuntimeError(TRANSLATION_RUNTIME["last_error"]) from error
+            if error.code == 456:
+                raise RuntimeError("DeepL translation quota has been exhausted (456).") from error
+            raise RuntimeError(f"DeepL request failed with HTTP {error.code}.") from error
         translated.extend(item["text"] for item in payload.get("translations", []))
+    TRANSLATION_RUNTIME.update({"verified": True, "last_error": "", "deepl_url": endpoint})
     return translated
 
 
@@ -2357,6 +2435,27 @@ class App(BaseHTTPRequestHandler):
                 except RuntimeError as exc:
                     return json_response(self, {"error": str(exc), "translation": translation_status()}, 503)
                 return json_response(self, result)
+            if path == "/api/browser/translate-segments":
+                if not self.browser_authorized():
+                    return json_response(self, {"error": "Invalid browser bridge token"}, 401)
+                segments = payload.get("segments") or []
+                if not isinstance(segments, list) or not all(isinstance(value, str) for value in segments):
+                    return json_response(self, {"error": "Segments must be a list of strings"}, 400)
+                try:
+                    result = translate_segments(
+                        segments,
+                        payload.get("source_lang") or "EN",
+                        payload.get("target_lang") or "ZH-HANS",
+                    )
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                except RuntimeError as exc:
+                    return json_response(self, {"error": str(exc), "translation": translation_status()}, 503)
+                return json_response(self, result)
+            if path == "/api/browser/translation-verify":
+                if not self.browser_authorized():
+                    return json_response(self, {"error": "Invalid browser bridge token"}, 401)
+                return json_response(self, {"translation": verify_deepl_configuration()})
             if path == "/api/browser/clips":
                 if not self.browser_authorized():
                     return json_response(self, {"error": "Invalid browser bridge token"}, 401)

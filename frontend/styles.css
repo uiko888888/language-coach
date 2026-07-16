@@ -397,6 +397,7 @@ label {
 .bridge-token input { width: 100%; font-family: Consolas, monospace; }
 .bridge-meta { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 12px; margin-top: 14px; font-size: 13px; }
 .bridge-meta span { color: var(--muted); }
+.bridge-error { margin: 9px 0 0; color: var(--danger); font-size: 13px; line-height: 1.5; }
 
 .reader-layout {
   display: grid;

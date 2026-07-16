@@ -8,6 +8,24 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.7.0-alpha.13] - 2026-07-17
+
+### Added
+
+- Added batch translation and local per-segment caching for WordNet definitions and examples.
+- Added Chinese translations directly below their matching English definitions and examples.
+- Added runtime DeepL credential verification without exposing the API key.
+
+### Fixed
+
+- Stopped treating a non-empty but rejected DeepL key as a working translation service.
+- Added clear pending, verified, and failed translation states with actionable error messages.
+- Preserved cached Chinese WordNet translations when the external provider is unavailable.
+
+### Changed
+
+- Moved article import and collections to `v0.7.0-alpha.14`; Kaikki/Tatoeba/wordfreq integration moves to `v0.7.0-alpha.15`.
+
 ## [0.7.0-alpha.12] - 2026-07-17
 
 ### Added

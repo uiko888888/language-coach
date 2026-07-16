@@ -1,4 +1,5 @@
 import json
+import hashlib
 import tempfile
 import unittest
 import zipfile
@@ -60,6 +61,20 @@ class WordNetImportTests(unittest.TestCase):
             source = conn.execute("SELECT * FROM dictionary_sources").fetchone()
         self.assertEqual(source["license"], "CC BY 4.0")
         self.assertEqual(source["version"], "2025")
+
+    def test_cached_definition_translation_appears_in_lookup(self):
+        definition = "a small test concept"
+        digest = hashlib.sha256(definition.encode("utf-8")).hexdigest()
+        with server.db() as conn:
+            conn.execute(
+                """INSERT INTO translation_cache
+                   (text_hash, source_lang, target_lang, provider, source_text, translated_text, created_at)
+                   VALUES (?, 'EN', 'ZH-HANS', 'deepl', ?, ?, ?)""",
+                (digest, definition, "一个小型测试概念", server.utc_now()),
+            )
+        result = server.lexical_search("test")["results"][0]
+        self.assertEqual(result["meaning_zh"], "一个小型测试概念")
+        self.assertEqual(result["senses"][0]["definition_translations"][0], "一个小型测试概念")
 
     def test_wordnet_lookup_exposes_definition_and_relation(self):
         result = server.lexical_search("test")["results"][0]

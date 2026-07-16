@@ -37,6 +37,8 @@ const state = {
   answerFeedback: {},
   showAnswers: false,
   lookupTranslations: {},
+  wordnetTranslationsInFlight: new Set(),
+  wordnetAutoTranslationFailed: false,
   style: localStorage.getItem("lc-v2-style") || "IELTS",
   learningMode: localStorage.getItem("lc-v2-learning-mode") || "exam",
 };
@@ -427,12 +429,12 @@ function renderLexicalDetail(item) {
     detail.innerHTML = `
       <div class="dictionary-hero">
         <div><div class="badge-row">${badge("WordNet", "teal")}${badge(item.pos)}${badge(item.source_version || "2025")}</div><h2>${escapeHtml(item.headword)}</h2><div class="pronunciation">${item.ipa_uk ? `<span>${escapeHtml(item.ipa_uk)}</span>` : ""}<button data-speak="${escapeHtml(item.headword)}" data-voice="en-US" title="播放发音">▶ US</button></div></div>
-        <div class="toolbar"><button class="primary" data-save-lookup="${escapeHtml(item.headword)}">${item.saved ? "更新生词语境" : "加入生词本"}</button>${translated ? "" : `<button data-translate-term="${escapeHtml(item.headword)}">翻译词义</button>`}<a class="button-link" href="https://dict.eudic.net/dicts/en/${encodeURIComponent(item.headword)}" target="_blank" rel="noreferrer">在欧路中查看</a></div>
+        <div class="toolbar"><button class="primary" data-save-lookup="${escapeHtml(item.headword)}">${item.saved ? "更新生词语境" : "加入生词本"}</button>${translated ? "" : `<button data-translate-wordnet="${item.id}">翻译中文义项</button>`}<a class="button-link" href="https://dict.eudic.net/dicts/en/${encodeURIComponent(item.headword)}" target="_blank" rel="noreferrer">在欧路中查看</a></div>
       </div>
       <p class="core-definition">${escapeHtml(item.core_meaning || "")}</p>
-      ${translated ? `<p class="zh-definition">${escapeHtml(translated)}</p>` : `<p class="muted">WordNet 提供英文义项；中文确认可使用上方翻译，结果会缓存到本地。</p>`}
+      ${translated ? `<p class="zh-definition">${escapeHtml(translated)}</p>` : `<p class="muted">${state.bridge?.translation?.verified === false ? escapeHtml(state.bridge.translation.last_error || "中文翻译服务验证失败，请检查 API 配置。") : "WordNet 提供英文义项；中文确认可使用上方翻译，结果会缓存到本地。"}</p>`}
       <div class="dictionary-columns">
-        <section class="dictionary-section"><h3>义项与英文例句</h3><div class="sense-list">${(item.senses || []).map((sense, index) => `<article class="example-item"><strong>Sense ${index + 1}</strong>${(sense.definitions || []).map(definition => `<p class="example-en">${escapeHtml(definition)}</p>`).join("")}${(sense.examples || []).map(example => `<p class="example-en">${searchableEnglish(example)}</p>`).join("")}</article>`).join("") || `<div class="empty-state">暂无义项</div>`}</div></section>
+        <section class="dictionary-section"><h3>义项与例句</h3><div class="sense-list">${(item.senses || []).map((sense, index) => `<article class="example-item"><strong>Sense ${index + 1}</strong>${(sense.definitions || []).map((definition, definitionIndex) => `<p class="example-en">${escapeHtml(definition)}</p>${sense.definition_translations?.[definitionIndex] ? `<p class="example-zh">${escapeHtml(sense.definition_translations[definitionIndex])}</p>` : ""}`).join("")}${(sense.examples || []).map((example, exampleIndex) => `<p class="example-en">${searchableEnglish(example)}</p>${sense.example_translations?.[exampleIndex] ? `<p class="example-zh">${escapeHtml(sense.example_translations[exampleIndex])}</p>` : ""}`).join("")}</article>`).join("") || `<div class="empty-state">暂无义项</div>`}</div></section>
         <section class="dictionary-section"><h3>语义关系</h3>${relationSections || `<div class="empty-state">暂无关系数据</div>`}<p class="source-note">来源：${escapeHtml(item.source_name || "Open English WordNet")} · ${escapeHtml(item.license || "CC BY 4.0")}</p></section>
       </div>
       ${item.contexts?.length ? `<section class="dictionary-section"><h3>你的真实语境</h3>${item.contexts.map(context => `<article class="example-item"><p class="example-en">${searchableEnglish(context.text)}</p><p class="example-zh">${escapeHtml(context.article_title || context.source)}</p>${context.article_id ? `<button data-open-article="${context.article_id}">回到原文</button>` : ""}</article>`).join("")}</section>` : ""}
@@ -483,6 +485,18 @@ async function searchLexicon(query, { open = true, quick = false } = {}) {
   $("#globalLexiconSearch").value = value;
   if (open) setView("lexicon");
   renderLexicon();
+  const first = state.lexiconResults[0];
+  if (
+    first?.type === "wordnet"
+    && !first.meaning_zh
+    && state.bridge?.translation?.verified === true
+    && !state.wordnetAutoTranslationFailed
+  ) {
+    translateWordNetEntry(first, { silent: true }).catch(error => {
+      state.wordnetAutoTranslationFailed = true;
+      toast(error.message);
+    });
+  }
   return state.lexiconResults;
 }
 
@@ -772,11 +786,30 @@ async function loadBridgeConfig() {
   const data = await api("/api/browser/token");
   state.bridge = data;
   $("#bridgeToken").value = data.token || "";
-  const translation = data.translation || {};
+  if (data.translation?.provider_id === "deepl" && data.translation.configured) {
+    try {
+      const verified = await api("/api/browser/translation-verify", {
+        method: "POST",
+        headers: { "X-Language-Coach-Token": data.token },
+        body: "{}",
+      });
+      state.bridge.translation = verified.translation || data.translation;
+    } catch (error) {
+      state.bridge.translation = { ...data.translation, verified: false, last_error: error.message };
+    }
+  }
+  const translation = state.bridge.translation || {};
+  const translationLabel = !translation.configured
+    ? `${translation.provider || "翻译服务"} 未配置`
+    : translation.verified === true
+      ? `${translation.provider} 已验证`
+      : translation.verified === false
+        ? `${translation.provider} 验证失败`
+        : `${translation.provider} 待验证`;
   $("#bridgeStatus").innerHTML = `${badge("本地桥接已启用", "teal")}${badge(
-    translation.configured ? `${translation.provider} 已配置` : `${translation.provider || "翻译服务"} 未配置`,
-    translation.configured ? "teal" : "amber",
-  )}${badge("手动译文可用")}`;
+    translationLabel,
+    translation.verified === true ? "teal" : "amber",
+  )}${badge("手动译文可用")}${translation.last_error ? `<p class="bridge-error">${escapeHtml(translation.last_error)}</p>` : ""}`;
 }
 
 async function loadMistakes() {
@@ -994,6 +1027,42 @@ async function translateLexicalTerm(term) {
   toast(data.cached ? "已载入词语翻译" : "翻译完成");
 }
 
+async function translateWordNetEntry(item, { silent = false } = {}) {
+  if (!item || item.type !== "wordnet" || !state.bridge?.token) return;
+  if (state.bridge?.translation?.verified !== true) {
+    throw new Error(state.bridge?.translation?.last_error || "中文翻译服务尚未通过验证，请先检查 API 配置。");
+  }
+  const key = `${item.headword.toLowerCase()}:${item.pos}`;
+  if (state.wordnetTranslationsInFlight.has(key)) return;
+  const segments = [...new Set((item.senses || []).flatMap(sense => [
+    ...(sense.definitions || []),
+    ...(sense.examples || []),
+  ]).filter(Boolean))];
+  if (!segments.length) return;
+  state.wordnetTranslationsInFlight.add(key);
+  try {
+    const data = await api("/api/browser/translate-segments", {
+      method: "POST",
+      headers: { "X-Language-Coach-Token": state.bridge.token },
+      body: JSON.stringify({ segments, source_lang: "EN", target_lang: "ZH-HANS" }),
+    });
+    const translated = Object.fromEntries(data.source_segments.map((source, index) => [source, data.translated_segments[index]]));
+    item.senses = (item.senses || []).map(sense => ({
+      ...sense,
+      definition_translations: (sense.definitions || []).map(value => translated[value] || ""),
+      example_translations: (sense.examples || []).map(value => translated[value] || ""),
+    }));
+    item.examples = (item.examples || []).map(example => ({ ...example, translation: translated[example.text] || example.translation || "" }));
+    item.meaning_zh = translated[item.core_meaning] || Object.values(translated)[0] || "";
+    state.lookupTranslations[item.headword.toLowerCase()] = item.meaning_zh;
+    state.wordnetAutoTranslationFailed = false;
+    renderLexicon();
+    if (!silent) toast(data.cached ? "已载入中文义项" : "中文义项翻译完成");
+  } finally {
+    state.wordnetTranslationsInFlight.delete(key);
+  }
+}
+
 async function refreshFeeds() {
   toast("开始更新 RSS");
   const result = await api("/api/feeds/refresh", { method: "POST", body: "{}" });
@@ -1101,6 +1170,10 @@ document.addEventListener("click", async event => {
     }
     if (button.dataset.speak) speak(button.dataset.speak, button.dataset.voice || "en-US");
     if (button.dataset.translateTerm) await translateLexicalTerm(button.dataset.translateTerm);
+    if (button.dataset.translateWordnet) {
+      const item = state.lexiconResults.find(result => result.type === "wordnet" && result.id === Number(button.dataset.translateWordnet));
+      await translateWordNetEntry(item);
+    }
     if (button.dataset.savePhrase) {
       const example = state.selectedLexicalItem?.examples?.[0];
       await saveCard(button.dataset.savePhrase, typeof example === "string" ? example : example?.text || "");

@@ -7,6 +7,7 @@ import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
 from backend import server
 
@@ -39,6 +40,9 @@ class BrowserBridgeTests(unittest.TestCase):
         request = urllib.request.Request(self.base + path, data=data, method=method, headers=headers)
         with urllib.request.urlopen(request) as response:
             return json.load(response), response.headers
+
+    def setUp(self):
+        server.TRANSLATION_RUNTIME.update({"verified": None, "last_error": "", "deepl_url": ""})
 
     def test_bridge_token_is_persistent_and_required(self):
         self.assertGreater(len(self.token), 20)
@@ -116,6 +120,36 @@ class BrowserBridgeTests(unittest.TestCase):
         result = server.translate_text(text)
         self.assertTrue(result["cached"])
         self.assertEqual(result["translated_text"], "缓存译文")
+
+    def test_segment_translation_endpoint_preserves_alignment_from_cache(self):
+        segments = ["first open definition", "second open example"]
+        translations = ["第一个开放释义", "第二个开放例句"]
+        with server.db() as conn:
+            for source, translated in zip(segments, translations):
+                digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+                conn.execute(
+                    """INSERT OR REPLACE INTO translation_cache
+                       (text_hash, source_lang, target_lang, provider, source_text, translated_text, created_at)
+                       VALUES (?, 'EN', 'ZH-HANS', 'deepl', ?, ?, ?)""",
+                    (digest, source, translated, server.utc_now()),
+                )
+        result, _ = self.request(
+            "/api/browser/translate-segments",
+            "POST",
+            {"segments": segments, "source_lang": "EN", "target_lang": "ZH-HANS"},
+            self.token,
+        )
+        self.assertTrue(result["cached"])
+        self.assertEqual(result["translated_segments"], translations)
+
+    def test_deepl_verification_reports_rejected_key(self):
+        rejected = urllib.error.HTTPError("https://api-free.deepl.com/v2/usage", 403, "Forbidden", {}, None)
+        with patch.dict(server.os.environ, {"DEEPL_API_KEY": "test-key", "DEEPL_API_URL": "https://api-free.deepl.com/v2/translate"}), \
+                patch("backend.server.urllib.request.urlopen", side_effect=[rejected, rejected]):
+            status = server.verify_deepl_configuration()
+        self.assertFalse(status["verified"])
+        self.assertIn("403", status["last_error"])
+        self.assertNotIn("test-key", status["last_error"])
 
     def test_extension_origin_receives_cors_headers(self):
         request = urllib.request.Request(
