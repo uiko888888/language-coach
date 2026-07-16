@@ -8,6 +8,24 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.7.0-alpha.15] - 2026-07-17
+
+### Added
+
+- Added a direct Chinese headword gloss for WordNet entries.
+- Added Chinese translations for WordNet synonyms, antonyms, family terms, and semantic relation terms.
+- Added conservative phrase extraction from the learner's own article contexts, with source labels and translation caching.
+- Restored separate phrase, synonym, and antonym sections in the WordNet detail view.
+
+### Fixed
+
+- Restored the richer lexical detail workflow that was missing after the WordNet migration.
+- Kept the existing string-based semantic relation API while exposing translated `term_details` for the frontend.
+
+### Changed
+
+- Moved article import and collections to `v0.7.0-alpha.16`; Kaikki/Tatoeba/wordfreq integration moves to `v0.7.0-alpha.17`.
+
 ## [0.7.0-alpha.14] - 2026-07-17
 
 ### Fixed

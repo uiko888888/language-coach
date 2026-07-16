@@ -83,6 +83,22 @@ class WordNetImportTests(unittest.TestCase):
         relation = next(item for item in result["semantic_relations"] if item["type"] == "hypernym")
         self.assertIn("concept", relation["terms"])
 
+    def test_cached_word_and_relation_translations_are_exposed(self):
+        values = {"test": "测试", "concept": "概念"}
+        with server.db() as conn:
+            for source, translated in values.items():
+                digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+                conn.execute(
+                    """INSERT INTO translation_cache
+                       (text_hash, source_lang, target_lang, provider, source_text, translated_text, created_at)
+                       VALUES (?, 'EN', 'ZH-HANS', 'deepl', ?, ?, ?)""",
+                    (digest, source, translated, server.utc_now()),
+                )
+        result = server.lexical_search("test")["results"][0]
+        self.assertEqual(result["headword_translation_zh"], "测试")
+        relation = next(item for item in result["semantic_relations"] if item["type"] == "hypernym")
+        self.assertEqual(relation["term_details"][0]["meaning_zh"], "概念")
+
 
 if __name__ == "__main__":
     unittest.main()

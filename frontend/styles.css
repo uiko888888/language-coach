@@ -870,6 +870,7 @@ label {
 .source-note { margin-top: 18px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .example-en { font-family: Georgia, "Times New Roman", serif; }
 .example-zh { margin-top: 5px !important; color: var(--muted); font-size: 13px; }
+.headword-translation { margin: 4px 0 10px; color: var(--accent-strong); font-size: 19px; font-weight: 700; }
 .query-highlight { padding: 0 2px; background: #fff0c9; color: #6f470f; font-weight: 800; }
 .lookup-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .lookup-heading h2 { margin-bottom: 3px; }

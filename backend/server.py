@@ -1755,6 +1755,43 @@ def lexical_query_context(term: str, limit: int = 5) -> dict:
     }
 
 
+def contextual_collocations(term: str, contexts: list[dict], limit: int = 8) -> list[dict]:
+    clean = term.strip()
+    if not clean or " " in clean:
+        return []
+    escaped = re.escape(clean)
+    trailing = re.compile(
+        rf"\b{escaped}\b\s+(?:of|from|for|by|over|as|with|against|into|on)\s+(?:[A-Za-z][A-Za-z'-]*\s*){{1,3}}",
+        re.IGNORECASE,
+    )
+    leading = re.compile(rf"\b[A-Za-z][A-Za-z'-]*\s+\b{escaped}\b", re.IGNORECASE)
+    weak_leaders = {"a", "an", "the", "this", "that", "his", "her", "its", "their", "your", "my", "and", "or", "but"}
+    weak_trailing = {"and", "or", "but", "which", "that", "who", "when", "while"}
+    candidates: list[tuple[str, str]] = []
+    for context in contexts:
+        sentence = context.get("text", "")
+        for match in trailing.finditer(sentence):
+            words_in_phrase = match.group(0).split()
+            while words_in_phrase and words_in_phrase[-1].lower() in weak_trailing:
+                words_in_phrase.pop()
+            if len(words_in_phrase) >= 3:
+                candidates.append((" ".join(words_in_phrase), sentence))
+        for match in leading.finditer(sentence):
+            phrase = match.group(0)
+            leader = phrase.split()[0].lower()
+            if leader not in weak_leaders and not leader.endswith("'s"):
+                candidates.append((phrase, sentence))
+    unique = []
+    seen = set()
+    for phrase, sentence in candidates:
+        key = phrase.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append({"phrase": phrase, "meaning_zh": "", "source": "个人文章语境", "context": sentence, "synonyms": [], "antonyms": []})
+    return unique[:limit]
+
+
 def cached_segment_translations(segments: list[str], source_lang: str = "EN", target_lang: str = "ZH-HANS") -> dict[str, str]:
     values = list(dict.fromkeys(segment.strip() for segment in segments if segment and segment.strip()))
     if not values:
@@ -1857,7 +1894,8 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
         bucket.setdefault(relation["relation_type"], []).extend(members)
 
     learning = lexical_query_context(term)
-    source_segments = []
+    collocations = contextual_collocations(term, learning["contexts"])
+    source_segments = [term, *[item["phrase"] for item in collocations]]
     for row in rows:
         source_segments.extend(json.loads(row["definitions_json"] or "[]"))
         source_segments.extend(json.loads(row["examples_json"] or "[]"))
@@ -1902,6 +1940,12 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
             + semantic_relations.get("hyponym", [])
             + semantic_relations.get("derivation", [])
         )
+        cached_zh.update(cached_segment_translations([
+            *synonyms,
+            *antonyms,
+            *family,
+            *[value for values in semantic_relations.values() for value in values],
+        ]))
         source = sense_rows[0]
         results.append({
             "type": "wordnet",
@@ -1913,17 +1957,18 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
             "ipa_uk": pronunciations[0] if pronunciations else "",
             "ipa_us": pronunciations[0] if pronunciations else "",
             "core_meaning": next((definition for sense in senses for definition in sense["definitions"]), ""),
-            "meaning_zh": next((cached_zh.get(value, "") for value in source_segments if cached_zh.get(value)), learning["translation_zh"]),
+            "meaning_zh": next((cached_zh.get(value, "") for sense in senses for value in sense["definitions"] if cached_zh.get(value)), learning["translation_zh"]),
+            "headword_translation_zh": cached_zh.get(headword, ""),
             "level": "",
             "register_label": "开放词典",
             "origin": "",
             "breakdown": "",
             "forms": [],
             "aliases": [],
-            "family": family[:24],
-            "collocations": [],
-            "synonyms": [{"term": value, "meaning_zh": ""} for value in synonyms[:32]],
-            "antonyms": [{"term": value, "meaning_zh": ""} for value in antonyms[:16]],
+            "family": [{"term": value, "meaning_zh": cached_zh.get(value, "")} for value in family[:24]],
+            "collocations": [{**item, "meaning_zh": cached_zh.get(item["phrase"], "")} for item in collocations],
+            "synonyms": [{"term": value, "meaning_zh": cached_zh.get(value, "")} for value in synonyms[:32]],
+            "antonyms": [{"term": value, "meaning_zh": cached_zh.get(value, "")} for value in antonyms[:16]],
             "examples": [{"text": value, "translation": cached_zh.get(value, "")} for value in examples[:16]],
             "morphemes": [],
             "senses": senses[:16],
@@ -1932,6 +1977,7 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
                     "type": relation_type,
                     "label": WORDNET_RELATION_LABELS.get(relation_type, relation_type.replace("_", " ")),
                     "terms": unique(values)[:20],
+                    "term_details": [{"term": value, "meaning_zh": cached_zh.get(value, "")} for value in unique(values)[:20]],
                 }
                 for relation_type, values in semantic_relations.items()
                 if values
