@@ -126,6 +126,45 @@ class LearningFlowTests(unittest.TestCase):
         self.assertIn("content_type", columns)
         self.assertEqual(seed["content_type"], "explainer")
 
+    def test_source_catalog_distinguishes_automatic_and_authorized_access(self):
+        catalog = {item["name"]: item for item in server.source_catalog()}
+        self.assertTrue(catalog["BBC World"]["automatic"])
+        self.assertEqual(catalog["BBC World"]["access_mode"], "RSS 自动更新")
+        self.assertFalse(catalog["HBO Max"]["automatic"])
+        self.assertIn("不抓取视频", catalog["HBO Max"]["rights_mode"])
+        self.assertEqual(catalog["Project Gutenberg"]["access_mode"], "开放全文")
+
+    def test_subscriptions_shape_unique_today_content(self):
+        now = server.utc_now()
+        fixtures = [
+            ("World briefing", "BBC World", "report", "A concise world report explains a significant policy change and its public effects."),
+            ("A measured policy argument", "Guardian Opinion", "opinion", "The writer develops a qualified argument about evidence, institutions, and public trust. " * 8),
+            ("Institutional health update", "UN News", "institution", "The institution reports a health programme and explains the evidence behind the international response."),
+        ]
+        with server.db() as conn:
+            for title, source, content_type, body in fixtures:
+                conn.execute(
+                    """INSERT INTO articles
+                       (title, language, level, topic, source, source_url, content_status, content_type, body, created_at, updated_at)
+                       VALUES (?, 'en', 'B2', 'policy', ?, '', 'full', ?, ?, ?, ?)""",
+                    (title, source, content_type, body, now, now),
+                )
+            conn.execute(
+                """INSERT INTO subscriptions (target_type, target_value, active, created_at, updated_at)
+                   VALUES ('source', 'Guardian Opinion', 1, ?, ?)
+                   ON CONFLICT(target_type, target_value) DO UPDATE SET active = 1, updated_at = excluded.updated_at""",
+                (now, now),
+            )
+        payload = server.today_content("KAOYAN")
+        ids = [lane["article"]["id"] for lane in payload["lanes"]]
+        sources = [lane["article"]["source"] for lane in payload["lanes"]]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertEqual(len(sources), len(set(sources)))
+        self.assertGreaterEqual(payload["subscription_count"], 1)
+        self.assertTrue(any(lane["article"]["subscribed"] for lane in payload["lanes"]))
+        catalog = {item["name"]: item for item in server.source_catalog_payload()}
+        self.assertTrue(catalog["Guardian Opinion"]["subscribed"])
+
 
 if __name__ == "__main__":
     unittest.main()

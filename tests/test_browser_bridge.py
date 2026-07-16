@@ -104,6 +104,22 @@ class BrowserBridgeTests(unittest.TestCase):
             self.assertEqual(response.status, 204)
             self.assertEqual(response.headers["Access-Control-Allow-Origin"], "chrome-extension://test-extension")
 
+    def test_source_subscription_api_updates_catalog_and_today(self):
+        catalog, _ = self.request("/api/source-catalog")
+        self.assertTrue(any(item["name"] == "BBC World" for item in catalog["sources"]))
+        result, _ = self.request(
+            "/api/subscriptions",
+            "POST",
+            {"target_type": "source", "target_value": "BBC World", "active": True},
+        )
+        self.assertTrue(result["active"])
+        updated, _ = self.request("/api/source-catalog")
+        bbc = next(item for item in updated["sources"] if item["name"] == "BBC World")
+        self.assertTrue(bbc["subscribed"])
+        today, _ = self.request("/api/today?exam=IELTS")
+        self.assertIn("lanes", today)
+        self.assertGreaterEqual(today["subscription_count"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

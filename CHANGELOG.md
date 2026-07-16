@@ -6,6 +6,21 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.7.0-alpha.8] - 2026-07-16
+
+### Added
+
+- Added a source registry covering automatic RSS, summary/link sources, user-authorized browser excerpts, local subtitle workflows, academic indexes, and public-domain books.
+- Added persistent source subscriptions with subscribe/unsubscribe controls in the article source drawer.
+- Added a Today content API and dashboard with distinct 5-minute, 15-minute, and 30-minute learning lanes.
+- Added subscription-aware recommendation boosts while preserving source diversity.
+- Added `STATUS.md` with a factual completed/partial/missing capability audit and current engineering risks.
+
+### Changed
+
+- Narrowed the alpha.8 scope to source registration, subscriptions, and Today content.
+- Deferred event clustering until deduplication and source-volume quality are sufficient.
+
 ## [0.7.0-alpha.7] - 2026-07-16
 
 ### Added

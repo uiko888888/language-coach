@@ -14,6 +14,9 @@ const state = {
   quizzes: [],
   mistakes: [],
   feeds: [],
+  sourceCatalog: [],
+  subscriptions: [],
+  today: { lanes: [], subscription_count: 0 },
   lexiconResults: [],
   selectedLexicalItem: null,
   lexiconFilter: "all",
@@ -118,14 +121,17 @@ function renderStats() {
 }
 
 function renderDashboard() {
-  $("#recentArticles").innerHTML = state.articles.slice(0, 4).map(article => `
+  $("#recentArticles").innerHTML = (state.today.lanes || []).map(lane => {
+    const article = lane.article;
+    return `
     <div class="item">
-      <div class="badge-row">${article.recommended_today ? badge(`今日推荐 ${article.daily_rank}`, "amber") : ""}${badge(article.level, "teal")}${(article.theme_tags || []).slice(0, 2).map(theme => badge(theme)).join("")}</div>
+      <div class="badge-row">${badge(lane.label, "amber")}${badge(article.content_type_label || "学术解释", "teal")}${badge(article.source || "manual")}</div>
       <h3>${escapeHtml(article.title)}</h3>
-      <p>${escapeHtml(excerpt(article.highlight || article.body, 145))}</p>
+      <p>${escapeHtml(lane.reason)} · ${escapeHtml(excerpt(article.highlight || article.body, 120))}</p>
       <button data-open-article="${article.id}">阅读</button>
     </div>
-  `).join("") || `<div class="item muted">暂无文章</div>`;
+  `;
+  }).join("") || `<div class="item muted">文章池中还没有可推荐内容</div>`;
 
   $("#recentMistakes").innerHTML = state.mistakes.filter(item => !item.solved).slice(0, 4).map(item => `
     <div class="item">
@@ -195,10 +201,10 @@ function renderArticles() {
       <div><span class="muted">Exam-aligned sources</span><h2>${state.style} 来源池</h2></div>
       ${badge("仅保存摘要与链接", "teal")}
     </div>
-    ${state.feeds.map(feed => `
+    ${state.sourceCatalog.map(source => `
       <div class="source-row">
-        <div><strong>${escapeHtml(feed.name)}</strong><p>${escapeHtml((feed.source_topics || []).join(" · "))}</p></div>
-        <div class="badge-row">${badge(feed.source_tier || "其他", feed.source_tier === "核心" ? "teal" : "")}${badge(feed.source_kind || "其他来源")}${badge(feed.default_content_type_label || "学术解释")}${badge(feed.level_hint, "amber")}${badge(`${feed.exam_fit || 0}%`)}</div>
+        <div><strong>${escapeHtml(source.name)}</strong><p>${escapeHtml(source.category)} · ${escapeHtml(source.formats.join(" / "))} · ${escapeHtml(source.rights_mode)}</p></div>
+        <div class="badge-row">${badge(source.automatic ? "自动更新" : source.access_mode, source.automatic ? "teal" : "")}${badge(source.cadence, "amber")}<button data-subscribe-source="${escapeHtml(source.name)}" data-subscribe-active="${source.subscribed ? "false" : "true"}">${source.subscribed ? "取消订阅" : "订阅"}</button></div>
       </div>
     `).join("")}
   `;
@@ -703,6 +709,31 @@ async function loadFeeds() {
   state.feeds = data.feeds || [];
 }
 
+async function loadSourceCatalog() {
+  const data = await api("/api/source-catalog");
+  state.sourceCatalog = data.sources || [];
+}
+
+async function loadSubscriptions() {
+  const data = await api("/api/subscriptions");
+  state.subscriptions = data.subscriptions || [];
+}
+
+async function loadToday() {
+  state.today = await api(`/api/today?exam=${encodeURIComponent(state.style)}`);
+}
+
+async function setSourceSubscription(name, active) {
+  await api("/api/subscriptions", {
+    method: "POST",
+    body: JSON.stringify({ target_type: "source", target_value: name, active }),
+  });
+  await Promise.all([loadSourceCatalog(), loadSubscriptions(), loadToday()]);
+  renderDashboard();
+  renderArticles();
+  toast(active ? `已订阅 ${name}` : `已取消订阅 ${name}`);
+}
+
 async function loadQuizzes() {
   const suffix = state.selectedArticle ? `?article_id=${state.selectedArticle.id}` : "";
   const data = await api(`/api/quizzes${suffix}`);
@@ -814,6 +845,7 @@ async function saveArticle() {
   state.selectedArticle = data.article;
   state.selectedPoolArticleId = data.article.id;
   state.analysis = data.analysis;
+  await loadToday();
   renderAll();
   toast("已存入文章库");
 }
@@ -838,7 +870,7 @@ async function saveCard(term = $("#cardTerm").value.trim(), context = $("#cardCo
 async function refreshFeeds() {
   toast("开始更新 RSS");
   const result = await api("/api/feeds/refresh", { method: "POST", body: "{}" });
-  await loadArticles();
+  await Promise.all([loadArticles(), loadToday()]);
   renderAll();
   const errorText = result.errors?.length ? `，${result.errors.length} 个源失败` : "";
   toast(`导入 ${result.imported || 0} 条${errorText}`);
@@ -884,6 +916,7 @@ document.addEventListener("click", async event => {
       renderAll();
     }
     if (button.id === "refreshFeedsBtn") await refreshFeeds();
+    if (button.dataset.subscribeSource) await setSourceSubscription(button.dataset.subscribeSource, button.dataset.subscribeActive === "true");
     if (button.id === "saveArticleBtn") await saveArticle();
     if (button.id === "analyzeBtn") await analyzeArticle();
     if (button.id === "generateQuizBtn") await generateQuizzes();
@@ -978,7 +1011,7 @@ document.addEventListener("dblclick", event => {
 $("#globalStyle").addEventListener("change", async event => {
   state.style = event.target.value;
   localStorage.setItem("lc-v2-style", state.style);
-  await Promise.all([loadArticles(), loadFeeds(), loadExamTypes()]);
+  await Promise.all([loadArticles(), loadFeeds(), loadExamTypes(), loadToday()]);
   renderArticles();
   renderDashboard();
   toast(`文章池已切换为 ${state.style} 来源`);
@@ -1037,7 +1070,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 
 async function boot() {
   await loadHealth();
-  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadProgress(), loadExamTypes(), loadArticleTopics(), loadArticleContentTypes(), loadBridgeConfig(), searchLexicon("", { open: false })]);
+  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadExamTypes(), loadArticleTopics(), loadArticleContentTypes(), loadBridgeConfig(), searchLexicon("", { open: false })]);
   if (!state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);
     state.selectedArticle = data.article;

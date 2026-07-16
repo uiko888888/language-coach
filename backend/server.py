@@ -379,6 +379,54 @@ SOURCE_CLASSIFICATION = {
     "seed": ("示例内容", "explainer"),
 }
 
+SOURCE_CATALOG_EXTRAS = {
+    "The New York Times": {"category": "每日新闻", "homepage": "https://www.nytimes.com/", "access_mode": "摘要与原站", "rights_mode": "仅元数据、摘要和用户授权摘录", "formats": ["文章", "播客"], "cadence": "每日"},
+    "The New Yorker": {"category": "深度评论", "homepage": "https://www.newyorker.com/", "access_mode": "摘要与原站", "rights_mode": "仅元数据、摘要和用户授权摘录", "formats": ["文章", "播客"], "cadence": "每周"},
+    "The Economist": {"category": "深度评论", "homepage": "https://www.economist.com/", "access_mode": "摘要与原站", "rights_mode": "仅元数据、摘要和用户授权摘录", "formats": ["文章", "播客"], "cadence": "每日"},
+    "National Geographic": {"category": "科学与自然", "homepage": "https://www.nationalgeographic.com/", "access_mode": "摘要与原站", "rights_mode": "仅元数据、摘要和用户授权摘录", "formats": ["文章", "视频"], "cadence": "每周"},
+    "VOA Learning English": {"category": "听力与演讲", "homepage": "https://learningenglish.voanews.com/", "access_mode": "公开页面", "rights_mode": "保存链接、公开 transcript 和短语境", "formats": ["文章", "音频", "视频"], "cadence": "每日"},
+    "TED": {"category": "听力与演讲", "homepage": "https://www.ted.com/", "access_mode": "公开页面", "rights_mode": "保存链接、公开 transcript 和短语境", "formats": ["视频", "字幕", "演讲稿"], "cadence": "每周"},
+    "Amazon Books": {"category": "小说与图书", "homepage": "https://www.amazon.com/books-used-books-textbooks/", "access_mode": "书籍发现", "rights_mode": "仅书籍元数据、简介和原站链接", "formats": ["图书元数据"], "cadence": "按需"},
+    "HBO Max": {"category": "影视与流媒体", "homepage": "https://www.max.com/", "access_mode": "用户订阅与本地字幕", "rights_mode": "不抓取视频；仅用户合法字幕、时间点和短语境", "formats": ["视频", "字幕"], "cadence": "按需"},
+    "Apple TV+": {"category": "影视与流媒体", "homepage": "https://tv.apple.com/", "access_mode": "用户订阅与本地字幕", "rights_mode": "不抓取视频；仅用户合法字幕、时间点和短语境", "formats": ["视频", "字幕"], "cadence": "按需"},
+    "Prime Video": {"category": "影视与流媒体", "homepage": "https://www.primevideo.com/", "access_mode": "用户订阅与本地字幕", "rights_mode": "不抓取视频；仅用户合法字幕、时间点和短语境", "formats": ["视频", "字幕"], "cadence": "按需"},
+    "Project Gutenberg": {"category": "小说与图书", "homepage": "https://www.gutenberg.org/", "access_mode": "开放全文", "rights_mode": "仅公共领域或许可允许的全文", "formats": ["小说", "图书"], "cadence": "按需"},
+    "Standard Ebooks": {"category": "小说与图书", "homepage": "https://standardebooks.org/", "access_mode": "开放全文", "rights_mode": "公共领域电子书", "formats": ["小说", "图书"], "cadence": "按需"},
+    "Google Scholar": {"category": "学术研究", "homepage": "https://scholar.google.com/", "access_mode": "检索与提醒", "rights_mode": "保存论文元数据、摘要、DOI 和合法链接", "formats": ["论文元数据", "摘要"], "cadence": "按提醒"},
+    "arXiv": {"category": "学术研究", "homepage": "https://arxiv.org/", "access_mode": "开放元数据", "rights_mode": "按论文许可证处理全文", "formats": ["论文", "摘要"], "cadence": "每日"},
+    "PubMed": {"category": "学术研究", "homepage": "https://pubmed.ncbi.nlm.nih.gov/", "access_mode": "开放元数据", "rights_mode": "保存元数据和摘要；全文按许可处理", "formats": ["论文元数据", "摘要"], "cadence": "每日"},
+    "Substack": {"category": "博客与通讯", "homepage": "https://substack.com/", "access_mode": "用户订阅", "rights_mode": "按作者订阅权限保存摘要、链接和短语境", "formats": ["博客", "通讯", "播客"], "cadence": "按订阅"},
+}
+
+
+def source_catalog() -> list[dict]:
+    feed_by_name = {feed["name"]: feed for feed in DEFAULT_FEEDS}
+    items = []
+    for name, feed in feed_by_name.items():
+        profile = SOURCE_PROFILES.get(name, {"topics": ["综合"]})
+        source_kind, default_content_type = SOURCE_CLASSIFICATION.get(name, ("其他来源", "explainer"))
+        items.append({
+            "name": name,
+            "category": profile["topics"][0] if profile.get("topics") else "综合",
+            "homepage": feed["url"],
+            "access_mode": "RSS 自动更新",
+            "rights_mode": "保存合法摘要、源站链接和 feed 提供的完整内容",
+            "formats": ["文章"],
+            "cadence": "每日",
+            "source_kind": source_kind,
+            "default_content_type": default_content_type,
+            "automatic": True,
+        })
+    for name, metadata in SOURCE_CATALOG_EXTRAS.items():
+        items.append({
+            "name": name,
+            **metadata,
+            "source_kind": "外部内容平台",
+            "default_content_type": "culture" if metadata["category"] in {"影视与流媒体", "小说与图书"} else "explainer",
+            "automatic": False,
+        })
+    return sorted(items, key=lambda item: (not item["automatic"], item["category"], item["name"]))
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -476,6 +524,16 @@ def init_db() -> None:
               level_hint TEXT NOT NULL DEFAULT 'B1-B2',
               active INTEGER NOT NULL DEFAULT 1,
               created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS subscriptions (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              target_type TEXT NOT NULL,
+              target_value TEXT NOT NULL,
+              active INTEGER NOT NULL DEFAULT 1,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              UNIQUE(target_type, target_value)
             );
 
             CREATE TABLE IF NOT EXISTS settings (
@@ -1342,6 +1400,103 @@ def list_articles(query: dict[str, list[str]]) -> list[dict]:
     return ranked
 
 
+def subscription_payload() -> list[dict]:
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT target_type, target_value, active, created_at, updated_at FROM subscriptions ORDER BY target_type, target_value"
+        ).fetchall()
+    return rows_to_dicts(rows)
+
+
+def source_catalog_payload() -> list[dict]:
+    active = {
+        (item["target_type"], item["target_value"])
+        for item in subscription_payload()
+        if item["active"]
+    }
+    return [
+        {
+            **item,
+            "content_type_label": CONTENT_TYPE_LABELS.get(item["default_content_type"], "学术解释"),
+            "subscribed": ("source", item["name"]) in active or ("category", item["category"]) in active,
+        }
+        for item in source_catalog()
+    ]
+
+
+def estimated_study_minutes(article: dict) -> int:
+    word_count = max(1, int(article.get("content_word_count") or len(words(article.get("body", "")))))
+    reading_blocks = max(1, (word_count + 119) // 120)
+    return min(30, max(5, reading_blocks * 5))
+
+
+def today_content(exam: str = "") -> dict:
+    articles = list_articles({"exam": [exam]})
+    catalog = {item["name"]: item for item in source_catalog()}
+    active = [item for item in subscription_payload() if item["active"]]
+    source_subscriptions = {item["target_value"] for item in active if item["target_type"] == "source"}
+    category_subscriptions = {item["target_value"] for item in active if item["target_type"] == "category"}
+
+    enriched = []
+    for article in articles:
+        category = catalog.get(article["source"], {}).get("category", article.get("source_topics", ["综合"])[0])
+        subscribed = article["source"] in source_subscriptions or category in category_subscriptions
+        enriched.append({
+            **article,
+            "catalog_category": category,
+            "subscribed": subscribed,
+            "study_minutes": estimated_study_minutes(article),
+            "today_score": article["recommendation_score"] + (18 if subscribed else 0),
+        })
+    enriched.sort(key=lambda item: (-item["today_score"], item["id"]))
+
+    used: set[int] = set()
+    used_sources: set[str] = set()
+
+    def choose(predicate, fallback=True):
+        item = next(
+            (
+                candidate for candidate in enriched
+                if candidate["id"] not in used and candidate["source"] not in used_sources and predicate(candidate)
+            ),
+            None,
+        )
+        if not item and fallback:
+            item = next(
+                (candidate for candidate in enriched if candidate["id"] not in used and candidate["source"] not in used_sources),
+                None,
+            )
+        if not item:
+            item = next((candidate for candidate in enriched if candidate["id"] not in used and predicate(candidate)), None)
+        if not item and fallback:
+            item = next((candidate for candidate in enriched if candidate["id"] not in used), None)
+        if item:
+            used.add(item["id"])
+            used_sources.add(item["source"])
+        return item
+
+    quick = choose(lambda item: item["study_minutes"] <= 5 and item["content_type"] in {"report", "institution"})
+    focused = choose(lambda item: item["subscribed"] and item["study_minutes"] <= 15)
+    deep = choose(lambda item: item["content_type"] in {"opinion", "explainer", "research"})
+
+    lanes = []
+    for lane_id, label, item, base_reason in (
+        ("quick", "5 分钟速览", quick, "快速了解今日信息"),
+        ("focused", "15 分钟精读", focused, "适合完整精读"),
+        ("deep", "30 分钟吃透", deep, "适合词块、证据与练习联动"),
+    ):
+        if not item:
+            continue
+        reason = "来自你的订阅" if item["subscribed"] else base_reason
+        lanes.append({"id": lane_id, "label": label, "reason": reason, "article": item})
+    return {
+        "date": datetime.now(timezone.utc).date().isoformat(),
+        "exam": exam or "general",
+        "subscription_count": len(active),
+        "lanes": lanes,
+    }
+
+
 LEXICAL_JSON_FIELDS = {
     "forms_json": "forms", "aliases_json": "aliases", "family_json": "family",
     "collocations_json": "collocations", "synonyms_json": "synonyms",
@@ -1612,6 +1767,12 @@ class App(BaseHTTPRequestHandler):
                     self,
                     {"types": [{"id": key, "label": label} for key, label in CONTENT_TYPE_LABELS.items()]},
                 )
+            if path == "/api/source-catalog":
+                return json_response(self, {"sources": source_catalog_payload()})
+            if path == "/api/subscriptions":
+                return json_response(self, {"subscriptions": subscription_payload()})
+            if path == "/api/today":
+                return json_response(self, today_content(query.get("exam", [""])[0]))
             if path == "/api/lexicon/search":
                 return json_response(self, lexical_search(query.get("q", [""])[0]))
             match = re.fullmatch(r"/api/lexicon/entries/(\d+)", path)
@@ -1796,6 +1957,28 @@ class App(BaseHTTPRequestHandler):
                         conn.execute("UPDATE articles SET translation_zh = ? WHERE id = ?", (payload["translation_zh"], cursor.lastrowid))
                         article = conn.execute("SELECT * FROM articles WHERE id = ?", (cursor.lastrowid,)).fetchone()
                 return json_response(self, {"article": dict(article), "analysis": analyze_payload(article)}, 201)
+            if path == "/api/subscriptions":
+                target_type = (payload.get("target_type") or "source").strip()
+                target_value = (payload.get("target_value") or "").strip()
+                if target_type not in {"source", "category"}:
+                    return json_response(self, {"error": "Subscription type must be source or category"}, 400)
+                catalog = source_catalog()
+                allowed = {item["name"] for item in catalog} if target_type == "source" else {item["category"] for item in catalog}
+                if target_value not in allowed:
+                    return json_response(self, {"error": "Unknown subscription target"}, 400)
+                active = 1 if payload.get("active", True) else 0
+                now = utc_now()
+                with db() as conn:
+                    conn.execute(
+                        """INSERT INTO subscriptions (target_type, target_value, active, created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?)
+                           ON CONFLICT(target_type, target_value) DO UPDATE SET active = excluded.active, updated_at = excluded.updated_at""",
+                        (target_type, target_value, active, now, now),
+                    )
+                return json_response(
+                    self,
+                    {"ok": True, "target_type": target_type, "target_value": target_value, "active": bool(active)},
+                )
             match = re.fullmatch(r"/api/articles/(\d+)/translation", path)
             if match:
                 translation = (payload.get("translation_zh") or "").strip()
