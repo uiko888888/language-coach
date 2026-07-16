@@ -6,6 +6,21 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.7.0-alpha.11] - 2026-07-17
+
+### Added
+
+- Added actionable fallback results for every valid English word or phrase, even when the local dictionary has no full entry.
+- Added personal article contexts, cached translations, wordbook state, pronunciation, DeepL translation, and Eudic external lookup to fallback results.
+- Added direct query and source-article actions to wordbook cards.
+- Added continued lookup from collocation headings, related phrases, examples, analysis sentences, and saved contexts.
+
+### Changed
+
+- Saving an existing word or phrase now updates its context instead of creating duplicate cards.
+- Phrase queries remain the primary result while still showing related dictionary headwords.
+- Moved import and collections to `v0.7.0-alpha.12` after prioritizing the broken vocabulary loop.
+
 ## [0.7.0-alpha.10] - 2026-07-16
 
 ### Added

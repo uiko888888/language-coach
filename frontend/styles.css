@@ -60,6 +60,21 @@ button.primary {
   color: #fff;
 }
 
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--teal-dark);
+  text-decoration: none;
+}
+
+.button-link:hover { border-color: var(--teal); }
+
 button.option.correct {
   border-color: var(--green);
   background: #e8f4eb;
@@ -841,6 +856,8 @@ label {
 .phrase-head strong { display: block; line-height: 1.45; }
 .phrase-head p { margin: 3px 0 0; color: var(--teal-dark); font-size: 13px; }
 .phrase-head > button { min-width: 32px; min-height: 32px; padding: 0; color: var(--teal-dark); font-size: 18px; }
+.phrase-query { min-height: 28px; padding: 0; border: 0; background: transparent; color: var(--text); text-align: left; }
+.phrase-query:hover { color: var(--teal-dark); }
 .phrase-relation { margin-top: 9px; }
 .phrase-relation > span { display: block; margin-bottom: 5px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .phrase-relation .term-link { min-height: 34px; }
@@ -854,6 +871,9 @@ label {
 .lookup-heading h2 { margin-bottom: 3px; }
 .lookup-heading span { color: var(--muted); font-size: 13px; }
 .morph-line { margin: 11px 0; padding: 9px; border-left: 3px solid var(--amber); background: #fffaf2; line-height: 1.55; }
+.card-term-link { min-height: 0; padding: 0; border: 0; background: transparent; color: var(--text); font-weight: 800; text-align: left; }
+.card-term-link:hover { color: var(--teal-dark); }
+.query-columns .dictionary-section { min-height: 180px; }
 
 .toast {
   position: fixed;

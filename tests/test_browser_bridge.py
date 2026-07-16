@@ -64,6 +64,29 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(data["clip"]["translated_text"], payload["translation"])
         self.assertEqual(data["card"]["context"], payload["context"])
 
+    def test_repeated_browser_selection_updates_one_card(self):
+        payload = {
+            "kind": "selection",
+            "text": "evidence-based practice",
+            "context": "The first evidence-based practice example.",
+            "page_title": "First page",
+            "page_url": "https://example.test/first",
+        }
+        first, _ = self.request("/api/browser/clips", "POST", payload, self.token)
+        payload.update({
+            "context": "A newer evidence-based practice example.",
+            "page_title": "Second page",
+            "page_url": "https://example.test/second",
+        })
+        second, _ = self.request("/api/browser/clips", "POST", payload, self.token)
+        self.assertEqual(first["card"]["id"], second["card"]["id"])
+        self.assertEqual(second["card"]["context"], payload["context"])
+        with server.db() as conn:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM cards WHERE lower(term) = lower('evidence-based practice')"
+            ).fetchone()[0]
+        self.assertEqual(count, 1)
+
     def test_extracted_article_enters_full_content_pool(self):
         text = "First paragraph about climate policy. Second paragraph explains the evidence. " * 8
         payload = {
@@ -166,6 +189,22 @@ class BrowserBridgeTests(unittest.TestCase):
             {"term": "meaningful control", "context": "People need meaningful control over their data."},
         )
         self.assertEqual(result["card"]["kind"], "phrase")
+
+    def test_saving_same_term_updates_existing_card(self):
+        term = "contextual vocabulary"
+        first, _ = self.request(
+            "/api/cards", "POST", {"term": term, "context": "The first context."}
+        )
+        second, _ = self.request(
+            "/api/cards", "POST", {"term": term.upper(), "context": "A better context from the article."}
+        )
+        self.assertTrue(first["created"])
+        self.assertFalse(second["created"])
+        self.assertEqual(first["card"]["id"], second["card"]["id"])
+        self.assertEqual(second["card"]["context"], "A better context from the article.")
+        with server.db() as conn:
+            count = conn.execute("SELECT COUNT(*) FROM cards WHERE lower(term) = lower(?)", (term,)).fetchone()[0]
+        self.assertEqual(count, 1)
 
 
 if __name__ == "__main__":

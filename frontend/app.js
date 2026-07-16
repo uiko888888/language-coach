@@ -36,6 +36,7 @@ const state = {
   analysis: null,
   answerFeedback: {},
   showAnswers: false,
+  lookupTranslations: {},
   style: localStorage.getItem("lc-v2-style") || "IELTS",
   learningMode: localStorage.getItem("lc-v2-learning-mode") || "exam",
 };
@@ -284,38 +285,51 @@ function renderAnalysis() {
     </div>
     <div class="analysis-block">
       <strong>重点句</strong>
-      ${analysis.focus_sentences.map(sentence => `<p>${escapeHtml(sentence)}</p>`).join("")}
+      ${analysis.focus_sentences.map(sentence => `<p>${searchableEnglish(sentence)}</p>`).join("")}
     </div>
   `;
 }
 
 async function renderLookup(word) {
-  const clean = word.toLowerCase().replace(/^[^a-z]+|[^a-z]+$/g, "");
+  const clean = String(word || "").toLowerCase().replace(/^[^a-z]+|[^a-z]+$/g, "").replace(/\s+/g, " ").trim();
+  if (!clean) return;
   const context = state.selectedArticle ? sentenceFor(state.selectedArticle.body, clean) : "";
   const data = await api(`/api/lexicon/search?q=${encodeURIComponent(clean)}`);
+  const queryItem = data.results?.find(item => item.type === "query" && item.term.toLowerCase() === clean) || null;
   const info = data.results?.find(item => item.type === "entry") || null;
+  const displayTerm = queryItem?.term || info?.headword || clean;
+  const translation = state.lookupTranslations[clean] || queryItem?.translation_zh || info?.meaning_zh || "";
+  const saved = queryItem?.saved || state.cards.some(card => card.term.toLowerCase() === clean);
   $("#lookupPanel").innerHTML = `
-    <div class="lookup-heading"><div><h2>${escapeHtml(info?.headword || clean)}</h2>${info ? `<span>${escapeHtml(info.ipa_uk)} · ${escapeHtml(info.pos)}</span>` : ""}</div><button data-speak="${escapeHtml(info?.headword || clean)}" title="播放发音" aria-label="播放发音">▶</button></div>
-    <p>${escapeHtml(info?.meaning_zh || "当前本地词库还没有完整词条，可以先连同语境保存。")}</p>
+    <div class="lookup-heading"><div><h2>${escapeHtml(displayTerm)}</h2><span>${queryItem?.kind === "phrase" ? "短语" : info ? `${escapeHtml(info.ipa_uk)} · ${escapeHtml(info.pos)}` : "待补充词条"}</span></div><button data-speak="${escapeHtml(displayTerm)}" title="播放发音" aria-label="播放发音">▶</button></div>
+    <p>${escapeHtml(translation || "当前本地词库还没有完整释义，可以一键翻译并连同语境保存。")}</p>
     ${info?.breakdown ? `<div class="morph-line">${escapeHtml(info.breakdown)}</div>` : ""}
-    <div class="badge-row">${(info?.collocations || []).map(item => badge(termText(item), "amber")).join("")}</div>
-    ${context ? `<div class="answer-box">${escapeHtml(context)}</div>` : ""}
-    <div class="toolbar"><button class="primary" data-save-lookup="${escapeHtml(clean)}">加入生词本</button><button data-search-query="${escapeHtml(clean)}" data-open-lexicon="true">完整词条</button></div>
+    <div class="badge-row">${(info?.collocations || []).slice(0, 3).map(item => `<button data-search-query="${escapeHtml(termText(item))}">${escapeHtml(termText(item))}</button>`).join("")}</div>
+    ${context ? `<div class="answer-box">${searchableEnglish(context)}</div>` : ""}
+    <div class="toolbar">
+      <button class="primary" data-save-lookup="${escapeHtml(clean)}">${saved ? "更新生词语境" : "加入生词本"}</button>
+      ${translation ? "" : `<button data-translate-term="${escapeHtml(clean)}">翻译</button>`}
+      <button data-search-query="${escapeHtml(clean)}" data-open-lexicon="true">完整查询</button>
+      <a class="button-link" href="https://dict.eudic.net/dicts/en/${encodeURIComponent(clean)}" target="_blank" rel="noreferrer">欧路</a>
+    </div>
   `;
   $("#cardTerm").value = clean;
   $("#cardContext").value = context;
 }
 
 function lexicalLabel(item) {
-  return item.type === "entry" ? item.headword : item.form;
+  return item.type === "entry" ? item.headword : item.type === "query" ? item.term : item.form;
 }
 
 function lexicalSubtitle(item) {
-  return item.type === "entry" ? `${item.pos} · ${item.meaning_zh}` : `${item.kind} · ${item.meaning_zh}`;
+  if (item.type === "entry") return `${item.pos} · ${item.meaning_zh}`;
+  if (item.type === "query") return `${item.kind === "phrase" ? "短语" : "单词"} · ${item.translation_zh || (item.saved ? "已在生词本" : "待补充释义")}`;
+  return `${item.kind} · ${item.meaning_zh}`;
 }
 
 function matchesLexiconFilter(item) {
-  if (state.lexiconFilter === "all" || state.lexiconFilter === "family") return item.type === "entry" || state.lexiconFilter === "all";
+  if (state.lexiconFilter === "all") return true;
+  if (state.lexiconFilter === "family") return item.type === "entry";
   if (state.lexiconFilter === "morpheme") return item.type === "morpheme";
   return item.type === "morpheme" && item.kind === state.lexiconFilter;
 }
@@ -358,7 +372,7 @@ function phraseCards(items) {
   return (items || []).map(item => {
     const current = typeof item === "string" ? { phrase: item, meaning_zh: "", synonyms: [], antonyms: [] } : item;
     return `<article class="phrase-item">
-      <div class="phrase-head"><div><strong>${escapeHtml(current.phrase)}</strong><p>${escapeHtml(current.meaning_zh || "")}</p></div><button data-save-phrase="${escapeHtml(current.phrase)}" title="加入生词本" aria-label="加入生词本">＋</button></div>
+      <div class="phrase-head"><div><button class="phrase-query" data-search-query="${escapeHtml(current.phrase)}"><strong>${escapeHtml(current.phrase)}</strong></button><p>${escapeHtml(current.meaning_zh || "")}</p></div><button data-save-phrase="${escapeHtml(current.phrase)}" title="加入生词本" aria-label="加入生词本">＋</button></div>
       ${current.synonyms?.length ? `<div class="phrase-relation"><span>近义表达</span><div class="term-grid">${termButtons(current.synonyms, "synonym")}</div></div>` : ""}
       ${current.antonyms?.length ? `<div class="phrase-relation"><span>反义表达</span><div class="term-grid">${termButtons(current.antonyms, "antonym")}</div></div>` : ""}
     </article>`;
@@ -389,10 +403,26 @@ function renderLexicalDetail(item) {
     `;
     return;
   }
+  if (item.type === "query") {
+    const translated = state.lookupTranslations[item.term.toLowerCase()] || item.translation_zh || "";
+    detail.innerHTML = `
+      <div class="dictionary-hero">
+        <div><div class="badge-row">${badge(item.kind === "phrase" ? "短语" : "单词", item.kind === "phrase" ? "amber" : "teal")}${badge(item.saved ? `生词本 · ${item.card_status || "new"}` : "尚未保存")}${badge(item.matched_by)}</div><h2>${escapeHtml(item.term)}</h2><div class="pronunciation"><button data-speak="${escapeHtml(item.term)}" data-voice="en-US" title="播放发音">▶ US</button></div></div>
+        <div class="toolbar"><button class="primary" data-save-lookup="${escapeHtml(item.term)}">${item.saved ? "更新生词语境" : "加入生词本"}</button>${translated ? "" : `<button data-translate-term="${escapeHtml(item.term)}">一键翻译</button>`}<a class="button-link" href="https://dict.eudic.net/dicts/en/${encodeURIComponent(item.term)}" target="_blank" rel="noreferrer">在欧路中查看</a></div>
+      </div>
+      <p class="core-definition">${escapeHtml(translated || "本地开放词典尚未收录完整释义。你仍可保存、翻译，并从个人文章语境继续学习。")}</p>
+      <div class="dictionary-columns query-columns">
+        <section class="dictionary-section"><h3>你的真实语境</h3>${item.contexts?.length ? item.contexts.map(context => `<article class="example-item"><p class="example-en">${searchableEnglish(context.text)}</p><p class="example-zh">${escapeHtml(context.article_title || context.source)}</p>${context.article_id ? `<button data-open-article="${context.article_id}">回到原文</button>` : ""}</article>`).join("") : `<div class="empty-state">尚未在个人文章中找到这个表达。</div>`}</section>
+        <section class="dictionary-section"><h3>下一步</h3><p>先确认当前语境含义，再保存整句。后续开放词典导入会补充高频义项、搭配、近义辨析和词源。</p></section>
+      </div>
+    `;
+    return;
+  }
+  const saved = state.cards.some(card => card.term.toLowerCase() === item.headword.toLowerCase());
   detail.innerHTML = `
     <div class="dictionary-hero">
       <div><div class="badge-row">${badge(item.level || "词条", "teal")}${badge(item.pos)}${badge(item.register_label)}</div><h2>${escapeHtml(item.headword)}</h2><div class="pronunciation"><span>UK ${escapeHtml(item.ipa_uk)}</span><button data-speak="${escapeHtml(item.headword)}" data-voice="en-GB" title="英式发音">▶ UK</button><span>US ${escapeHtml(item.ipa_us)}</span><button data-speak="${escapeHtml(item.headword)}" data-voice="en-US" title="美式发音">▶ US</button></div></div>
-      <button class="primary" data-save-lookup="${escapeHtml(item.headword)}">加入生词本</button>
+      <div class="toolbar"><button class="primary" data-save-lookup="${escapeHtml(item.headword)}">${saved ? "更新生词语境" : "加入生词本"}</button><a class="button-link" href="https://dict.eudic.net/dicts/en/${encodeURIComponent(item.headword)}" target="_blank" rel="noreferrer">欧路</a></div>
     </div>
     <p class="core-definition">${escapeHtml(item.core_meaning)}</p><p class="zh-definition">${escapeHtml(item.meaning_zh)}</p>
     <div class="morph-origin"><span>构词拆解</span><strong>${escapeHtml(item.breakdown)}</strong><p>${escapeHtml(item.origin)}</p></div>
@@ -439,7 +469,7 @@ function renderQuickResults(results, query) {
   const panel = $("#quickLexiconResults");
   const items = results.slice(0, 4);
   panel.hidden = false;
-  panel.innerHTML = items.length ? `${items.map(item => `<button data-search-query="${escapeHtml(lexicalLabel(item))}" data-open-lexicon="true"><strong>${escapeHtml(lexicalLabel(item))}</strong><span>${escapeHtml(lexicalSubtitle(item))}</span></button>`).join("")}<button class="quick-more" data-search-query="${escapeHtml(query)}" data-open-lexicon="true">查看全部结果</button>` : `<div class="quick-empty">本地词库暂未收录，仍可加入生词本。</div>`;
+  panel.innerHTML = items.length ? `${items.map(item => `<button data-search-query="${escapeHtml(lexicalLabel(item))}" data-open-lexicon="true"><strong>${escapeHtml(lexicalLabel(item))}</strong><span>${escapeHtml(lexicalSubtitle(item))}</span></button>`).join("")}<button class="quick-more" data-search-query="${escapeHtml(query)}" data-open-lexicon="true">查看全部结果</button>` : `<div class="quick-empty">没有可查询内容</div>`;
 }
 
 function speak(text, lang = "en-US") {
@@ -569,9 +599,10 @@ function renderCards() {
   $("#cardList").innerHTML = state.cards.map(card => `
     <div class="item">
       <div class="badge-row">${badge(card.kind === "phrase" ? "短语" : "单词", card.kind === "phrase" ? "amber" : "teal")}${badge(card.status || "new")}</div>
-      <h3>${escapeHtml(card.term)}</h3>
-      <p>${escapeHtml(card.context || "")}</p>
+      <h3><button class="card-term-link" data-search-query="${escapeHtml(card.term)}">${escapeHtml(card.term)}</button></h3>
+      <p>${card.context ? searchableEnglish(card.context) : "尚未保存语境"}</p>
       ${card.note ? `<p>${escapeHtml(card.note)}</p>` : ""}
+      <div class="toolbar"><button data-search-query="${escapeHtml(card.term)}" data-open-lexicon="true">查看查询</button>${card.source_article_id ? `<button data-open-article="${card.source_article_id}">回到原文</button>` : ""}<a class="button-link" href="https://dict.eudic.net/dicts/en/${encodeURIComponent(card.term)}" target="_blank" rel="noreferrer">欧路</a></div>
     </div>
   `).join("") || `<div class="item muted">暂无生词</div>`;
 }
@@ -908,20 +939,38 @@ async function saveArticle() {
 
 async function saveCard(term = $("#cardTerm").value.trim(), context = $("#cardContext").value.trim()) {
   if (!term) return toast("词不能为空");
+  const selectedBody = state.selectedArticle?.body?.toLowerCase() || "";
+  const belongsToSelectedArticle = Boolean(context && state.selectedArticle && selectedBody.includes(term.toLowerCase()));
   const data = await api("/api/cards", {
     method: "POST",
     body: JSON.stringify({
       term,
       kind: term.includes(" ") ? "phrase" : "word",
       context,
-      source_article_id: state.selectedArticle?.id || null,
-      status: "new",
+      source_article_id: belongsToSelectedArticle ? state.selectedArticle.id : null,
     }),
   });
-  state.cards.unshift(data.card);
+  state.cards = [data.card, ...state.cards.filter(card => card.id !== data.card.id)];
   renderCards();
+  renderLexicon();
   renderStats();
-  toast("已加入生词本");
+  toast(data.created ? "已加入生词本" : "已更新已有生词的语境");
+}
+
+async function translateLexicalTerm(term) {
+  if (!state.bridge?.token) return toast("本地翻译连接尚未就绪");
+  const clean = String(term || "").trim();
+  const data = await api("/api/browser/translate", {
+    method: "POST",
+    headers: { "X-Language-Coach-Token": state.bridge.token },
+    body: JSON.stringify({ text: clean, source_lang: "EN", target_lang: "ZH-HANS" }),
+  });
+  state.lookupTranslations[clean.toLowerCase()] = data.translated_text;
+  const queryItem = state.lexiconResults.find(item => item.type === "query" && item.term.toLowerCase() === clean.toLowerCase());
+  if (queryItem) queryItem.translation_zh = data.translated_text;
+  renderLexicon();
+  await renderLookup(clean);
+  toast(data.cached ? "已载入词语翻译" : "翻译完成");
 }
 
 async function refreshFeeds() {
@@ -1030,6 +1079,7 @@ document.addEventListener("click", async event => {
       renderLexicon();
     }
     if (button.dataset.speak) speak(button.dataset.speak, button.dataset.voice || "en-US");
+    if (button.dataset.translateTerm) await translateLexicalTerm(button.dataset.translateTerm);
     if (button.dataset.savePhrase) {
       const example = state.selectedLexicalItem?.examples?.[0];
       await saveCard(button.dataset.savePhrase, typeof example === "string" ? example : example?.text || "");

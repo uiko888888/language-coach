@@ -470,6 +470,19 @@ def rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+def unique_cards_payload(conn: sqlite3.Connection) -> list[dict]:
+    rows = rows_to_dicts(conn.execute("SELECT * FROM cards ORDER BY updated_at DESC, id DESC").fetchall())
+    seen: set[str] = set()
+    unique = []
+    for item in rows:
+        key = re.sub(r"\s+", " ", item["term"]).strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return unique
+
+
 def init_db() -> None:
     with db() as conn:
         conn.executescript(
@@ -1628,6 +1641,80 @@ def morpheme_entry(row: sqlite3.Row) -> dict:
     return item
 
 
+def lexical_query_context(term: str, limit: int = 5) -> dict:
+    normalized = re.sub(r"\s+", " ", term).strip()
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    contexts: list[dict] = []
+    with db() as conn:
+        card = conn.execute(
+            "SELECT * FROM cards WHERE lower(trim(term)) = lower(?) ORDER BY updated_at DESC, id DESC LIMIT 1",
+            (normalized,),
+        ).fetchone()
+        clip = conn.execute(
+            """SELECT translated_text FROM browser_clips
+               WHERE lower(trim(source_text)) = lower(?) AND translated_text != ''
+               ORDER BY created_at DESC, id DESC LIMIT 1""",
+            (normalized,),
+        ).fetchone()
+        cached = conn.execute(
+            """SELECT translated_text FROM translation_cache
+               WHERE text_hash = ? AND source_lang = 'EN' AND target_lang = 'ZH-HANS'
+               ORDER BY created_at DESC, id DESC LIMIT 1""",
+            (digest,),
+        ).fetchone()
+        article_rows = conn.execute(
+            """SELECT id, title, source, body FROM articles
+               WHERE lower(body) LIKE lower(?) ORDER BY updated_at DESC, id DESC LIMIT 20""",
+            (f"%{normalized}%",),
+        ).fetchall()
+
+    if card and card["context"]:
+        contexts.append({
+            "text": card["context"],
+            "source": "生词本语境",
+            "article_id": card["source_article_id"],
+            "article_title": "",
+        })
+    pattern = re.compile(rf"(?<![A-Za-z]){re.escape(normalized)}(?![A-Za-z])", re.I)
+    for row in article_rows:
+        context = next((sentence for sentence in sentences(row["body"]) if pattern.search(sentence)), "")
+        if not context or any(item["text"] == context for item in contexts):
+            continue
+        contexts.append({
+            "text": context,
+            "source": row["source"],
+            "article_id": row["id"],
+            "article_title": row["title"],
+        })
+        if len(contexts) >= limit:
+            break
+    return {
+        "translation_zh": (clip or cached or {"translated_text": ""})["translated_text"],
+        "saved": bool(card),
+        "card_id": card["id"] if card else None,
+        "card_status": card["status"] if card else "",
+        "contexts": contexts[:limit],
+    }
+
+
+def related_term_translation(entries: list[dict], term: str) -> str:
+    needle = term.lower()
+    for entry in entries:
+        related = [*(entry.get("synonyms") or []), *(entry.get("antonyms") or [])]
+        for collocation in entry.get("collocations") or []:
+            related.append(collocation)
+            if isinstance(collocation, dict):
+                related.extend(collocation.get("synonyms") or [])
+                related.extend(collocation.get("antonyms") or [])
+        for item in related:
+            if not isinstance(item, dict):
+                continue
+            label = item.get("term") or item.get("phrase") or ""
+            if label.lower() == needle:
+                return item.get("meaning_zh") or ""
+    return ""
+
+
 def lexical_search(query: str, limit: int = 30) -> dict:
     raw = (query or "").strip()
     needle = raw.lower()
@@ -1637,6 +1724,7 @@ def lexical_search(query: str, limit: int = 30) -> dict:
         morphemes = [morpheme_entry(row) for row in conn.execute("SELECT * FROM morphemes ORDER BY kind, form")]
 
     results: list[dict] = []
+    exact_lexical_match = False
     for entry in entries:
         headword = entry["headword"].lower()
         forms = [value.lower() for value in entry["forms"]]
@@ -1648,10 +1736,12 @@ def lexical_search(query: str, limit: int = 30) -> dict:
             score, matched_by = 10, "推荐词条"
         elif needle == headword:
             score, matched_by = 100, "单词完全匹配"
+            exact_lexical_match = True
         elif needle in roots or compact in [root.strip("-") for root in roots]:
             score, matched_by = 92, "构词成分匹配"
         elif needle in forms:
             score, matched_by = 86, "词形匹配"
+            exact_lexical_match = True
         elif any(needle == alias or needle in alias for alias in aliases) or needle in entry["meaning_zh"].lower():
             score, matched_by = 78, "中文释义匹配"
         elif needle in headword:
@@ -1678,6 +1768,21 @@ def lexical_search(query: str, limit: int = 30) -> dict:
             score, matched_by = 60, "相关词匹配"
         if score:
             results.append({"type": "morpheme", "score": score, "matched_by": matched_by, **morpheme})
+
+    is_english_term = bool(re.fullmatch(r"[A-Za-z][A-Za-z' -]{0,79}", raw)) and len(raw.split()) <= 6
+    if is_english_term and (" " in raw or not exact_lexical_match):
+        learning = lexical_query_context(raw)
+        if not learning["translation_zh"]:
+            learning["translation_zh"] = related_term_translation(entries, raw)
+        results.append({
+            "type": "query",
+            "id": 0,
+            "score": 110 if " " in raw else 88,
+            "matched_by": "短语查询" if " " in raw else "个人查询",
+            "term": re.sub(r"\s+", " ", raw),
+            "kind": "phrase" if " " in raw else "word",
+            **learning,
+        })
 
     results.sort(key=lambda item: (-item["score"], item.get("headword", item.get("form", ""))))
     return {"query": raw, "count": len(results), "results": results[:limit]}
@@ -1988,7 +2093,7 @@ class App(BaseHTTPRequestHandler):
                 return json_response(self, {"article": item, "analysis": analyze_payload(item)})
             if path == "/api/cards":
                 with db() as conn:
-                    cards = rows_to_dicts(conn.execute("SELECT * FROM cards ORDER BY updated_at DESC, id DESC").fetchall())
+                    cards = unique_cards_payload(conn)
                 return json_response(self, {"cards": cards})
             if path == "/api/quizzes":
                 article_id = query.get("article_id", [""])[0]
@@ -2091,12 +2196,23 @@ class App(BaseHTTPRequestHandler):
                             article_id = cursor.lastrowid
                     elif payload.get("save_to", "wordbook") == "wordbook":
                         term = source_text if len(source_text) <= 180 else source_text[:177] + "..."
-                        cursor = conn.execute(
-                            """INSERT INTO cards (term, kind, context, status, note, created_at, updated_at)
-                               VALUES (?, ?, ?, 'new', ?, ?, ?)""",
-                            (term, "phrase" if " " in term.strip() else "word", context or source_text, note, now, now),
-                        )
-                        card_id = cursor.lastrowid
+                        existing_card = conn.execute(
+                            "SELECT * FROM cards WHERE lower(trim(term)) = lower(?) ORDER BY updated_at DESC, id DESC LIMIT 1",
+                            (term,),
+                        ).fetchone()
+                        if existing_card:
+                            conn.execute(
+                                """UPDATE cards SET context = ?, note = ?, updated_at = ? WHERE id = ?""",
+                                (context or source_text or existing_card["context"], note or existing_card["note"], now, existing_card["id"]),
+                            )
+                            card_id = existing_card["id"]
+                        else:
+                            cursor = conn.execute(
+                                """INSERT INTO cards (term, kind, context, status, note, created_at, updated_at)
+                                   VALUES (?, ?, ?, 'new', ?, ?, ?)""",
+                                (term, "phrase" if " " in term.strip() else "word", context or source_text, note, now, now),
+                            )
+                            card_id = cursor.lastrowid
                     cursor = conn.execute(
                         """INSERT INTO browser_clips
                            (kind, source_text, translated_text, context, page_title, page_url, card_id, article_id, created_at)
@@ -2281,24 +2397,50 @@ class App(BaseHTTPRequestHandler):
                     return json_response(self, {"error": "Term is required"}, 400)
                 now = utc_now()
                 with db() as conn:
-                    cursor = conn.execute(
-                        """
-                        INSERT INTO cards (term, kind, context, source_article_id, status, note, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            term,
-                            payload.get("kind") or ("phrase" if " " in term else "word"),
-                            payload.get("context") or "",
-                            payload.get("source_article_id"),
-                            payload.get("status") or "new",
-                            payload.get("note") or "",
-                            now,
-                            now,
-                        ),
-                    )
-                    card = conn.execute("SELECT * FROM cards WHERE id = ?", (cursor.lastrowid,)).fetchone()
-                return json_response(self, {"card": dict(card)}, 201)
+                    existing = conn.execute(
+                        "SELECT * FROM cards WHERE lower(trim(term)) = lower(?) ORDER BY updated_at DESC, id DESC LIMIT 1",
+                        (term,),
+                    ).fetchone()
+                    if existing:
+                        context = (payload.get("context") or "").strip() or existing["context"]
+                        source_article_id = payload.get("source_article_id") or existing["source_article_id"]
+                        note = (payload.get("note") or "").strip() or existing["note"]
+                        conn.execute(
+                            """UPDATE cards SET term = ?, kind = ?, context = ?, source_article_id = ?, note = ?, updated_at = ?
+                               WHERE id = ?""",
+                            (
+                                term,
+                                payload.get("kind") or ("phrase" if " " in term else "word"),
+                                context,
+                                source_article_id,
+                                note,
+                                now,
+                                existing["id"],
+                            ),
+                        )
+                        card_id = existing["id"]
+                        created = False
+                    else:
+                        cursor = conn.execute(
+                            """
+                            INSERT INTO cards (term, kind, context, source_article_id, status, note, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                term,
+                                payload.get("kind") or ("phrase" if " " in term else "word"),
+                                payload.get("context") or "",
+                                payload.get("source_article_id"),
+                                payload.get("status") or "new",
+                                payload.get("note") or "",
+                                now,
+                                now,
+                            ),
+                        )
+                        card_id = cursor.lastrowid
+                        created = True
+                    card = conn.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
+                return json_response(self, {"card": dict(card), "created": created}, 201 if created else 200)
             if path == "/api/attempts":
                 quiz_id = int(payload.get("quiz_id"))
                 answer = str(payload.get("answer") or "").strip()
