@@ -36,12 +36,17 @@ SAMPLE_TRANSLATION = """智能设备承诺带来便利，但它们也会悄然�
 EXAM_QUESTION_TYPES = {
     "IELTS": [("evidence", "判断与证据定位", "reading"), ("heading", "段落标题匹配", "main-idea"), ("paraphrase", "同义替换", "paraphrase"), ("gap-fill", "选词填空", "cloze")],
     "TOEFL": [("factual", "事实信息题", "reading"), ("main-idea", "主旨题", "main-idea"), ("simplification", "句子简化", "paraphrase"), ("vocabulary", "语境词义", "cloze")],
+    "CET4": [("detail", "仔细阅读·细节定位", "reading"), ("matching", "长篇阅读·信息匹配", "main-idea"), ("inference", "推断判断", "paraphrase"), ("banked-cloze", "选词填空", "cloze")],
+    "CET6": [("inference", "深层推断", "reading"), ("matching", "长篇阅读·信息匹配", "main-idea"), ("paraphrase", "同义转述", "paraphrase"), ("banked-cloze", "选词填空", "cloze")],
+    "KAOYAN": [("detail-inference", "细节与推断", "reading"), ("main-attitude", "主旨与作者态度", "main-idea"), ("sentence-meaning", "长难句语义", "paraphrase"), ("cloze-logic", "完形与语境逻辑", "cloze")],
     "TEM4": [("detail", "细节理解", "reading"), ("main-idea", "主旨概括", "main-idea"), ("meaning", "近义改写", "paraphrase"), ("lexico-grammar", "词汇语法", "cloze")],
     "TEM8": [("inference", "推断与态度", "reading"), ("title", "标题概括", "main-idea"), ("nuance", "长难句释义", "paraphrase"), ("semantic", "语义辨析", "cloze")],
     "GRE": [("implication", "推断题", "reading"), ("central-concern", "中心论点", "main-idea"), ("function", "句间逻辑", "paraphrase"), ("precision", "精确词义", "cloze")],
     "GMAT": [("support", "论证支持", "reading"), ("argument-role", "论证功能", "main-idea"), ("reasoning", "推理保真", "paraphrase"), ("business-context", "商科语境搭配", "cloze")],
     "general": [("evidence", "证据定位", "reading"), ("main-idea", "主旨题", "main-idea"), ("paraphrase", "同义改写", "paraphrase"), ("cloze", "选词填空", "cloze"), ("initial", "首字母填空", "initial")],
 }
+
+SUPPORTED_EXAMS = [name for name in EXAM_QUESTION_TYPES if name != "general"]
 
 ARTICLE_THEMES = {
     "环境保护": ["climate", "emission", "carbon", "pollution", "conservation", "biodiversity", "exxon", "renewable"],
@@ -277,19 +282,19 @@ DEFAULT_FEEDS = [
 
 
 SOURCE_PROFILES = {
-    "The Conversation": {"tier": "核心", "topics": ["科学", "社会", "教育"], "exams": ["IELTS", "TOEFL", "TEM8", "GRE"]},
-    "JSTOR Daily": {"tier": "核心", "topics": ["历史", "人文", "社会科学"], "exams": ["TOEFL", "TEM8", "GRE"]},
-    "Guardian Science": {"tier": "核心", "topics": ["科学", "健康"], "exams": ["IELTS", "TOEFL", "TEM4", "TEM8"]},
-    "Guardian Environment": {"tier": "核心", "topics": ["环境", "社会"], "exams": ["IELTS", "TOEFL", "TEM4", "TEM8"]},
-    "MIT Technology Review": {"tier": "核心", "topics": ["科技", "商业"], "exams": ["TOEFL", "GRE", "GMAT", "TEM8"]},
-    "ScienceDaily": {"tier": "核心", "topics": ["自然科学", "健康"], "exams": ["IELTS", "TOEFL", "GRE"]},
-    "Aeon": {"tier": "核心", "topics": ["哲学", "心理", "文化"], "exams": ["TEM8", "GRE"]},
-    "Knowledge at Wharton": {"tier": "核心", "topics": ["商业", "经济", "管理"], "exams": ["GMAT", "GRE", "TEM8"]},
-    "The Economist Business": {"tier": "核心", "topics": ["商业", "经济", "政策"], "exams": ["GMAT", "GRE", "TEM8"]},
-    "BBC Learning English": {"tier": "补充", "topics": ["语言", "时事"], "exams": ["IELTS", "TEM4"]},
-    "NPR": {"tier": "补充", "topics": ["时事", "社会"], "exams": ["IELTS", "TOEFL", "TEM4", "TEM8"]},
-    "manual": {"tier": "个人", "topics": ["自选"], "exams": ["IELTS", "TOEFL", "TEM4", "TEM8", "GRE", "GMAT"]},
-    "seed": {"tier": "示例", "topics": ["科技", "社会"], "exams": ["IELTS", "TOEFL", "TEM4", "TEM8", "GRE", "GMAT"]},
+    "The Conversation": {"tier": "核心", "topics": ["科学", "社会", "教育"], "exams": ["IELTS", "TOEFL", "CET6", "KAOYAN", "TEM8", "GRE"]},
+    "JSTOR Daily": {"tier": "核心", "topics": ["历史", "人文", "社会科学"], "exams": ["TOEFL", "CET6", "KAOYAN", "TEM8", "GRE"]},
+    "Guardian Science": {"tier": "核心", "topics": ["科学", "健康"], "exams": ["IELTS", "TOEFL", "CET4", "CET6", "KAOYAN", "TEM4", "TEM8"]},
+    "Guardian Environment": {"tier": "核心", "topics": ["环境", "社会"], "exams": ["IELTS", "TOEFL", "CET4", "CET6", "KAOYAN", "TEM4", "TEM8"]},
+    "MIT Technology Review": {"tier": "核心", "topics": ["科技", "商业"], "exams": ["TOEFL", "CET6", "KAOYAN", "GRE", "GMAT", "TEM8"]},
+    "ScienceDaily": {"tier": "核心", "topics": ["自然科学", "健康"], "exams": ["IELTS", "TOEFL", "CET4", "CET6", "GRE"]},
+    "Aeon": {"tier": "核心", "topics": ["哲学", "心理", "文化"], "exams": ["CET6", "KAOYAN", "TEM8", "GRE"]},
+    "Knowledge at Wharton": {"tier": "核心", "topics": ["商业", "经济", "管理"], "exams": ["CET6", "KAOYAN", "GMAT", "GRE", "TEM8"]},
+    "The Economist Business": {"tier": "核心", "topics": ["商业", "经济", "政策"], "exams": ["CET6", "KAOYAN", "GMAT", "GRE", "TEM8"]},
+    "BBC Learning English": {"tier": "补充", "topics": ["语言", "时事"], "exams": ["IELTS", "CET4", "CET6", "TEM4"]},
+    "NPR": {"tier": "补充", "topics": ["时事", "社会"], "exams": ["IELTS", "TOEFL", "CET4", "CET6", "KAOYAN", "TEM4", "TEM8"]},
+    "manual": {"tier": "个人", "topics": ["自选"], "exams": SUPPORTED_EXAMS},
+    "seed": {"tier": "示例", "topics": ["科技", "社会"], "exams": SUPPORTED_EXAMS},
 }
 
 
@@ -710,6 +715,69 @@ def style_profile(style: str) -> dict:
             ],
             "notes": ["TOEFL / 事实信息", "TOEFL / 主旨题", "TOEFL / 句子简化", "TOEFL / 语境词义", "TOEFL / 结构回忆"],
         },
+        "CET4": {
+            "support_prompt": "CET-4 style: Which statement agrees with the passage?",
+            "main_prompt": "CET-4 style: Which paragraph idea best matches this information?",
+            "para_prompt": "CET-4 style: Which option best restates the sentence?",
+            "support_wrong": [
+                "It repeats a familiar word but changes the stated fact.",
+                "It turns one example into a general conclusion.",
+                "It is related to the topic but is not stated in the passage.",
+            ],
+            "main_wrong": [
+                "A minor detail rather than the paragraph's focus.",
+                "An idea that appears in a different part of the passage.",
+                "A broad topic label without the paragraph's key information.",
+            ],
+            "para_wrong": [
+                "It changes the subject or object of the original sentence.",
+                "It uses a near-synonym in the wrong collocation.",
+                "It removes a condition and makes the claim too broad.",
+            ],
+            "notes": ["四级 / 仔细阅读", "四级 / 长篇匹配", "四级 / 推断判断", "四级 / 选词填空", "四级 / 词汇回忆"],
+        },
+        "CET6": {
+            "support_prompt": "CET-6 style: Which conclusion is best supported by the passage?",
+            "main_prompt": "CET-6 style: Which idea best represents the paragraph's role?",
+            "para_prompt": "CET-6 style: Which option best preserves the writer's meaning?",
+            "support_wrong": [
+                "It extends the evidence beyond the scope of the passage.",
+                "It mistakes the writer's qualification for a firm conclusion.",
+                "It is plausible in general but unsupported by this passage.",
+            ],
+            "main_wrong": [
+                "A supporting illustration rather than the central point.",
+                "A related issue the paragraph does not address.",
+                "A conclusion stronger than the paragraph permits.",
+            ],
+            "para_wrong": [
+                "It keeps the topic but changes the logical relationship.",
+                "It loses the writer's degree of certainty.",
+                "It adds a cause that the sentence does not establish.",
+            ],
+            "notes": ["六级 / 深层推断", "六级 / 长篇匹配", "六级 / 同义转述", "六级 / 选词填空", "六级 / 词汇回忆"],
+        },
+        "KAOYAN": {
+            "support_prompt": "Postgraduate entrance exam style: Which inference is most consistent with the text?",
+            "main_prompt": "Postgraduate entrance exam style: What best captures the author's purpose or attitude?",
+            "para_prompt": "Postgraduate entrance exam style: Which option best explains the sentence in context?",
+            "support_wrong": [
+                "It draws an absolute conclusion from qualified evidence.",
+                "It confuses the author's report of a view with endorsement of that view.",
+                "It relies on background knowledge rather than textual evidence.",
+            ],
+            "main_wrong": [
+                "A local example that does not represent the author's purpose.",
+                "A neutral description that misses the author's attitude.",
+                "A position the passage presents in order to question it.",
+            ],
+            "para_wrong": [
+                "It preserves individual words but reverses the sentence logic.",
+                "It ignores a contrast or qualification in the context.",
+                "It adds an evaluation that the author does not make.",
+            ],
+            "notes": ["考研 / 细节与推断", "考研 / 主旨与态度", "考研 / 长难句语义", "考研 / 完形逻辑", "考研 / 关键词回忆"],
+        },
         "TEM4": {
             "support_prompt": "TEM4-style: Choose the statement that agrees with the passage.",
             "main_prompt": "TEM4-style: What is the paragraph mainly about?",
@@ -1065,7 +1133,7 @@ def analyze_payload(article: sqlite3.Row | dict) -> dict:
 def source_profile(source: str, exam: str = "") -> dict:
     profile = SOURCE_PROFILES.get(
         source,
-        {"tier": "其他", "topics": ["综合"], "exams": ["IELTS", "TOEFL", "TEM4", "TEM8", "GRE", "GMAT"]},
+        {"tier": "其他", "topics": ["综合"], "exams": SUPPORTED_EXAMS},
     )
     if source in {"manual", "seed"}:
         fit = 95

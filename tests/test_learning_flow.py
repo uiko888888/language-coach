@@ -29,6 +29,25 @@ class LearningFlowTests(unittest.TestCase):
         self.assertTrue(all(item["type"] == "main-idea" for item in items))
         self.assertTrue(all("段落标题匹配" in item["note"] for item in items))
 
+    def test_domestic_exam_styles_have_independent_types_and_profiles(self):
+        expected = {
+            "CET4": ("banked-cloze", "选词填空", "四级"),
+            "CET6": ("matching", "长篇阅读", "六级"),
+            "KAOYAN": ("sentence-meaning", "长难句语义", "考研"),
+        }
+        for style, (question_type, question_label, coaching_label) in expected.items():
+            configured = {item[0] for item in server.EXAM_QUESTION_TYPES[style]}
+            self.assertIn(question_type, configured)
+            items = server.generate_quiz_items(server.SAMPLE_ARTICLE, "mixed", style, question_type)
+            self.assertTrue(items)
+            self.assertTrue(all(question_label in item["note"] for item in items))
+            self.assertTrue(all(coaching_label in note for note in server.style_profile(style)["notes"]))
+
+    def test_domestic_exam_source_matching(self):
+        self.assertEqual(server.source_profile("Guardian Science", "CET4")["exam_fit"], 100)
+        self.assertEqual(server.source_profile("The Conversation", "KAOYAN")["exam_fit"], 100)
+        self.assertIn("CET6", server.source_profile("manual")["source_exams"])
+
     def test_progress_awards_points_and_level(self):
         with server.db() as conn:
             progress = server.award_progress(conn, 110, correct=True)
