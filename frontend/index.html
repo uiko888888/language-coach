@@ -235,6 +235,14 @@
         <div class="band-head">
           <h2>题目</h2>
           <div class="toolbar">
+            <select id="quizPracticeMode" aria-label="训练模式">
+              <option value="mixed">综合训练</option>
+              <option value="reading">阅读理解</option>
+              <option value="cloze">选词填空</option>
+              <option value="initial">首字母填空</option>
+            </select>
+            <select id="quizPracticeType" aria-label="考试题型"></select>
+            <button class="primary" id="generatePracticeBtn">按当前文章出题</button>
             <button id="loadQuizzesBtn">载入题目</button>
             <button id="showAnswersBtn">显示答案</button>
           </div>

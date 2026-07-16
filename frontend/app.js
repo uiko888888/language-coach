@@ -746,6 +746,12 @@ function renderExamTypes() {
   const previous = select.value;
   select.innerHTML = `<option value="">全部对应题型</option>${state.examTypes.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join("")}`;
   if (state.examTypes.some(item => item.id === previous)) select.value = previous;
+  const practiceSelect = $("#quizPracticeType");
+  if (practiceSelect) {
+    const practicePrevious = practiceSelect.value;
+    practiceSelect.innerHTML = `<option value="">全部题型</option>${state.examTypes.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join("")}`;
+    if (state.examTypes.some(item => item.id === practicePrevious)) practiceSelect.value = practicePrevious;
+  }
 }
 
 async function loadHealth() {
@@ -896,9 +902,11 @@ async function analyzeArticle() {
 
 async function generateQuizzes(id = state.selectedArticle?.id, { open = true } = {}) {
   if (!id) return toast("先选文章");
+  const mode = $("#quizPracticeMode")?.value || $("#quizMode")?.value || "mixed";
+  const questionType = $("#quizPracticeType")?.value || $("#examQuestionType")?.value || "";
   const data = await api(`/api/articles/${id}/quizzes`, {
     method: "POST",
-    body: JSON.stringify({ mode: $("#quizMode").value, style: state.style, question_type: $("#examQuestionType").value }),
+    body: JSON.stringify({ mode, style: state.style, question_type: questionType }),
   });
   state.quizzes = data.quizzes || [];
   if (open) setView("quiz");
@@ -1187,6 +1195,7 @@ document.addEventListener("click", async event => {
       await loadQuizzes();
       renderQuizzes();
     }
+    if (button.id === "generatePracticeBtn") await generateQuizzes();
     if (button.id === "showAnswersBtn") {
       state.showAnswers = !state.showAnswers;
       renderQuizzes();

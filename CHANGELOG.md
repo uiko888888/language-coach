@@ -8,6 +8,18 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.7.0-alpha.16] - 2026-07-17
+
+### Added
+
+- Added a clearer practice-center control bar for combined, reading, cloze, and initial-letter training.
+- Added exam question-type selection and current-article generation from the practice center.
+
+### Changed
+
+- Kept current rule-based generation explicit as a baseline for the future AI question model and validator.
+- Moved article import and collections to `v0.7.0-alpha.17`; Kaikki/Tatoeba/wordfreq integration moves to `v0.7.0-alpha.18`.
+
 ## [0.7.0-alpha.15] - 2026-07-17
 
 ### Added
