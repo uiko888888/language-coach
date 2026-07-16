@@ -1,3 +1,4 @@
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,6 +23,9 @@ class LearningFlowTests(unittest.TestCase):
         self.assertIn("智能设备", article["translation_zh"])
         self.assertIn("Smart devices", article["body"])
         self.assertEqual(article["content_status"], "full")
+        enriched = server.enrich_article(dict(article))
+        self.assertEqual(enriched["paragraph_count"], enriched["translation_paragraph_count"])
+        self.assertTrue(enriched["translation_aligned"])
 
     def test_exam_question_type_filters_engine_output(self):
         items = server.generate_quiz_items(server.SAMPLE_ARTICLE, "mixed", "IELTS", "heading")
@@ -164,6 +168,38 @@ class LearningFlowTests(unittest.TestCase):
         self.assertTrue(any(lane["article"]["subscribed"] for lane in payload["lanes"]))
         catalog = {item["name"]: item for item in server.source_catalog_payload()}
         self.assertTrue(catalog["Guardian Opinion"]["subscribed"])
+
+    def test_cached_segment_translation_preserves_paragraph_order(self):
+        segments = ["First paragraph.", "Second paragraph."]
+        translations = ["第一段。", "第二段。"]
+        with server.db() as conn:
+            for source, translated in zip(segments, translations):
+                digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+                conn.execute(
+                    """INSERT OR REPLACE INTO translation_cache
+                       (text_hash, source_lang, target_lang, provider, source_text, translated_text, created_at)
+                       VALUES (?, 'EN', 'ZH-HANS', 'deepl', ?, ?, ?)""",
+                    (digest, source, translated, server.utc_now()),
+                )
+        result = server.translate_segments(segments)
+        self.assertTrue(result["cached"])
+        self.assertEqual(result["translated_segments"], translations)
+
+    def test_vocabulary_candidates_prioritize_saved_phrases(self):
+        now = server.utc_now()
+        with server.db() as conn:
+            conn.execute(
+                """INSERT INTO cards (term, kind, context, status, created_at, updated_at)
+                   VALUES ('meaningful control', 'phrase', '', 'new', ?, ?)""",
+                (now, now),
+            )
+        candidates = server.vocabulary_candidates(
+            "People need meaningful control over extraordinarily complicated privacy arrangements."
+        )
+        saved = next(item for item in candidates if item["term"] == "meaningful control")
+        self.assertEqual(saved["kind"], "phrase")
+        self.assertEqual(saved["reason"], "已在生词本")
+        self.assertTrue(saved["saved"])
 
 
 if __name__ == "__main__":

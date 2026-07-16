@@ -180,6 +180,7 @@
             </div>
             <div class="toolbar">
               <button id="toggleTranslationBtn" aria-pressed="false">显示译文</button>
+              <button id="translateArticleBtn">一键翻译</button>
               <select id="quizMode">
                 <option value="mixed">综合拆解</option>
                 <option value="reading">阅读题</option>
@@ -196,7 +197,7 @@
           <section class="translation-panel" id="translationPanel" hidden></section>
           <details class="translation-editor">
             <summary>编辑文章译文</summary>
-            <textarea id="articleTranslationInput" placeholder="在这里保存可靠的中文译文"></textarea>
+            <textarea id="articleTranslationInput" placeholder="每段译文之间空一行，与原文段落顺序对应"></textarea>
             <button id="saveTranslationBtn">保存译文</button>
           </details>
         </section>
@@ -233,7 +234,7 @@
     <section class="view" id="view-cards">
       <div class="split">
         <section class="band">
-          <h2>添加生词</h2>
+          <h2>添加单词或短语</h2>
           <label>词 / 词块</label>
           <input id="cardTerm" placeholder="privacy concern" />
           <label>语境</label>

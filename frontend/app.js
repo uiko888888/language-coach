@@ -111,6 +111,17 @@ function articleParagraphs(text, className = "") {
   return String(text || "").split(/\n\s*\n/).filter(Boolean).map(paragraph => `<p class="${className}">${searchableEnglish(paragraph)}</p>`).join("");
 }
 
+function bilingualParagraphs(text, translation = "", showTranslation = false, className = "article-paragraph") {
+  const originals = String(text || "").split(/\n\s*\n/).map(value => value.trim()).filter(Boolean);
+  const translations = String(translation || "").split(/\n\s*\n/).map(value => value.trim()).filter(Boolean);
+  return originals.map((paragraph, index) => `
+    <section class="bilingual-pair">
+      <p class="${className}">${searchableEnglish(paragraph)}</p>
+      ${showTranslation ? `<p class="paragraph-translation ${translations[index] ? "" : "missing"}">${translations[index] ? escapeHtml(translations[index]) : "本段暂无译文"}</p>` : ""}
+    </section>
+  `).join("");
+}
+
 function renderStats() {
   $("#statArticles").textContent = state.articles.length;
   $("#statCards").textContent = state.cards.length;
@@ -164,7 +175,6 @@ function renderArticles() {
         </span>
       </button>
     `).join("");
-    const paragraphs = String(selected.body || "").split(/\n\s*\n/).filter(Boolean);
     detail.innerHTML = `
       <div class="detail-head">
         <div>
@@ -181,6 +191,7 @@ function renderArticles() {
         </div>
         <div class="toolbar">
           <button data-toggle-translation="true">${state.showTranslation ? "隐藏译文" : "显示译文"}</button>
+          <button data-translate-article="${selected.id}">一键翻译</button>
           <button data-open-article="${selected.id}">进入阅读台</button>
           <button class="primary" data-quiz-article="${selected.id}">生成题</button>
         </div>
@@ -189,8 +200,7 @@ function renderArticles() {
       ${selected.content_status !== "full" ? `<div class="content-notice"><div><strong>当前保存的是 RSS 摘要</strong><span>阅读器已经显示全部本地内容，完整文章需要打开原始来源或补充正文。</span></div>${selected.source_url ? `<a href="${escapeHtml(selected.source_url)}" target="_blank" rel="noreferrer">打开完整原文</a>` : ""}</div>` : ""}
       ${selected.theme_tags?.length ? `<div class="article-themes"><span>文章主题</span>${selected.theme_tags.map(theme => badge(theme, "amber")).join("")}</div>` : ""}
       ${selected.source_topics?.length ? `<div class="source-topics"><span class="topic-label">来源领域</span>${selected.source_topics.map(topic => badge(topic)).join("")}</div>` : ""}
-      <article class="article-detail-body">${paragraphs.map(paragraph => `<p class="article-paragraph">${searchableEnglish(paragraph)}</p>`).join("")}</article>
-      ${state.showTranslation ? `<section class="translation-panel">${selected.translation_zh ? selected.translation_zh.split(/\n\s*\n/).map(paragraph => `<p>${escapeHtml(paragraph)}</p>`).join("") : `<p class="muted">这篇文章还没有可靠译文。</p>`}</section>` : ""}
+      <article class="article-detail-body">${bilingualParagraphs(selected.body, selected.translation_zh, state.showTranslation)}</article>
       ${selected.source_url ? `<a class="source-link" href="${escapeHtml(selected.source_url)}" target="_blank" rel="noreferrer">打开原始来源</a>` : ""}
       <details class="content-editor"><summary>${selected.content_status === "full" ? "编辑完整正文" : "补充完整正文"}</summary><textarea id="articleContentInput">${escapeHtml(selected.body)}</textarea><button class="primary" data-save-article-content="${selected.id}">保存为完整正文</button></details>
     `;
@@ -223,11 +233,11 @@ function renderReader() {
   $("#readerTitle").textContent = article.title;
   $("#readerMeta").innerHTML = `${badge(article.level, "teal")}${badge(article.content_type_label || "学术解释", article.content_type === "opinion" ? "amber" : "teal")}${badge(article.content_status === "full" ? `完整正文 · ${article.content_word_count}词` : `RSS摘要 · ${article.content_word_count}词`, article.content_status === "full" ? "teal" : "amber")}${(article.theme_tags || []).map(theme => badge(theme, "amber")).join("")}${badge(article.source || "manual")}`;
   $("#readerContentNotice").innerHTML = article.content_status !== "full" ? `<div class="content-notice compact"><div><strong>当前为 RSS 摘要</strong><span>完整内容请打开原文，或在文章池补充正文。</span></div>${article.source_url ? `<a href="${escapeHtml(article.source_url)}" target="_blank" rel="noreferrer">打开原文</a>` : ""}</div>` : "";
-  $("#readerBody").innerHTML = articleParagraphs(article.body, "article-paragraph");
+  $("#readerBody").innerHTML = bilingualParagraphs(article.body, article.translation_zh, state.showTranslation);
   $("#articleTranslationInput").value = article.translation_zh || "";
   const translationPanel = $("#translationPanel");
-  translationPanel.hidden = !state.showTranslation;
-  translationPanel.innerHTML = article.translation_zh ? article.translation_zh.split(/\n\s*\n/).map(paragraph => `<p>${escapeHtml(paragraph)}</p>`).join("") : `<p class="muted">这篇文章还没有可靠译文，可以在下方补充。</p>`;
+  translationPanel.hidden = true;
+  translationPanel.innerHTML = "";
   $("#toggleTranslationBtn").textContent = state.showTranslation ? "隐藏译文" : "显示译文";
   $("#toggleTranslationBtn").setAttribute("aria-pressed", String(state.showTranslation));
   renderAnalysis();
@@ -236,10 +246,10 @@ function renderReader() {
 function renderQuizSource() {
   const article = state.selectedArticle;
   $("#quizSourceTitle").textContent = article?.title || "原文";
-  $("#quizSourceText").innerHTML = article ? articleParagraphs(article.body, "article-paragraph") : `<p class="muted">先从文章池选择文章。</p>`;
+  $("#quizSourceText").innerHTML = article ? bilingualParagraphs(article.body, article.translation_zh, state.showTranslation) : `<p class="muted">先从文章池选择文章。</p>`;
   const translation = $("#quizTranslationPanel");
-  translation.hidden = !state.showTranslation;
-  translation.innerHTML = article?.translation_zh ? article.translation_zh.split(/\n\s*\n/).map(value => `<p>${escapeHtml(value)}</p>`).join("") : `<p class="muted">暂无可靠译文。</p>`;
+  translation.hidden = true;
+  translation.innerHTML = "";
   $("#quizTranslationBtn").textContent = state.showTranslation ? "隐藏译文" : "显示译文";
 }
 
@@ -255,8 +265,8 @@ function renderAnalysis() {
       <p>${analysis.word_count} words · ${analysis.sentence_count} sentences</p>
     </div>
     <div class="analysis-block">
-      <strong>重点词</strong>
-      <div class="badge-row">${analysis.keywords.map(word => `<button data-word="${escapeHtml(word)}">${escapeHtml(word)}</button>`).join("")}</div>
+      <strong>你可能不认识 · ${escapeHtml(analysis.learner_level || "B1")}</strong>
+      <div class="badge-row">${(analysis.vocabulary_candidates || []).map(item => `<button data-word="${escapeHtml(item.term)}">${escapeHtml(item.term)} · ${escapeHtml(item.level)}</button>`).join("")}</div>
     </div>
     <div class="analysis-block">
       <strong>重点句</strong>
@@ -544,7 +554,7 @@ function renderQuizzes() {
 function renderCards() {
   $("#cardList").innerHTML = state.cards.map(card => `
     <div class="item">
-      <div class="badge-row">${badge(card.status || "new", "teal")}</div>
+      <div class="badge-row">${badge(card.kind === "phrase" ? "短语" : "单词", card.kind === "phrase" ? "amber" : "teal")}${badge(card.status || "new")}</div>
       <h3>${escapeHtml(card.term)}</h3>
       <p>${escapeHtml(card.context || "")}</p>
       ${card.note ? `<p>${escapeHtml(card.note)}</p>` : ""}
@@ -802,11 +812,29 @@ async function saveTranslation() {
     body: JSON.stringify({ translation_zh: $("#articleTranslationInput").value.trim() }),
   });
   state.selectedArticle = data.article;
+  state.showTranslation = true;
   const poolItem = state.articles.find(item => item.id === data.article.id);
   if (poolItem) Object.assign(poolItem, data.article);
   renderReader();
   renderArticles();
-  toast("译文已保存");
+  toast(data.article.translation_aligned ? "译文已保存并完成段落对齐" : "译文已保存，部分段落仍缺少对应译文");
+}
+
+async function translateArticle(id = state.selectedArticle?.id) {
+  if (!id) return toast("先选文章");
+  toast("正在翻译并对齐段落");
+  const data = await api(`/api/articles/${id}/translate`, {
+    method: "POST",
+    body: JSON.stringify({ exam: state.style }),
+  });
+  const index = state.articles.findIndex(item => item.id === data.article.id);
+  if (index >= 0) state.articles[index] = data.article;
+  if (state.selectedArticle?.id === data.article.id) state.selectedArticle = data.article;
+  state.showTranslation = true;
+  renderArticles();
+  renderReader();
+  renderQuizSource();
+  toast(data.cached ? "已载入缓存译文" : "翻译完成并已保存");
 }
 
 async function saveArticleContent(id) {
@@ -856,6 +884,7 @@ async function saveCard(term = $("#cardTerm").value.trim(), context = $("#cardCo
     method: "POST",
     body: JSON.stringify({
       term,
+      kind: term.includes(" ") ? "phrase" : "word",
       context,
       source_article_id: state.selectedArticle?.id || null,
       status: "new",
@@ -910,6 +939,8 @@ document.addEventListener("click", async event => {
       renderQuizSource();
     }
     if (button.id === "saveTranslationBtn") await saveTranslation();
+    if (button.id === "translateArticleBtn") await translateArticle();
+    if (button.dataset.translateArticle) await translateArticle(Number(button.dataset.translateArticle));
     if (button.dataset.saveArticleContent) await saveArticleContent(Number(button.dataset.saveArticleContent));
     if (button.id === "searchArticlesBtn") {
       await loadArticles($("#articleSearch").value.trim());
@@ -1004,6 +1035,7 @@ document.addEventListener("dblclick", event => {
   const selected = window.getSelection()?.toString().trim().replace(/\s+/g, " ") || "";
   if (!/^[A-Za-z][A-Za-z' -]{0,79}$/.test(selected) || selected.split(" ").length > 6) return;
   $("#globalLexiconSearch").value = selected;
+  if (selected.includes(" ")) renderLookup(selected).catch(error => toast(error.message));
   searchLexicon(selected, { quick: true }).catch(error => toast(error.message));
   $("#globalLexiconSearch").focus();
 });

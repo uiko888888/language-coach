@@ -413,6 +413,21 @@ label {
 .article-paragraph { margin: 0 0 1.15em; text-indent: 2em; }
 .article-paragraph:last-child { margin-bottom: 0; }
 
+.bilingual-pair { margin-bottom: 1.3em; }
+.bilingual-pair .article-paragraph { margin-bottom: 6px; }
+.paragraph-translation {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--teal);
+  background: #f1f7f4;
+  color: #34433f;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.7;
+  text-indent: 0;
+}
+.paragraph-translation.missing { color: var(--muted); font-style: italic; }
+
 .translation-panel {
   margin-top: 16px;
   padding: 14px 16px;

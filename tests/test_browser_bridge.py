@@ -120,6 +120,48 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertIn("lanes", today)
         self.assertGreaterEqual(today["subscription_count"], 1)
 
+    def test_article_one_click_translation_uses_aligned_cached_paragraphs(self):
+        body = "First paragraph explains the evidence.\n\nSecond paragraph states the conclusion."
+        created, _ = self.request(
+            "/api/articles",
+            "POST",
+            {"title": "Bilingual test", "body": body, "source": "manual"},
+        )
+        source_segments = ["First paragraph explains the evidence.", "Second paragraph states the conclusion."]
+        translated_segments = ["第一段解释证据。", "第二段陈述结论。"]
+        with server.db() as conn:
+            for source, translated in zip(source_segments, translated_segments):
+                digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+                conn.execute(
+                    """INSERT OR REPLACE INTO translation_cache
+                       (text_hash, source_lang, target_lang, provider, source_text, translated_text, created_at)
+                       VALUES (?, 'EN', 'ZH-HANS', 'deepl', ?, ?, ?)""",
+                    (digest, source, translated, server.utc_now()),
+                )
+        result, _ = self.request(
+            f"/api/articles/{created['article']['id']}/translate",
+            "POST",
+            {"exam": "IELTS"},
+        )
+        self.assertTrue(result["cached"])
+        self.assertEqual(result["translated_segments"], translated_segments)
+        self.assertEqual(result["article"]["translation_zh"], "\n\n".join(translated_segments))
+        reused, _ = self.request(
+            f"/api/articles/{created['article']['id']}/translate",
+            "POST",
+            {"exam": "IELTS"},
+        )
+        self.assertEqual(reused["provider"], "saved")
+        self.assertTrue(reused["cached"])
+
+    def test_card_api_marks_multiword_terms_as_phrases(self):
+        result, _ = self.request(
+            "/api/cards",
+            "POST",
+            {"term": "meaningful control", "context": "People need meaningful control over their data."},
+        )
+        self.assertEqual(result["card"]["kind"], "phrase")
+
 
 if __name__ == "__main__":
     unittest.main()

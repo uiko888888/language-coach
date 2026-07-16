@@ -6,6 +6,21 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.7.0-alpha.9] - 2026-07-16
+
+### Added
+
+- Added one-click article translation with paragraph batching, per-segment caching, persistence, and clear unconfigured-provider errors.
+- Added paragraph-aligned bilingual rendering in the article pool, reader, and quiz source passage.
+- Added manual paragraph-aligned translation editing as a fallback.
+- Added provisional unfamiliar-vocabulary candidates ranked by saved learning records, dictionary levels, learner-level threshold, and article relevance.
+- Added persistent word/phrase card types and automatic phrase detection for manual, browser, and lookup saves.
+
+### Changed
+
+- Replaced the generic “key words” analysis section with “possibly unfamiliar” vocabulary candidates.
+- Moved URL/file/subtitle import and user collections to `v0.7.0-alpha.10` so bilingual reading could be fixed first.
+
 ## [0.7.0-alpha.8] - 2026-07-16
 
 ### Added

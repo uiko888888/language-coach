@@ -29,9 +29,13 @@ SAMPLE_ARTICLE = """Smart devices promise convenience, but they also create a qu
 
 The central challenge is not whether technology should be rejected. It is whether companies can design useful products while giving people meaningful control over their own data. Clearer consent, shorter privacy notices, and stronger limits on data sharing would make smart devices easier to trust. Without those safeguards, convenience may gradually become a form of surveillance."""
 
-SAMPLE_TRANSLATION = """智能设备承诺带来便利，但它们也会悄然记录日常生活。智能音箱可以了解一家人何时在家，手表可以揭示健康规律，门铃摄像头则可能拍到从未同意被记录的人。支持者认为这些工具节省时间并提高安全性。然而，批评者指出，隐私政策往往难以阅读，用户可能并不清楚有多少信息被储存或共享。
+SAMPLE_TRANSLATION = """智能设备承诺带来便利，但它们也会悄然记录日常生活。智能音箱可以了解一家人何时在家，手表可以揭示健康规律，门铃摄像头则可能拍到从未同意被记录的人。
 
-核心问题并不是是否应该拒绝技术，而是企业能否在提供实用产品的同时，让人们真正掌控自己的数据。更清晰的同意机制、更简短的隐私声明以及更严格的数据共享限制，会让智能设备更值得信任。缺少这些保障时，便利可能逐渐演变为一种监控。"""
+支持者认为这些工具节省时间并提高安全性。然而，批评者指出，隐私政策往往难以阅读，用户可能并不清楚有多少信息被储存或共享。
+
+核心问题并不是是否应该拒绝技术，而是企业能否在提供实用产品的同时，让人们真正掌控自己的数据。
+
+更清晰的同意机制、更简短的隐私声明以及更严格的数据共享限制，会让智能设备更值得信任。缺少这些保障时，便利可能逐渐演变为一种监控。"""
 
 EXAM_QUESTION_TYPES = {
     "IELTS": [("evidence", "判断与证据定位", "reading"), ("heading", "段落标题匹配", "main-idea"), ("paraphrase", "同义替换", "paraphrase"), ("gap-fill", "选词填空", "cloze")],
@@ -470,6 +474,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS cards (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               term TEXT NOT NULL,
+              kind TEXT NOT NULL DEFAULT 'word',
               context TEXT NOT NULL DEFAULT '',
               source_article_id INTEGER,
               status TEXT NOT NULL DEFAULT 'new',
@@ -621,7 +626,7 @@ def init_db() -> None:
             conn.execute("ALTER TABLE articles ADD COLUMN content_status TEXT NOT NULL DEFAULT 'summary'")
         if "content_type" not in article_columns:
             conn.execute("ALTER TABLE articles ADD COLUMN content_type TEXT NOT NULL DEFAULT 'auto'")
-        conn.execute("UPDATE articles SET translation_zh = ? WHERE source = 'seed' AND translation_zh = ''", (SAMPLE_TRANSLATION,))
+        conn.execute("UPDATE articles SET translation_zh = ? WHERE source = 'seed'", (SAMPLE_TRANSLATION,))
         conn.execute("UPDATE articles SET content_status = 'full' WHERE source IN ('seed', 'manual')")
         for source, (_, content_type) in SOURCE_CLASSIFICATION.items():
             conn.execute(
@@ -638,6 +643,10 @@ def init_db() -> None:
         mistake_columns = {row[1] for row in conn.execute("PRAGMA table_info(mistakes)")}
         if "reward_claimed" not in mistake_columns:
             conn.execute("ALTER TABLE mistakes ADD COLUMN reward_claimed INTEGER NOT NULL DEFAULT 0")
+        card_columns = {row[1] for row in conn.execute("PRAGMA table_info(cards)")}
+        if "kind" not in card_columns:
+            conn.execute("ALTER TABLE cards ADD COLUMN kind TEXT NOT NULL DEFAULT 'word'")
+        conn.execute("UPDATE cards SET kind = 'phrase' WHERE instr(trim(term), ' ') > 0")
         article_count = conn.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
         if article_count == 0:
             now = utc_now()
@@ -646,9 +655,14 @@ def init_db() -> None:
                 INSERT INTO articles (title, language, level, topic, source, source_url, content_type, body, created_at, updated_at)
                 VALUES (?, 'en', 'B2', 'technology', 'seed', '', 'explainer', ?, ?, ?)
                 """,
-                ("Privacy concerns in the age of smart devices", SAMPLE_ARTICLE, now, now),
+                (
+                    "Privacy concerns in the age of smart devices",
+                    normalize_article_text("Privacy concerns in the age of smart devices", SAMPLE_ARTICLE),
+                    now,
+                    now,
+                ),
             )
-        conn.execute("UPDATE articles SET translation_zh = ? WHERE source = 'seed' AND translation_zh = ''", (SAMPLE_TRANSLATION,))
+        conn.execute("UPDATE articles SET translation_zh = ? WHERE source = 'seed'", (SAMPLE_TRANSLATION,))
         conn.execute("UPDATE articles SET content_status = 'full' WHERE source IN ('seed', 'manual')")
         now = utc_now()
         conn.execute(
@@ -1265,6 +1279,63 @@ def generate_similar_items(text: str, original: dict, count: int = 3) -> list[di
     return items[:count]
 
 
+CEFR_ORDER = {"A1": 1, "A2": 2, "B1": 3, "B2": 4, "C1": 5, "C2": 6}
+
+
+def current_learner_level() -> str:
+    with db() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key = 'learner_level'").fetchone()
+    level = row["value"] if row else "B1"
+    return level if level in CEFR_ORDER else "B1"
+
+
+def heuristic_word_level(term: str) -> str:
+    clean = re.sub(r"[^A-Za-z]", "", term)
+    if len(clean) >= 12:
+        return "C1"
+    if len(clean) >= 9:
+        return "B2"
+    if len(clean) >= 7:
+        return "B1"
+    return "A2"
+
+
+def vocabulary_candidates(text: str, limit: int = 10) -> list[dict]:
+    learner_level = current_learner_level()
+    candidates = article_keywords(text)
+    with db() as conn:
+        entries = {
+            row["headword"].lower(): dict(row)
+            for row in conn.execute("SELECT headword, level FROM dictionary_entries").fetchall()
+        }
+        saved_cards = rows_to_dicts(conn.execute("SELECT term, kind FROM cards WHERE status != 'known'").fetchall())
+
+    text_lower = text.lower()
+    saved_terms = {
+        card["term"].lower(): card["kind"]
+        for card in saved_cards
+        if card["term"].strip() and card["term"].lower() in text_lower
+    }
+    terms = list(dict.fromkeys([*saved_terms.keys(), *candidates]))
+    results = []
+    for term in terms:
+        level = entries.get(term, {}).get("level") or heuristic_word_level(term)
+        saved = term in saved_terms
+        above_level = CEFR_ORDER.get(level, 3) > CEFR_ORDER[learner_level]
+        reason = "已在生词本" if saved else "高于当前等级" if above_level else "文章关键词"
+        score = (100 if saved else 40 if above_level else 10) + CEFR_ORDER.get(level, 3) * 4 + len(term)
+        results.append({
+            "term": term,
+            "kind": saved_terms.get(term, "phrase" if " " in term else "word"),
+            "level": level,
+            "reason": reason,
+            "saved": saved,
+            "score": score,
+        })
+    results.sort(key=lambda item: (-item["score"], item["term"]))
+    return [{key: value for key, value in item.items() if key != "score"} for item in results[:limit]]
+
+
 def analyze_payload(article: sqlite3.Row | dict) -> dict:
     text = article["body"]
     return {
@@ -1272,6 +1343,8 @@ def analyze_payload(article: sqlite3.Row | dict) -> dict:
         "title": article["title"],
         "level": estimate_level(text),
         "keywords": article_keywords(text),
+        "vocabulary_candidates": vocabulary_candidates(text),
+        "learner_level": current_learner_level(),
         "focus_sentences": focus_sentences(text),
         "sentence_count": len(sentences(text)),
         "word_count": len(words(text)),
@@ -1363,6 +1436,11 @@ def enrich_article(article: dict, exam: str = "") -> dict:
     item["content_type_label"] = CONTENT_TYPE_LABELS[item["content_type"]]
     item["content_status"] = item.get("content_status") or ("full" if item["source"] in {"seed", "manual"} else "summary")
     item["content_word_count"] = len(words(item.get("body", "")))
+    original_paragraphs = [value for value in re.split(r"\n\s*\n", item.get("body", "")) if value.strip()]
+    translated_paragraphs = [value for value in re.split(r"\n\s*\n", item.get("translation_zh", "")) if value.strip()]
+    item["paragraph_count"] = len(original_paragraphs)
+    item["translation_paragraph_count"] = len(translated_paragraphs)
+    item["translation_aligned"] = bool(translated_paragraphs) and len(original_paragraphs) == len(translated_paragraphs)
     return item
 
 
@@ -1607,44 +1685,75 @@ def translation_status() -> dict:
     return {"provider": "DeepL", "configured": configured, "target_language": "ZH-HANS"}
 
 
-def translate_text(text: str, source_lang: str = "EN", target_lang: str = "ZH-HANS") -> dict:
-    source_text = (text or "").strip()
-    if not source_text:
+def translate_segments(segments: list[str], source_lang: str = "EN", target_lang: str = "ZH-HANS") -> dict:
+    source_segments = [(segment or "").strip() for segment in segments if (segment or "").strip()]
+    if not source_segments:
         raise ValueError("Text is required")
-    if len(source_text) > 8000:
-        raise ValueError("Selection is too long; translate at most 8000 characters at a time")
+    if len(source_segments) > 200 or any(len(segment) > 8000 for segment in source_segments):
+        raise ValueError("Translate at most 200 segments and 8000 characters per segment")
     provider = "deepl"
-    digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
+    cached_by_hash: dict[str, str] = {}
+    hashes = [hashlib.sha256(segment.encode("utf-8")).hexdigest() for segment in source_segments]
     with db() as conn:
-        cached = conn.execute(
-            "SELECT translated_text FROM translation_cache WHERE text_hash = ? AND source_lang = ? AND target_lang = ? AND provider = ?",
-            (digest, source_lang, target_lang, provider),
-        ).fetchone()
-    if cached:
-        return {"source_text": source_text, "translated_text": cached["translated_text"], "provider": "DeepL", "cached": True}
+        placeholders = ",".join("?" for _ in hashes)
+        rows = conn.execute(
+            f"SELECT text_hash, translated_text FROM translation_cache WHERE text_hash IN ({placeholders}) AND source_lang = ? AND target_lang = ? AND provider = ?",
+            (*hashes, source_lang, target_lang, provider),
+        ).fetchall()
+        cached_by_hash = {row["text_hash"]: row["translated_text"] for row in rows}
 
-    api_key = os.environ.get("DEEPL_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("DeepL API key is not configured. Set DEEPL_API_KEY before starting the server.")
-    endpoint = os.environ.get("DEEPL_API_URL", "https://api-free.deepl.com/v2/translate")
-    form = urllib.parse.urlencode({"text": source_text, "source_lang": source_lang, "target_lang": target_lang}).encode("utf-8")
-    request = urllib.request.Request(
-        endpoint,
-        data=form,
-        headers={"Authorization": f"DeepL-Auth-Key {api_key}", "Content-Type": "application/x-www-form-urlencoded"},
-        method="POST",
-    )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    translated = payload["translations"][0]["text"]
-    with db() as conn:
-        conn.execute(
-            """INSERT OR REPLACE INTO translation_cache
-               (text_hash, source_lang, target_lang, provider, source_text, translated_text, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (digest, source_lang, target_lang, provider, source_text, translated, utc_now()),
-        )
-    return {"source_text": source_text, "translated_text": translated, "provider": "DeepL", "cached": False}
+    missing = [(index, source_segments[index], hashes[index]) for index in range(len(source_segments)) if hashes[index] not in cached_by_hash]
+    translated_missing: list[str] = []
+    if missing:
+        api_key = os.environ.get("DEEPL_API_KEY", "").strip()
+        if not api_key:
+            raise RuntimeError("DeepL API key is not configured. Set DEEPL_API_KEY before starting the server.")
+        endpoint = os.environ.get("DEEPL_API_URL", "https://api-free.deepl.com/v2/translate")
+        for start in range(0, len(missing), 40):
+            batch = missing[start:start + 40]
+            fields = [("text", segment) for _, segment, _ in batch]
+            fields.extend([("source_lang", source_lang), ("target_lang", target_lang)])
+            form = urllib.parse.urlencode(fields).encode("utf-8")
+            request = urllib.request.Request(
+                endpoint,
+                data=form,
+                headers={"Authorization": f"DeepL-Auth-Key {api_key}", "Content-Type": "application/x-www-form-urlencoded"},
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=30) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            translated_missing.extend(item["text"] for item in payload.get("translations", []))
+        if len(translated_missing) != len(missing):
+            raise RuntimeError("DeepL returned an unexpected number of translated segments")
+        with db() as conn:
+            conn.executemany(
+                """INSERT OR REPLACE INTO translation_cache
+                   (text_hash, source_lang, target_lang, provider, source_text, translated_text, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                [
+                    (digest, source_lang, target_lang, provider, source, translated, utc_now())
+                    for (_, source, digest), translated in zip(missing, translated_missing)
+                ],
+            )
+        cached_by_hash.update({digest: translated for (_, _, digest), translated in zip(missing, translated_missing)})
+
+    translated_segments = [cached_by_hash[digest] for digest in hashes]
+    return {
+        "source_segments": source_segments,
+        "translated_segments": translated_segments,
+        "provider": "DeepL",
+        "cached": not missing,
+    }
+
+
+def translate_text(text: str, source_lang: str = "EN", target_lang: str = "ZH-HANS") -> dict:
+    result = translate_segments([text], source_lang, target_lang)
+    return {
+        "source_text": result["source_segments"][0],
+        "translated_text": result["translated_segments"][0],
+        "provider": result["provider"],
+        "cached": result["cached"],
+    }
 
 
 def fetch_feed_items(limit_per_feed: int = 4) -> dict:
@@ -1903,9 +2012,9 @@ class App(BaseHTTPRequestHandler):
                     elif payload.get("save_to", "wordbook") == "wordbook":
                         term = source_text if len(source_text) <= 180 else source_text[:177] + "..."
                         cursor = conn.execute(
-                            """INSERT INTO cards (term, context, status, note, created_at, updated_at)
-                               VALUES (?, ?, 'new', ?, ?, ?)""",
-                            (term, context or source_text, note, now, now),
+                            """INSERT INTO cards (term, kind, context, status, note, created_at, updated_at)
+                               VALUES (?, ?, ?, 'new', ?, ?, ?)""",
+                            (term, "phrase" if " " in term.strip() else "word", context or source_text, note, now, now),
                         )
                         card_id = cursor.lastrowid
                     cursor = conn.execute(
@@ -1987,7 +2096,49 @@ class App(BaseHTTPRequestHandler):
                     article = conn.execute("SELECT * FROM articles WHERE id = ?", (match.group(1),)).fetchone()
                 if not article:
                     return json_response(self, {"error": "Article not found"}, 404)
-                return json_response(self, {"article": dict(article)})
+                return json_response(self, {"article": enrich_article(dict(article), payload.get("exam") or "")})
+            match = re.fullmatch(r"/api/articles/(\d+)/translate", path)
+            if match:
+                with db() as conn:
+                    article = conn.execute("SELECT * FROM articles WHERE id = ?", (match.group(1),)).fetchone()
+                if not article:
+                    return json_response(self, {"error": "Article not found"}, 404)
+                paragraphs = [value.strip() for value in re.split(r"\n\s*\n", article["body"]) if value.strip()]
+                existing_translation = [
+                    value.strip() for value in re.split(r"\n\s*\n", article["translation_zh"] or "") if value.strip()
+                ]
+                if len(existing_translation) == len(paragraphs) and not payload.get("force"):
+                    return json_response(
+                        self,
+                        {
+                            "article": enrich_article(dict(article), payload.get("exam") or ""),
+                            "translated_segments": existing_translation,
+                            "provider": "saved",
+                            "cached": True,
+                        },
+                    )
+                try:
+                    result = translate_segments(paragraphs)
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                except RuntimeError as exc:
+                    return json_response(self, {"error": str(exc), "translation": translation_status()}, 503)
+                translation = "\n\n".join(result["translated_segments"])
+                with db() as conn:
+                    conn.execute(
+                        "UPDATE articles SET translation_zh = ?, updated_at = ? WHERE id = ?",
+                        (translation, utc_now(), match.group(1)),
+                    )
+                    updated = conn.execute("SELECT * FROM articles WHERE id = ?", (match.group(1),)).fetchone()
+                return json_response(
+                    self,
+                    {
+                        "article": enrich_article(dict(updated), payload.get("exam") or ""),
+                        "translated_segments": result["translated_segments"],
+                        "provider": result["provider"],
+                        "cached": result["cached"],
+                    },
+                )
             match = re.fullmatch(r"/api/articles/(\d+)/content", path)
             if match:
                 body = normalize_article_text(payload.get("title") or "", (payload.get("body") or "").strip())
@@ -2052,11 +2203,12 @@ class App(BaseHTTPRequestHandler):
                 with db() as conn:
                     cursor = conn.execute(
                         """
-                        INSERT INTO cards (term, context, source_article_id, status, note, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO cards (term, kind, context, source_article_id, status, note, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             term,
+                            payload.get("kind") or ("phrase" if " " in term else "word"),
                             payload.get("context") or "",
                             payload.get("source_article_id"),
                             payload.get("status") or "new",
