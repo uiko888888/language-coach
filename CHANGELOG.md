@@ -6,6 +6,8 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+- Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
+
 ## [0.7.0-alpha.11] - 2026-07-17
 
 ### Added
