@@ -260,6 +260,48 @@ label {
   flex-wrap: wrap;
 }
 
+.mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  min-width: 132px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.mode-switch button {
+  min-height: 32px;
+  padding: 0 12px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.mode-switch button.active {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--teal-dark);
+  font-weight: 800;
+  box-shadow: 0 2px 8px rgba(31, 42, 40, 0.08);
+}
+
+.mode-brief {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 14px;
+  padding: 18px 20px;
+  border-top: 3px solid var(--teal);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.mode-brief h2 { margin: 2px 0 5px; font-size: 20px; }
+.mode-brief p { max-width: 76ch; margin: 0; color: var(--muted); line-height: 1.6; }
+.mode-brief > button { flex: 0 0 auto; }
+
 .progress-chip {
   display: grid;
   min-width: 112px;
@@ -848,7 +890,8 @@ label {
 
   .topbar,
   .band-head,
-  .source-row {
+  .source-row,
+  .mode-brief {
     flex-direction: column;
     align-items: stretch;
   }

@@ -1,4 +1,5 @@
 import hashlib
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -168,6 +169,33 @@ class LearningFlowTests(unittest.TestCase):
         self.assertTrue(any(lane["article"]["subscribed"] for lane in payload["lanes"]))
         catalog = {item["name"]: item for item in server.source_catalog_payload()}
         self.assertTrue(catalog["Guardian Opinion"]["subscribed"])
+
+    def test_today_content_has_distinct_persistent_mode_contract(self):
+        interest = server.today_content("IELTS", "interest")
+        exam = server.today_content("IELTS", "exam")
+        self.assertEqual(interest["mode"], "interest")
+        self.assertEqual(exam["mode"], "exam")
+        self.assertTrue(any(lane["label"] == "15 分钟沉浸" for lane in interest["lanes"]))
+        self.assertTrue(any(lane["label"] == "15 分钟精读" for lane in exam["lanes"]))
+        self.assertEqual(server.today_content("IELTS", "unknown")["mode"], "exam")
+
+    def test_translation_status_supports_private_provider_configuration(self):
+        keys = ("TRANSLATION_PROVIDER", "DEEPL_API_KEY", "LIBRETRANSLATE_URL")
+        previous = {key: os.environ.get(key) for key in keys}
+        try:
+            os.environ["TRANSLATION_PROVIDER"] = "libretranslate"
+            os.environ.pop("DEEPL_API_KEY", None)
+            os.environ["LIBRETRANSLATE_URL"] = "http://127.0.0.1:5000"
+            status = server.translation_status()
+            self.assertTrue(status["configured"])
+            self.assertEqual(status["provider_id"], "libretranslate")
+            self.assertEqual(len(status["options"]), 3)
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
 
     def test_cached_segment_translation_preserves_paragraph_order(self):
         segments = ["First paragraph.", "Second paragraph."]

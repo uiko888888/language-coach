@@ -4,9 +4,15 @@
 
 Language Coach 将文章阅读、词典查询、生词积累、一文多练、错题讲解和网页划词收集放在同一套学习流程中。当前版本优先强化英语，支持 IELTS、TOEFL、四级、六级、考研英语、专四、专八、GRE、GMAT 等训练风格；法语和西班牙语内容仍在后续规划中。
 
-> 当前版本：`0.7.0-alpha.9`。项目仍处于 Alpha 阶段，数据结构和交互可能继续调整。
+> 当前版本：`0.7.0-alpha.10`。项目仍处于 Alpha 阶段，数据结构和交互可能继续调整。
 
 ## 核心功能
+
+### 两种学习模式
+
+- 顶部可随时切换兴趣模式与备考模式，选择保存在本机。
+- 兴趣模式优先订阅、新闻、文化和较短内容；备考模式优先当前考试匹配与深度训练价值。
+- 当前模式已影响“今日内容”，但尚未接入完整动态画像或能力预测。
 
 ### 文章与阅读
 
@@ -110,14 +116,21 @@ pnpm dev
 
 ## 翻译配置
 
-查词、网页正文提取和保存不需要第三方密钥。选段翻译目前通过后端连接 DeepL：
+查词、网页正文提取和保存不需要第三方密钥。复制 `.env.example` 为不会提交到 Git 的 `.env.local`。DeepL API Free 配置示例：
 
-```powershell
-$env:DEEPL_API_KEY="your-deepl-api-key"
-python .\backend\server.py 8765
+```dotenv
+TRANSLATION_PROVIDER=deepl
+DEEPL_API_KEY=your-deepl-api-key
 ```
 
-翻译结果按文本、语言和服务商缓存在本地 SQLite 中。API Key 不会写入浏览器扩展、数据库或 Git 仓库。
+免费自托管方案可使用 LibreTranslate：
+
+```dotenv
+TRANSLATION_PROVIDER=libretranslate
+LIBRETRANSLATE_URL=http://127.0.0.1:5000
+```
+
+修改后重启服务。翻译结果按文本、语言和服务商缓存在本地 SQLite 中。API Key 不会写入浏览器扩展、数据库或 Git 仓库；没有可用提供商时仍可手动逐段添加译文。
 
 ## 测试
 

@@ -25,6 +25,24 @@ DATA = ROOT / "data"
 DB_PATH = DATA / "language_coach.sqlite"
 
 
+def load_local_environment() -> None:
+    path = ROOT / ".env.local"
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+load_local_environment()
+
+
 SAMPLE_ARTICLE = """Smart devices promise convenience, but they also create a quiet record of daily life. A speaker can learn when a family is at home, a watch can reveal health patterns, and a doorbell camera can capture people who never agreed to be recorded. Supporters argue that these tools save time and improve safety. However, critics point out that privacy policies are often difficult to read, and users may not understand how much information is stored or shared.
 
 The central challenge is not whether technology should be rejected. It is whether companies can design useful products while giving people meaningful control over their own data. Clearer consent, shorter privacy notices, and stronger limits on data sharing would make smart devices easier to trust. Without those safeguards, convenience may gradually become a form of surveillance."""
@@ -1508,7 +1526,8 @@ def estimated_study_minutes(article: dict) -> int:
     return min(30, max(5, reading_blocks * 5))
 
 
-def today_content(exam: str = "") -> dict:
+def today_content(exam: str = "", mode: str = "exam") -> dict:
+    mode = mode if mode in {"interest", "exam"} else "exam"
     articles = list_articles({"exam": [exam]})
     catalog = {item["name"]: item for item in source_catalog()}
     active = [item for item in subscription_payload() if item["active"]]
@@ -1519,12 +1538,20 @@ def today_content(exam: str = "") -> dict:
     for article in articles:
         category = catalog.get(article["source"], {}).get("category", article.get("source_topics", ["综合"])[0])
         subscribed = article["source"] in source_subscriptions or category in category_subscriptions
+        study_minutes = estimated_study_minutes(article)
+        interest_bonus = (
+            (24 if subscribed else 0)
+            + (12 if article["content_type"] in {"culture", "report"} else 0)
+            + (9 if study_minutes <= 15 else 0)
+            + (8 if article.get("level") in {"B1", "B2", "B1-B2"} else 0)
+        )
+        exam_bonus = round(article["exam_fit"] * 0.25) + (10 if study_minutes >= 15 else 0)
         enriched.append({
             **article,
             "catalog_category": category,
             "subscribed": subscribed,
-            "study_minutes": estimated_study_minutes(article),
-            "today_score": article["recommendation_score"] + (18 if subscribed else 0),
+            "study_minutes": study_minutes,
+            "today_score": article["recommendation_score"] + (interest_bonus if mode == "interest" else exam_bonus),
         })
     enriched.sort(key=lambda item: (-item["today_score"], item["id"]))
 
@@ -1553,16 +1580,21 @@ def today_content(exam: str = "") -> dict:
             used_sources.add(item["source"])
         return item
 
-    quick = choose(lambda item: item["study_minutes"] <= 5 and item["content_type"] in {"report", "institution"})
-    focused = choose(lambda item: item["subscribed"] and item["study_minutes"] <= 15)
-    deep = choose(lambda item: item["content_type"] in {"opinion", "explainer", "research"})
+    if mode == "interest":
+        lane_specs = (
+            ("quick", "5 分钟看看", choose(lambda item: item["study_minutes"] <= 5), "轻松了解一个新话题"),
+            ("focused", "15 分钟沉浸", choose(lambda item: item["subscribed"] or item["content_type"] == "culture"), "来自兴趣与订阅"),
+            ("practice", "顺手练一练", choose(lambda item: item["content_type"] in {"report", "culture", "explainer"}), "把喜欢的内容转成词汇和小练习"),
+        )
+    else:
+        lane_specs = (
+            ("quick", "5 分钟热身", choose(lambda item: item["study_minutes"] <= 5 and item["content_type"] in {"report", "institution"}), "进入考试阅读状态"),
+            ("focused", "15 分钟精读", choose(lambda item: item["exam_fit"] >= 90 and item["study_minutes"] <= 15), "匹配当前考试与难度"),
+            ("deep", "30 分钟专项", choose(lambda item: item["content_type"] in {"opinion", "explainer", "research"}), "适合证据、同义替换与题型训练"),
+        )
 
     lanes = []
-    for lane_id, label, item, base_reason in (
-        ("quick", "5 分钟速览", quick, "快速了解今日信息"),
-        ("focused", "15 分钟精读", focused, "适合完整精读"),
-        ("deep", "30 分钟吃透", deep, "适合词块、证据与练习联动"),
-    ):
+    for lane_id, label, item, base_reason in lane_specs:
         if not item:
             continue
         reason = "来自你的订阅" if item["subscribed"] else base_reason
@@ -1570,6 +1602,7 @@ def today_content(exam: str = "") -> dict:
     return {
         "date": datetime.now(timezone.utc).date().isoformat(),
         "exam": exam or "general",
+        "mode": mode,
         "subscription_count": len(active),
         "lanes": lanes,
     }
@@ -1681,8 +1714,67 @@ def browser_bridge_token() -> str:
 
 
 def translation_status() -> dict:
-    configured = bool(os.environ.get("DEEPL_API_KEY", "").strip())
-    return {"provider": "DeepL", "configured": configured, "target_language": "ZH-HANS"}
+    deepl_configured = bool(os.environ.get("DEEPL_API_KEY", "").strip())
+    libre_url = os.environ.get("LIBRETRANSLATE_URL", "").strip().rstrip("/")
+    preferred = os.environ.get("TRANSLATION_PROVIDER", "").strip().lower()
+    if preferred not in {"deepl", "libretranslate"}:
+        preferred = "deepl" if deepl_configured else "libretranslate" if libre_url else "deepl"
+    configured = deepl_configured if preferred == "deepl" else bool(libre_url)
+    return {
+        "provider": "DeepL" if preferred == "deepl" else "LibreTranslate",
+        "provider_id": preferred,
+        "configured": configured,
+        "target_language": "ZH-HANS",
+        "options": [
+            {"id": "deepl", "label": "DeepL API Free", "configured": deepl_configured, "hosted": True},
+            {"id": "libretranslate", "label": "LibreTranslate 自托管", "configured": bool(libre_url), "hosted": False},
+            {"id": "manual", "label": "手动逐段译文", "configured": True, "hosted": False},
+        ],
+    }
+
+
+def translate_with_deepl(missing: list[tuple[int, str, str]], source_lang: str, target_lang: str) -> list[str]:
+    api_key = os.environ.get("DEEPL_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("DeepL API key is not configured. Add DEEPL_API_KEY to .env.local and restart the server.")
+    endpoint = os.environ.get("DEEPL_API_URL", "https://api-free.deepl.com/v2/translate")
+    translated: list[str] = []
+    for start in range(0, len(missing), 40):
+        batch = missing[start:start + 40]
+        fields = [("text", segment) for _, segment, _ in batch]
+        fields.extend([("source_lang", source_lang), ("target_lang", target_lang)])
+        request = urllib.request.Request(
+            endpoint,
+            data=urllib.parse.urlencode(fields).encode("utf-8"),
+            headers={"Authorization": f"DeepL-Auth-Key {api_key}", "Content-Type": "application/x-www-form-urlencoded"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        translated.extend(item["text"] for item in payload.get("translations", []))
+    return translated
+
+
+def translate_with_libre(missing: list[tuple[int, str, str]], source_lang: str, target_lang: str) -> list[str]:
+    base_url = os.environ.get("LIBRETRANSLATE_URL", "").strip().rstrip("/")
+    if not base_url:
+        raise RuntimeError("LibreTranslate is not configured. Add LIBRETRANSLATE_URL to .env.local and restart the server.")
+    api_key = os.environ.get("LIBRETRANSLATE_API_KEY", "").strip()
+    translated: list[str] = []
+    for _, segment, _ in missing:
+        body = {"q": segment, "source": source_lang.lower(), "target": "zh", "format": "text"}
+        if api_key:
+            body["api_key"] = api_key
+        request = urllib.request.Request(
+            f"{base_url}/translate",
+            data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=45) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        translated.append(payload.get("translatedText") or "")
+    return translated
 
 
 def translate_segments(segments: list[str], source_lang: str = "EN", target_lang: str = "ZH-HANS") -> dict:
@@ -1691,7 +1783,8 @@ def translate_segments(segments: list[str], source_lang: str = "EN", target_lang
         raise ValueError("Text is required")
     if len(source_segments) > 200 or any(len(segment) > 8000 for segment in source_segments):
         raise ValueError("Translate at most 200 segments and 8000 characters per segment")
-    provider = "deepl"
+    status = translation_status()
+    provider = status["provider_id"]
     cached_by_hash: dict[str, str] = {}
     hashes = [hashlib.sha256(segment.encode("utf-8")).hexdigest() for segment in source_segments]
     with db() as conn:
@@ -1705,24 +1798,11 @@ def translate_segments(segments: list[str], source_lang: str = "EN", target_lang
     missing = [(index, source_segments[index], hashes[index]) for index in range(len(source_segments)) if hashes[index] not in cached_by_hash]
     translated_missing: list[str] = []
     if missing:
-        api_key = os.environ.get("DEEPL_API_KEY", "").strip()
-        if not api_key:
-            raise RuntimeError("DeepL API key is not configured. Set DEEPL_API_KEY before starting the server.")
-        endpoint = os.environ.get("DEEPL_API_URL", "https://api-free.deepl.com/v2/translate")
-        for start in range(0, len(missing), 40):
-            batch = missing[start:start + 40]
-            fields = [("text", segment) for _, segment, _ in batch]
-            fields.extend([("source_lang", source_lang), ("target_lang", target_lang)])
-            form = urllib.parse.urlencode(fields).encode("utf-8")
-            request = urllib.request.Request(
-                endpoint,
-                data=form,
-                headers={"Authorization": f"DeepL-Auth-Key {api_key}", "Content-Type": "application/x-www-form-urlencoded"},
-                method="POST",
-            )
-            with urllib.request.urlopen(request, timeout=30) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-            translated_missing.extend(item["text"] for item in payload.get("translations", []))
+        translated_missing = (
+            translate_with_deepl(missing, source_lang, target_lang)
+            if provider == "deepl"
+            else translate_with_libre(missing, source_lang, target_lang)
+        )
         if len(translated_missing) != len(missing):
             raise RuntimeError("DeepL returned an unexpected number of translated segments")
         with db() as conn:
@@ -1741,7 +1821,7 @@ def translate_segments(segments: list[str], source_lang: str = "EN", target_lang
     return {
         "source_segments": source_segments,
         "translated_segments": translated_segments,
-        "provider": "DeepL",
+        "provider": status["provider"],
         "cached": not missing,
     }
 
@@ -1881,7 +1961,7 @@ class App(BaseHTTPRequestHandler):
             if path == "/api/subscriptions":
                 return json_response(self, {"subscriptions": subscription_payload()})
             if path == "/api/today":
-                return json_response(self, today_content(query.get("exam", [""])[0]))
+                return json_response(self, today_content(query.get("exam", [""])[0], query.get("mode", ["exam"])[0]))
             if path == "/api/lexicon/search":
                 return json_response(self, lexical_search(query.get("q", [""])[0]))
             match = re.fullmatch(r"/api/lexicon/entries/(\d+)", path)

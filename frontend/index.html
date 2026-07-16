@@ -46,6 +46,10 @@
         <div class="quick-results" id="quickLexiconResults" hidden></div>
       </div>
       <div class="top-actions">
+        <div class="mode-switch" role="group" aria-label="学习模式">
+          <button type="button" data-learning-mode="interest">兴趣</button>
+          <button type="button" data-learning-mode="exam">备考</button>
+        </div>
         <div class="progress-chip" title="学习进度"><strong id="progressLevel">Lv.1</strong><span id="progressXp">0 XP</span></div>
         <select id="globalStyle">
           <option value="IELTS">IELTS</option>
@@ -95,6 +99,14 @@
     </section>
 
     <section class="view active" id="view-dashboard">
+      <section class="mode-brief" id="modeBrief">
+        <div>
+          <span class="eyebrow" id="modeEyebrow">Exam mode</span>
+          <h2 id="modeHeading">今天为目标分数训练</h2>
+          <p id="modeDescription"></p>
+        </div>
+        <button class="primary" id="modePrimaryAction">开始今日训练</button>
+      </section>
       <div class="metric-grid">
         <div class="metric"><span>文章</span><strong id="statArticles">0</strong></div>
         <div class="metric"><span>生词</span><strong id="statCards">0</strong></div>

@@ -1,6 +1,7 @@
 data/*.sqlite
 data/*.sqlite-*
 data/*.log
+.env.local
 backend/__pycache__/
 artifacts/
 browser-extension/node_modules/

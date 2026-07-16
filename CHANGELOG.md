@@ -6,6 +6,20 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.7.0-alpha.10] - 2026-07-16
+
+### Added
+
+- Added an always-visible Interest/Exam mode switch with local persistence and a clear daily starting action.
+- Added mode-aware Today recommendations: interest mode favors subscriptions, approachable news/culture, and shorter sessions; exam mode favors exam fit and deeper evidence-based practice.
+- Added private `.env.local` loading with a tracked `.env.example` for translation configuration.
+- Added configurable DeepL and self-hosted LibreTranslate providers while retaining manual paragraph translation.
+
+### Changed
+
+- Translation status now reports the selected provider and available fallback paths.
+- Moved URL/file/subtitle import and user collections to `v0.7.0-alpha.11` after prioritizing the missing dual-mode entry.
+
 ## [0.7.0-alpha.9] - 2026-07-16
 
 ### Added
@@ -19,7 +33,7 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 ### Changed
 
 - Replaced the generic “key words” analysis section with “possibly unfamiliar” vocabulary candidates.
-- Moved URL/file/subtitle import and user collections to `v0.7.0-alpha.10` so bilingual reading could be fixed first.
+- Moved URL/file/subtitle import and user collections past `v0.7.0-alpha.9` so bilingual reading could be fixed first.
 
 ## [0.7.0-alpha.8] - 2026-07-16
 

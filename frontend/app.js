@@ -37,6 +37,7 @@ const state = {
   answerFeedback: {},
   showAnswers: false,
   style: localStorage.getItem("lc-v2-style") || "IELTS",
+  learningMode: localStorage.getItem("lc-v2-learning-mode") || "exam",
 };
 
 const titles = {
@@ -132,6 +133,19 @@ function renderStats() {
 }
 
 function renderDashboard() {
+  const interest = state.learningMode === "interest";
+  document.querySelectorAll("[data-learning-mode]").forEach(button => {
+    button.classList.toggle("active", button.dataset.learningMode === state.learningMode);
+    button.setAttribute("aria-pressed", String(button.dataset.learningMode === state.learningMode));
+  });
+  $("#modeEyebrow").textContent = interest ? "Interest mode" : `${state.style} exam mode`;
+  $("#modeHeading").textContent = interest ? "从喜欢的内容进入英语" : `今天为 ${state.style} 目标训练`;
+  $("#modeDescription").textContent = interest
+    ? "优先推荐订阅、新闻与文化内容；阅读后仍可提取生词、词块并生成适度练习。"
+    : "优先匹配考试难度、证据定位与同义替换；原文仍保留兴趣主题，不把训练做成孤立题库。";
+  $("#modePrimaryAction").textContent = interest ? "开始轻松阅读" : "开始今日训练";
+  $("#globalStyle").title = interest ? "兴趣素材生成题目时参照的考试难度" : "当前备考目标";
+
   $("#recentArticles").innerHTML = (state.today.lanes || []).map(lane => {
     const article = lane.article;
     return `
@@ -706,7 +720,11 @@ async function loadBridgeConfig() {
   const data = await api("/api/browser/token");
   state.bridge = data;
   $("#bridgeToken").value = data.token || "";
-  $("#bridgeStatus").innerHTML = `${badge("本地桥接已启用", "teal")}${badge(data.translation?.configured ? "DeepL 已配置" : "DeepL 未配置", data.translation?.configured ? "teal" : "amber")}`;
+  const translation = data.translation || {};
+  $("#bridgeStatus").innerHTML = `${badge("本地桥接已启用", "teal")}${badge(
+    translation.configured ? `${translation.provider} 已配置` : `${translation.provider || "翻译服务"} 未配置`,
+    translation.configured ? "teal" : "amber",
+  )}${badge("手动译文可用")}`;
 }
 
 async function loadMistakes() {
@@ -730,7 +748,17 @@ async function loadSubscriptions() {
 }
 
 async function loadToday() {
-  state.today = await api(`/api/today?exam=${encodeURIComponent(state.style)}`);
+  const params = new URLSearchParams({ exam: state.style, mode: state.learningMode });
+  state.today = await api(`/api/today?${params.toString()}`);
+}
+
+async function setLearningMode(mode) {
+  if (!['interest', 'exam'].includes(mode) || mode === state.learningMode) return;
+  state.learningMode = mode;
+  localStorage.setItem("lc-v2-learning-mode", mode);
+  await loadToday();
+  renderDashboard();
+  toast(mode === "interest" ? "已切换到兴趣模式" : `已切换到 ${state.style} 备考模式`);
 }
 
 async function setSourceSubscription(name, active) {
@@ -928,10 +956,15 @@ document.addEventListener("click", async event => {
   if (!button) return;
   try {
     if (button.dataset.lexiconFilter) state.lexiconFilter = button.dataset.lexiconFilter;
+    if (button.dataset.learningMode) await setLearningMode(button.dataset.learningMode);
     if (button.dataset.view) setView(button.dataset.view);
     if (button.dataset.lexiconFilter) renderLexicon();
     if (button.dataset.viewJump) setView(button.dataset.viewJump);
     if (button.id === "refreshAllBtn") await boot();
+    if (button.id === "modePrimaryAction") {
+      const first = state.today.lanes?.[0]?.article;
+      if (first) await openArticle(first.id);
+    }
     if (button.id === "toggleTranslationBtn" || button.id === "quizTranslationBtn" || button.dataset.toggleTranslation) {
       state.showTranslation = !state.showTranslation;
       renderReader();

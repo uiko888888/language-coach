@@ -120,6 +120,11 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertIn("lanes", today)
         self.assertGreaterEqual(today["subscription_count"], 1)
 
+    def test_today_api_accepts_learning_mode(self):
+        today, _ = self.request("/api/today?exam=IELTS&mode=interest")
+        self.assertEqual(today["mode"], "interest")
+        self.assertTrue(any(lane["label"] == "15 分钟沉浸" for lane in today["lanes"]))
+
     def test_article_one_click_translation_uses_aligned_cached_paragraphs(self):
         body = "First paragraph explains the evidence.\n\nSecond paragraph states the conclusion."
         created, _ = self.request(
