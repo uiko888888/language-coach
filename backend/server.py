@@ -20,7 +20,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -917,6 +917,16 @@ def init_db() -> None:
               confidence_summary_json TEXT NOT NULL DEFAULT '{}',
               completed_at TEXT NOT NULL,
               FOREIGN KEY (article_id) REFERENCES articles(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS profile_calibrations (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              period_start TEXT NOT NULL,
+              period_end TEXT NOT NULL,
+              trigger_type TEXT NOT NULL DEFAULT 'weekly',
+              domain_summary_json TEXT NOT NULL DEFAULT '{}',
+              overall_summary_json TEXT NOT NULL DEFAULT '{}',
+              created_at TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS exam_resources (
@@ -2985,6 +2995,10 @@ DEFAULT_LEARNER_SETTINGS = {
     "interest_topics": [],
     "interest_content_types": [],
     "quick_test_result": {},
+    "profile_started_at": "",
+    "ability_domains": {},
+    "overall_ability": {},
+    "last_calibration_at": "",
 }
 
 
@@ -3003,6 +3017,8 @@ def learner_settings() -> dict:
     settings["assessment"]["sections"] = settings["assessment"]["sections"] if isinstance(settings["assessment"].get("sections"), dict) else {}
     settings["self_levels"] = settings["self_levels"] if isinstance(settings.get("self_levels"), dict) else {}
     settings["quick_test_result"] = settings["quick_test_result"] if isinstance(settings.get("quick_test_result"), dict) else {}
+    settings["ability_domains"] = settings["ability_domains"] if isinstance(settings.get("ability_domains"), dict) else {}
+    settings["overall_ability"] = settings["overall_ability"] if isinstance(settings.get("overall_ability"), dict) else {}
     settings["weak_areas"] = [value for value in settings.get("weak_areas", []) if value in PROFILE_WEAK_AREAS]
     settings["interest_topics"] = [value for value in settings.get("interest_topics", []) if value in PROFILE_INTEREST_TOPICS]
     settings["interest_content_types"] = [value for value in settings.get("interest_content_types", []) if value in PROFILE_CONTENT_TYPES]
@@ -3053,6 +3069,38 @@ def assessment_cefr(assessment_type: str, score: float | None) -> str:
     return ""
 
 
+ABILITY_DOMAINS = ("reading", "listening", "vocabulary", "writing", "speaking")
+ABILITY_SCORE_BY_CEFR = {"A1": 20, "A2": 35, "B1": 50, "B2": 65, "C1": 80, "C2": 95}
+
+
+def cefr_from_ability_score(score: float) -> str:
+    return "C2" if score >= 88 else "C1" if score >= 73 else "B2" if score >= 58 else "B1" if score >= 43 else "A2" if score >= 28 else "A1"
+
+
+def quiz_ability_domain(question_type: str, quiz_type: str = "", skill: str = "") -> str:
+    combined = f"{question_type} {quiz_type} {skill}".casefold()
+    vocabulary_signals = ("vocabulary", "complete-words", "cloze", "词汇", "选词", "完形", "语境词义")
+    return "vocabulary" if any(signal in combined for signal in vocabulary_signals) else "reading"
+
+
+def initial_ability_domains(settings: dict, overall_level: str) -> dict:
+    saved = settings.get("ability_domains") if isinstance(settings.get("ability_domains"), dict) else {}
+    self_levels = settings.get("self_levels") if isinstance(settings.get("self_levels"), dict) else {}
+    result = {}
+    for domain in ABILITY_DOMAINS:
+        current = saved.get(domain) if isinstance(saved.get(domain), dict) else {}
+        level = current.get("cefr") if current.get("cefr") in CEFR_ORDER else self_levels.get(domain)
+        level = level if level in CEFR_ORDER else overall_level
+        result[domain] = {
+            "cefr": level,
+            "score": max(0, min(100, float(current.get("score", ABILITY_SCORE_BY_CEFR[level])))),
+            "confidence": current.get("confidence") or ("low" if domain not in self_levels else "self"),
+            "evidence_count": max(0, int(current.get("evidence_count") or 0)),
+            "updated_at": current.get("updated_at") or "",
+        }
+    return result
+
+
 def learner_profile_summary(settings: dict | None = None) -> dict:
     settings = settings or learner_settings()
     assessment = settings.get("assessment") or {}
@@ -3083,12 +3131,16 @@ def learner_profile_summary(settings: dict | None = None) -> dict:
             level = next((key for key, value in CEFR_ORDER.items() if value == rank), "B1")
             confidence, evidence = "low", "自评"
     level = level or "B1"
+    domains = initial_ability_domains(settings, level)
+    overall_saved = settings.get("overall_ability") if isinstance(settings.get("overall_ability"), dict) else {}
+    overall_level = overall_saved.get("cefr") if overall_saved.get("cefr") in CEFR_ORDER else level
     current_rank = CEFR_ORDER[level]
     recommended_levels = [key for key, value in CEFR_ORDER.items() if value in {current_rank, min(6, current_rank + 1)}]
     return {
         "completed": bool(settings.get("profile_completed")),
         "source": settings.get("profile_source") or "",
         "cefr": level,
+        "overall_cefr": overall_level,
         "confidence": confidence or "low",
         "evidence": evidence if settings.get("profile_completed") else "默认起点",
         "recommended_levels": recommended_levels,
@@ -3098,11 +3150,16 @@ def learner_profile_summary(settings: dict | None = None) -> dict:
         "weak_areas": settings.get("weak_areas") or [],
         "interest_topics": settings.get("interest_topics") or [],
         "interest_content_types": settings.get("interest_content_types") or [],
+        "domains": domains,
+        "last_calibration_at": settings.get("last_calibration_at") or "",
     }
 
 
 def update_learner_profile(payload: dict) -> dict:
     settings = learner_settings()
+    previous_source = settings.get("profile_source") or ""
+    previous_assessment = settings.get("assessment") or {}
+    previous_self_levels = settings.get("self_levels") or {}
     source = str(payload.get("profile_source") or "self_assessment")
     if source not in {"score", "quick_test", "self_assessment"}:
         raise ValueError("profile_source must be score, quick_test, or self_assessment")
@@ -3137,6 +3194,11 @@ def update_learner_profile(payload: dict) -> dict:
         raise ValueError("Select a supported target exam")
     target_range = ASSESSMENT_RANGES.get(target_exam, (0, 1000))
     target_score = optional_score(payload.get("target_score"), target_range[0], target_range[1], "target_score")
+    baseline_changed = (
+        source != previous_source
+        or (source == "score" and assessment != previous_assessment)
+        or (source == "self_assessment" and self_levels != previous_self_levels)
+    )
     settings.update({
         "profile_completed": True,
         "profile_source": source,
@@ -3149,6 +3211,10 @@ def update_learner_profile(payload: dict) -> dict:
         "interest_topics": list(dict.fromkeys(value for value in payload.get("interest_topics", []) if value in PROFILE_INTEREST_TOPICS)),
         "interest_content_types": list(dict.fromkeys(value for value in payload.get("interest_content_types", []) if value in PROFILE_CONTENT_TYPES)),
     })
+    if baseline_changed:
+        settings.update({"ability_domains": {}, "overall_ability": {}, "last_calibration_at": "", "profile_started_at": utc_now()})
+    elif not settings.get("profile_started_at"):
+        settings["profile_started_at"] = utc_now()
     save_learner_settings(settings)
     return {"settings": settings, "profile": learner_profile_summary(settings)}
 
@@ -3186,6 +3252,10 @@ def submit_quick_test(payload: dict) -> dict:
         "weak_areas": list(dict.fromkeys(value for value in payload.get("weak_areas", []) if value in PROFILE_WEAK_AREAS)),
         "interest_topics": list(dict.fromkeys(value for value in payload.get("interest_topics", []) if value in PROFILE_INTEREST_TOPICS)),
         "interest_content_types": list(dict.fromkeys(value for value in payload.get("interest_content_types", []) if value in PROFILE_CONTENT_TYPES)),
+        "ability_domains": {},
+        "overall_ability": {},
+        "last_calibration_at": "",
+        "profile_started_at": utc_now(),
     })
     save_learner_settings(settings)
     return {"result": settings["quick_test_result"], "settings": settings, "profile": learner_profile_summary(settings)}
@@ -3615,12 +3685,42 @@ def today_content(exam: str = "", mode: str = "exam") -> dict:
             if active_goal:
                 reason = f"{reason} · 对应当前目标"
         lanes.append({"id": lane_id, "label": label, "reason": reason, "article": item})
+    calibration = profile_calibration_status(settings)
+    if mode == "interest":
+        mode_focus = {
+            "title": "内容沉浸与表达积累",
+            "primary": "从喜欢的内容开始",
+            "signals": [
+                f"已选 {len(profile['interest_topics'])} 个兴趣主题",
+                f"已订阅 {len(active)} 个来源或分类",
+                "阅读、查词和词块积累优先，练习可选",
+            ],
+            "next_action": "reading",
+        }
+    else:
+        analytics = practice_analytics(exam or profile["target_exam"] or "IELTS")
+        recommendation = analytics.get("recommendation") or {}
+        target_label = f"{profile['target_exam']} {profile['target_score']}" if profile.get("target_score") is not None else profile["target_exam"]
+        mode_focus = {
+            "title": "目标驱动的训练处方",
+            "primary": "按弱项开始训练",
+            "signals": [
+                f"目标：{target_label}{' · ' + profile['target_date'] if profile.get('target_date') else ''}",
+                recommendation.get("reason") or "完成一次训练后生成弱项建议。",
+                f"画像校准：{'本周待执行' if calibration['due'] else str(calibration['days_remaining']) + ' 天后'}",
+            ],
+            "next_action": "practice",
+            "recommended_question_type": recommendation.get("question_type") or "",
+            "recommended_skill": recommendation.get("skill") or "",
+        }
     return {
         "date": datetime.now(timezone.utc).date().isoformat(),
         "exam": exam or "general",
         "mode": mode,
         "subscription_count": len(active),
         "profile": profile,
+        "calibration": calibration,
+        "mode_focus": mode_focus,
         "plan": {**plan, "recommendations_enabled": settings["recommendations_enabled"]},
         "goals": {
             "short": settings["short_goal"],
@@ -4258,6 +4358,137 @@ def practice_analytics(style: str) -> dict:
     }
 
 
+def parse_utc_datetime(value: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def calibration_evidence(period_start: datetime, period_end: datetime) -> dict:
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT at.correct, at.confidence, at.created_at, at.session_id,
+                   q.question_type, q.type AS quiz_type, q.skill, q.difficulty
+            FROM attempts at
+            JOIN quizzes q ON q.id = at.quiz_id
+            WHERE at.session_id IS NOT NULL AND at.created_at >= ? AND at.created_at <= ?
+            ORDER BY at.created_at, at.id
+            """,
+            (period_start.isoformat(), period_end.isoformat()),
+        ).fetchall()
+    grouped: dict[str, list[dict]] = {}
+    for row in rows:
+        item = dict(row)
+        domain = quiz_ability_domain(item["question_type"], item["quiz_type"], item["skill"])
+        grouped.setdefault(domain, []).append(item)
+    result = {}
+    for domain in ABILITY_DOMAINS:
+        items = grouped.get(domain, [])
+        sessions = {item["session_id"] for item in items}
+        active_days = {str(item["created_at"])[:10] for item in items}
+        correct = sum(1 for item in items if item["correct"])
+        certainty_errors = sum(1 for item in items if item["confidence"] == 3 and not item["correct"])
+        difficulty_ranks = [CEFR_ORDER.get(str(item["difficulty"]), 4) for item in items]
+        accuracy = round(correct / max(1, len(items)) * 100)
+        difficulty_adjustment = round(((sum(difficulty_ranks) / max(1, len(difficulty_ranks))) - 4) * 3)
+        performance = max(0, min(100, accuracy + difficulty_adjustment - min(6, certainty_errors * 2)))
+        result[domain] = {
+            "attempts": len(items), "correct": correct, "accuracy": accuracy,
+            "sessions": len(sessions), "active_days": len(active_days),
+            "certainty_errors": certainty_errors, "performance": performance,
+            "eligible": len(items) >= 8 and len(sessions) >= 2 and len(active_days) >= 2,
+        }
+    return result
+
+
+def profile_calibration_status(settings: dict | None = None, now: datetime | None = None) -> dict:
+    settings = settings or learner_settings()
+    now = now or datetime.now(timezone.utc)
+    anchor = parse_utc_datetime(settings.get("last_calibration_at") or settings.get("profile_started_at") or "") or now
+    due_at = anchor + timedelta(days=7)
+    period_start = max(anchor, now - timedelta(days=7))
+    evidence = calibration_evidence(period_start, now) if settings.get("profile_completed") else {}
+    eligible_domains = [domain for domain, item in evidence.items() if item.get("eligible")]
+    with db() as conn:
+        history = rows_to_dicts(conn.execute(
+            "SELECT * FROM profile_calibrations ORDER BY id DESC LIMIT 8"
+        ).fetchall())
+    for item in history:
+        item["domains"] = json.loads(item.pop("domain_summary_json") or "{}")
+        item["overall"] = json.loads(item.pop("overall_summary_json") or "{}")
+    return {
+        "profile_completed": bool(settings.get("profile_completed")),
+        "due": bool(settings.get("profile_completed")) and now >= due_at,
+        "due_at": due_at.isoformat(),
+        "days_remaining": max(0, (due_at.date() - now.date()).days),
+        "period_start": period_start.isoformat(),
+        "period_end": now.isoformat(),
+        "evidence": evidence,
+        "eligible_domains": eligible_domains,
+        "overall_requires": {"minimum_domains": 3, "receptive": ["reading", "listening"], "productive": ["writing", "speaking"]},
+        "history": history,
+    }
+
+
+def run_profile_calibration(force: bool = False, now: datetime | None = None, trigger_type: str = "weekly") -> dict:
+    now = now or datetime.now(timezone.utc)
+    settings = learner_settings()
+    status = profile_calibration_status(settings, now)
+    if not settings.get("profile_completed") or (not force and not status["due"]):
+        return {**status, "ran": False}
+    profile = learner_profile_summary(settings)
+    domains = initial_ability_domains(settings, profile["cefr"])
+    domain_summary = {}
+    eligible = []
+    for domain, evidence in status["evidence"].items():
+        current = domains[domain]
+        if evidence["eligible"]:
+            delta = max(-4, min(4, round((evidence["performance"] - 65) / 7)))
+            new_score = max(0, min(100, round(current["score"] + delta, 1)))
+            updated = {
+                **current, "score": new_score, "cefr": cefr_from_ability_score(new_score),
+                "confidence": "high" if current["evidence_count"] + evidence["attempts"] >= 20 else "medium",
+                "evidence_count": current["evidence_count"] + evidence["attempts"], "updated_at": now.isoformat(),
+            }
+            domains[domain] = updated
+            eligible.append(domain)
+            domain_summary[domain] = {**evidence, "before": current, "after": updated, "delta": delta, "adjusted": True}
+        else:
+            domain_summary[domain] = {**evidence, "before": current, "after": current, "delta": 0, "adjusted": False}
+    receptive = bool(set(eligible) & {"reading", "listening"})
+    productive = bool(set(eligible) & {"writing", "speaking"})
+    overall_eligible = len(eligible) >= 3 and receptive and productive
+    previous_overall = settings.get("overall_ability") if isinstance(settings.get("overall_ability"), dict) else {}
+    if overall_eligible:
+        overall_score = round(sum(domains[domain]["score"] for domain in ABILITY_DOMAINS) / len(ABILITY_DOMAINS), 1)
+        overall = {"adjusted": True, "score": overall_score, "cefr": cefr_from_ability_score(overall_score), "coverage": eligible, "updated_at": now.isoformat()}
+    else:
+        overall = {
+            "adjusted": False, "cefr": previous_overall.get("cefr") or profile["cefr"],
+            "score": previous_overall.get("score", ABILITY_SCORE_BY_CEFR[profile["cefr"]]),
+            "coverage": eligible, "reason": "综合等级至少需要 3 个分项，并同时包含输入与输出能力证据。",
+        }
+    overall["algorithm"] = "weekly-rule-v1"
+    settings["ability_domains"] = domains
+    settings["overall_ability"] = overall
+    settings["last_calibration_at"] = now.isoformat()
+    save_learner_settings(settings)
+    with db() as conn:
+        conn.execute(
+            """INSERT INTO profile_calibrations
+               (period_start, period_end, trigger_type, domain_summary_json, overall_summary_json, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (status["period_start"], status["period_end"], trigger_type,
+             json.dumps(domain_summary, ensure_ascii=False), json.dumps(overall, ensure_ascii=False), now.isoformat()),
+        )
+    return {**profile_calibration_status(settings, now), "ran": True, "domains": domain_summary, "overall": overall}
+
+
 def browser_bridge_token() -> str:
     with db() as conn:
         row = conn.execute("SELECT value FROM settings WHERE key = 'browser_bridge_token'").fetchone()
@@ -4748,6 +4979,8 @@ class App(BaseHTTPRequestHandler):
                 return json_response(self, {"settings": settings, "profile": learner_profile_summary(settings)})
             if path == "/api/profile/quick-test":
                 return json_response(self, {"items": quick_test_payload(), "estimated_minutes": 8, "domains": ["reading", "vocabulary"]})
+            if path == "/api/profile/calibration":
+                return json_response(self, profile_calibration_status())
             if path == "/api/feeds/status":
                 return json_response(self, feed_refresh_status())
             if path == "/api/books":
@@ -5415,6 +5648,7 @@ class App(BaseHTTPRequestHandler):
                     )
                     increment_daily_progress(conn, "practice", summary["answered_count"])
                     detail = practice_session_detail(conn, session_id)
+                detail["calibration"] = run_profile_calibration()
                 return json_response(self, detail, 201)
             if path == "/api/practice-sessions":
                 raw_answers = payload.get("answers") or []
@@ -5499,9 +5733,10 @@ class App(BaseHTTPRequestHandler):
                     )
                     increment_daily_progress(conn, "practice", answered_count)
                     session = conn.execute("SELECT * FROM practice_sessions WHERE id = ?", (session_id,)).fetchone()
+                calibration = run_profile_calibration()
                 return json_response(
                     self,
-                    {"session": practice_session_payload(session), "results": results, "progress": results[-1]["progress"]},
+                    {"session": practice_session_payload(session), "results": results, "progress": results[-1]["progress"], "calibration": calibration},
                     201,
                 )
             if path == "/api/practice/next-set":

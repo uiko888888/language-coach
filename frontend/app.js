@@ -350,6 +350,12 @@ function renderLearnerProfile() {
     <div><span>目标</span><strong>${escapeHtml(target)}</strong><small>能力分与 XP 分开记录</small></div>
     <div><span>当前薄弱项</span><strong>${escapeHtml(weak)}</strong><small>推荐难度：${escapeHtml((profile.recommended_levels || ["B1", "B2"]).join(" / "))}</small></div>
   `;
+  const calibration = state.today.calibration || {};
+  const domainLabels = { reading: "阅读", listening: "听力", vocabulary: "词汇", writing: "写作", speaking: "口语" };
+  const domainText = Object.entries(profile.domains || {}).map(([domain, value]) => `${domainLabels[domain] || domain} ${value.cefr}`).join(" · ");
+  $("#calibrationSummary").innerHTML = calibration.profile_completed
+    ? `<strong>分项：</strong>${escapeHtml(domainText || "等待训练数据")}<br><strong>下次校准：</strong>${calibration.due ? "完成下一次训练后执行" : `${calibration.days_remaining ?? 7} 天后`} · 只调整达到样本门槛的分项`
+    : `建立画像后开始累计七天分项证据。`;
   if (!profile.completed) $("#profileEditor").open = true;
 
   const assessment = settings.assessment || {};
@@ -458,11 +464,18 @@ function renderDashboard() {
   });
   $("#modeEyebrow").textContent = interest ? "Interest mode" : `${state.style} exam mode`;
   $("#modeHeading").textContent = interest ? "从喜欢的内容进入英语" : `今天为 ${state.style} 目标训练`;
+  $("#modeBrief").classList.toggle("interest-focus", interest);
   $("#modeDescription").textContent = interest
     ? `优先推荐订阅、新闻与文化内容；今日计划 ${state.learnerSettings.daily_minutes} 分钟。${activeGoal ? ` 当前目标：${activeGoal}` : ""}`
     : `优先匹配考试难度、证据定位与同义替换；今日计划 ${state.learnerSettings.daily_minutes} 分钟。${activeGoal ? ` 当前目标：${activeGoal}` : ""}`;
   $("#modePrimaryAction").textContent = interest ? "开始轻松阅读" : "开始今日训练";
+  const modeFocus = state.today.mode_focus || {};
+  $("#modeHeading").textContent = modeFocus.title || (interest ? "从喜欢的内容进入英语" : `今天为 ${state.style} 目标训练`);
+  $("#modePrimaryAction").textContent = modeFocus.primary || (interest ? "开始轻松阅读" : "开始今日训练");
+  $("#modeInsights").innerHTML = (modeFocus.signals || []).map(value => `<span>${escapeHtml(value)}</span>`).join("");
+  $("#examReviewSection").hidden = interest;
   $("#globalStyle").title = interest ? "兴趣素材生成题目时参照的考试难度" : "当前备考目标";
+  $("#globalStyle").hidden = interest;
   renderDailyPlan();
 
   $("#recentArticles").innerHTML = (state.today.lanes || []).map(lane => {
@@ -472,7 +485,12 @@ function renderDashboard() {
       <div class="badge-row">${badge(lane.label, "amber")}${badge(article.content_type_label || "学术解释", "teal")}${badge(article.source || "manual")}</div>
       <h3>${escapeHtml(article.title)}</h3>
       <p>${escapeHtml(lane.reason)} · ${escapeHtml(excerpt(article.highlight || article.body, 120))}</p>
-      <div class="toolbar"><button data-open-article="${article.id}">阅读</button><button data-add-plan-item="article" data-plan-task="reading" data-plan-item-id="${article.id}" data-plan-item-title="${escapeHtml(article.title)}">加入今日阅读</button></div>
+      <div class="toolbar">
+        <button data-open-article="${article.id}">${interest ? "沉浸阅读" : "精读原文"}</button>
+        ${interest
+          ? `<button data-add-plan-item="article" data-plan-task="reading" data-plan-item-id="${article.id}" data-plan-item-title="${escapeHtml(article.title)}">加入兴趣清单</button>`
+          : `<button class="primary" data-quiz-article="${article.id}">按此文训练</button>`}
+      </div>
     </div>
   `;
   }).join("") || `<div class="item muted">文章池中还没有可推荐内容</div>`;
@@ -1627,6 +1645,22 @@ async function startDailyPlan() {
   else setView("articles");
 }
 
+async function startModeFocus() {
+  if (state.learningMode === "interest") {
+    const first = state.today.lanes?.[0]?.article;
+    if (first) await openArticle(first.id);
+    else setView("articles");
+    return;
+  }
+  const questionType = state.today.mode_focus?.recommended_question_type || "";
+  if (questionType && [...$("#quizPracticeType").options].some(option => option.value === questionType)) {
+    $("#quizPracticeType").value = questionType;
+  }
+  const article = state.today.lanes?.find(lane => lane.article)?.article || state.selectedArticle;
+  if (article) await generateQuizzes(article.id);
+  else await startDailyPlan();
+}
+
 async function setSourceSubscription(name, active) {
   await api("/api/subscriptions", {
     method: "POST",
@@ -2106,7 +2140,7 @@ document.addEventListener("click", async event => {
       renderPracticeHistory();
     }
     if (button.id === "modePrimaryAction") {
-      await startDailyPlan();
+      await startModeFocus();
     }
     if (button.id === "toggleTranslationBtn" || button.id === "quizTranslationBtn" || button.dataset.toggleTranslation) {
       state.showTranslation = !state.showTranslation;

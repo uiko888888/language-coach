@@ -106,6 +106,7 @@
           <span class="eyebrow" id="modeEyebrow">Exam mode</span>
           <h2 id="modeHeading">今天为目标分数训练</h2>
           <p id="modeDescription"></p>
+          <div class="mode-insights" id="modeInsights"></div>
         </div>
         <button class="primary" id="modePrimaryAction">开始今日训练</button>
       </section>
@@ -115,6 +116,7 @@
           <span class="profile-status" id="profileStatus">待建立</span>
         </div>
         <div class="profile-summary" id="profileSummary"></div>
+        <div class="calibration-summary" id="calibrationSummary"></div>
         <details class="profile-editor" id="profileEditor">
           <summary>建立或修改画像</summary>
           <div class="profile-source-switch" role="group" aria-label="画像建立方式">
@@ -254,7 +256,7 @@
         </div>
         <div class="list compact" id="recentArticles"></div>
       </section>
-      <section class="band">
+      <section class="band" id="examReviewSection">
         <div class="band-head">
           <h2>待复盘错题</h2>
           <div class="toolbar"><button id="nextSetBtn">下一组 10 题</button><button data-view-jump="mistakes">打开错题</button></div>

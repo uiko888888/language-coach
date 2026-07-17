@@ -8,7 +8,7 @@ This is a product benchmark against established interaction patterns, not a live
 | --- | ---: | --- | --- | --- |
 | Real content to training | 7.5/10 | Read Frog, LUTE | Generated-question quality is still rule-limited | Evidence-aware AI generation with rejection rules |
 | Reading exam training | 6.5/10 | IELTS/TOEFL practice platforms | Formal scoring, timing and complete papers are incomplete | Finish official-format interaction models |
-| Learning profile | 6/10 | EF SET onboarding, adaptive learning apps | Baseline exists; longitudinal calibration is early | Weekly ability updates and recommendation feedback |
+| Learning profile | 6.5/10 | EF SET onboarding, adaptive learning apps | Weekly domain calibration exists; timing and hint evidence are missing | Add richer event evidence and recommendation feedback |
 | Dictionary and word chunks | 4.5/10 | Eudic, commercial learner dictionaries | Open coverage, frequency and bilingual examples are limited | Kaikki, Tatoeba and wordfreq layers |
 | Review scheduling | 3/10 | Anki/FSRS | Cards and mistakes exist without memory scheduling | Shared FSRS queue for words, mistakes and listening lines |
 | Listening and clip study | 2/10 | Eudic clips, asbplayer, Language Reactor | No timed subtitle player or repeat loop yet | User-authorized subtitle and media clip workspace |
@@ -31,6 +31,8 @@ legal article / webpage / subtitle
 ```
 
 Current strengths are source traceability, one-material-many-uses, evidence replay, contextual lookup and the browser extension intake. The product does not yet have a moat in dictionary coverage, adaptive modeling, listening interaction or public delivery.
+
+Interest and exam modes now use different home workflows: immersion and expression collection versus target, weakness and question-type prescription. They still share one profile so interest activity can later contribute domain evidence without masquerading as exam-score gains.
 
 ## Universal Product Requirements
 

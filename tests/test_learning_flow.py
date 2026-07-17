@@ -2,6 +2,7 @@ import hashlib
 import os
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from backend import server
@@ -102,6 +103,103 @@ class LearningFlowTests(unittest.TestCase):
             self.assertEqual(updated["profile_source"], "self_assessment")
             self.assertEqual(updated["target_exam"], "TOEFL")
             self.assertEqual(updated["interest_topics"], ["影视娱乐"])
+        finally:
+            server.save_learner_settings(original)
+
+    def test_weekly_calibration_updates_only_eligible_reading_domain(self):
+        original = server.learner_settings()
+        now = datetime(2026, 7, 18, 2, 0, tzinfo=timezone.utc)
+        created_ids = {"sessions": [], "quizzes": [], "attempts": []}
+        try:
+            profile = server.update_learner_profile({
+                "profile_source": "self_assessment",
+                "self_levels": {"reading": "B1", "listening": "A2", "writing": "A2", "speaking": "A2"},
+                "target_exam": "IELTS",
+            })
+            settings = profile["settings"]
+            settings["profile_started_at"] = (now - timedelta(days=8)).isoformat()
+            server.save_learner_settings(settings)
+            with server.db() as conn:
+                article_id = conn.execute("SELECT id FROM articles ORDER BY id LIMIT 1").fetchone()[0]
+                for session_index, day_offset in enumerate((6, 1)):
+                    session_id = conn.execute(
+                        """INSERT INTO practice_sessions
+                           (article_id, style, question_type, session_mode, question_count, answered_count,
+                            correct_count, elapsed_seconds, score, completed_at)
+                           VALUES (?, 'IELTS', 'tfng', 'practice', 4, 4, 4, 240, 100, ?)""",
+                        (article_id, (now - timedelta(days=day_offset)).isoformat()),
+                    ).lastrowid
+                    created_ids["sessions"].append(session_id)
+                    for item_index in range(4):
+                        quiz_id = conn.execute(
+                            """INSERT INTO quizzes
+                               (article_id, style, mode, type, question_type, skill, difficulty,
+                                prompt, answer, options_json, evidence, note, created_at)
+                               VALUES (?, 'IELTS', 'reading', 'tfng', 'tfng', '证据定位', 'B2', ?, 'TRUE',
+                                       '[\"TRUE\",\"FALSE\",\"NOT GIVEN\"]', 'Evidence', 'test', ?)""",
+                            (article_id, f"Calibration reading {session_index}-{item_index}", now.isoformat()),
+                        ).lastrowid
+                        created_ids["quizzes"].append(quiz_id)
+                        attempt_id = conn.execute(
+                            """INSERT INTO attempts
+                               (quiz_id, session_id, user_answer, confidence, correct, error_type, created_at)
+                               VALUES (?, ?, 'TRUE', 3, 1, '', ?)""",
+                            (quiz_id, session_id, (now - timedelta(days=day_offset)).isoformat()),
+                        ).lastrowid
+                        created_ids["attempts"].append(attempt_id)
+            result = server.run_profile_calibration(force=False, now=now)
+            self.assertTrue(result["ran"])
+            self.assertTrue(result["domains"]["reading"]["adjusted"])
+            self.assertGreater(result["domains"]["reading"]["after"]["score"], result["domains"]["reading"]["before"]["score"])
+            self.assertFalse(result["domains"]["listening"]["adjusted"])
+            self.assertFalse(result["overall"]["adjusted"])
+            self.assertIn("3 个分项", result["overall"]["reason"])
+        finally:
+            with server.db() as conn:
+                if created_ids["attempts"]:
+                    conn.execute(f"DELETE FROM attempts WHERE id IN ({','.join('?' for _ in created_ids['attempts'])})", created_ids["attempts"])
+                if created_ids["quizzes"]:
+                    conn.execute(f"DELETE FROM quizzes WHERE id IN ({','.join('?' for _ in created_ids['quizzes'])})", created_ids["quizzes"])
+                if created_ids["sessions"]:
+                    conn.execute(f"DELETE FROM practice_sessions WHERE id IN ({','.join('?' for _ in created_ids['sessions'])})", created_ids["sessions"])
+                conn.execute("DELETE FROM profile_calibrations")
+            server.save_learner_settings(original)
+
+    def test_profile_calibration_waits_seven_days(self):
+        original = server.learner_settings()
+        now = datetime(2026, 7, 18, 2, 0, tzinfo=timezone.utc)
+        try:
+            settings = server.update_learner_profile({
+                "profile_source": "self_assessment", "self_levels": {"reading": "B1"}, "target_exam": "IELTS",
+            })["settings"]
+            settings["profile_started_at"] = (now - timedelta(days=6)).isoformat()
+            server.save_learner_settings(settings)
+            result = server.run_profile_calibration(now=now)
+            self.assertFalse(result["ran"])
+            self.assertFalse(result["due"])
+            self.assertEqual(result["days_remaining"], 1)
+        finally:
+            server.save_learner_settings(original)
+
+    def test_changing_baseline_resets_calibration_but_changing_preferences_does_not(self):
+        original = server.learner_settings()
+        try:
+            first = server.update_learner_profile({
+                "profile_source": "self_assessment", "self_levels": {"reading": "B1"}, "target_exam": "IELTS",
+            })["settings"]
+            first["ability_domains"] = {"reading": {"cefr": "B2", "score": 62, "confidence": "medium", "evidence_count": 12, "updated_at": server.utc_now()}}
+            first["last_calibration_at"] = server.utc_now()
+            server.save_learner_settings(first)
+            preferences = server.update_learner_profile({
+                "profile_source": "self_assessment", "self_levels": {"reading": "B1"},
+                "target_exam": "IELTS", "interest_topics": ["影视娱乐"],
+            })["settings"]
+            self.assertTrue(preferences["ability_domains"])
+            changed = server.update_learner_profile({
+                "profile_source": "self_assessment", "self_levels": {"reading": "B2"}, "target_exam": "IELTS",
+            })["settings"]
+            self.assertEqual(changed["ability_domains"], {})
+            self.assertEqual(changed["last_calibration_at"], "")
         finally:
             server.save_learner_settings(original)
 

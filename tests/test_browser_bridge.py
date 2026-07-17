@@ -77,6 +77,24 @@ class BrowserBridgeTests(unittest.TestCase):
         finally:
             server.save_learner_settings(original)
 
+    def test_interest_and_exam_modes_return_distinct_workflows(self):
+        original = server.learner_settings()
+        try:
+            server.update_learner_profile({
+                "profile_source": "self_assessment", "self_levels": {"reading": "B1"},
+                "target_exam": "IELTS", "target_score": 7,
+                "interest_topics": ["影视娱乐"], "interest_content_types": ["culture"],
+            })
+            interest, _ = self.request("/api/today?exam=IELTS&mode=interest")
+            exam, _ = self.request("/api/today?exam=IELTS&mode=exam")
+            self.assertEqual(interest["mode_focus"]["next_action"], "reading")
+            self.assertEqual(exam["mode_focus"]["next_action"], "practice")
+            self.assertNotEqual(interest["mode_focus"]["title"], exam["mode_focus"]["title"])
+            self.assertIn("calibration", exam)
+            self.assertTrue(any("目标" in value for value in exam["mode_focus"]["signals"]))
+        finally:
+            server.save_learner_settings(original)
+
     def test_selection_saves_context_and_source_to_wordbook(self):
         payload = {
             "kind": "selection",

@@ -9,6 +9,31 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.13] - 2026-07-18
+
+### Added
+
+- Added seven-day profile calibration status, history and automatic checks after completed practice sessions.
+- Added separate reading, listening, vocabulary, writing and speaking ability records.
+- Added minimum calibration evidence of eight questions, two completed sessions and two active days per domain.
+- Added `weekly-rule-v1` bounded score adjustments using correctness, question difficulty and confidence errors.
+- Added an overall-level coverage gate requiring at least three eligible domains plus receptive and productive evidence.
+- Added distinct interest-mode immersion signals and exam-mode target, weakness and calibration prescriptions.
+- Added mode-specific article actions and a calibration summary on the learner profile.
+- Added automated coverage for seven-day cadence, reading-only updates, overall protection and distinct mode contracts.
+
+### Changed
+
+- Interest mode now hides exam pressure controls and unresolved-mistake panels while prioritizing reading and content collection.
+- Exam mode now starts from the weakest supported question type when evidence exists.
+- Practicing only reading can adjust reading evidence but cannot raise listening, speaking, writing or the overall level.
+
+### Known limits
+
+- Current practice evidence directly covers reading and vocabulary; listening, speaking and writing need their own scored workflows before they can calibrate.
+- Per-question response time, translation usage and hint usage are not yet persisted, so they are not part of `weekly-rule-v1`.
+- The calibration is an explainable bounded heuristic, not an official score prediction or psychometric certification.
+
 ## [0.8.0-alpha.12.1] - 2026-07-18
 
 ### Changed

@@ -316,6 +316,10 @@ label {
 .mode-brief h2 { margin: 2px 0 5px; font-size: 20px; }
 .mode-brief p { max-width: 76ch; margin: 0; color: var(--muted); line-height: 1.6; }
 .mode-brief > button { flex: 0 0 auto; }
+.mode-insights { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.mode-insights span { padding: 5px 8px; border-left: 3px solid var(--teal); background: var(--surface-2); color: var(--text); font-size: 12px; }
+.mode-brief.interest-focus { border-top-color: var(--amber); }
+.mode-brief.interest-focus .mode-insights span { border-left-color: var(--amber); background: #fff7e8; }
 
 .daily-plan-band { margin-bottom: 14px; }
 .learner-profile-band { margin-bottom: 14px; }
@@ -325,6 +329,7 @@ label {
 .profile-summary > div + div { border-left: 1px solid var(--line); }
 .profile-summary span, .profile-summary small { color: var(--muted); font-size: 12px; }
 .profile-summary strong { overflow-wrap: anywhere; font-size: 15px; }
+.calibration-summary { margin-top: 10px; padding: 9px 11px; border-left: 3px solid var(--blue); background: #f1f5fb; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .profile-editor { margin-top: 12px; }
 .profile-editor > summary { cursor: pointer; color: var(--teal-dark); font-weight: 700; }
 .profile-source-switch { display: inline-flex; margin: 14px 0; border: 1px solid var(--line); }

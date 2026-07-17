@@ -46,6 +46,14 @@ class ProfileUiContractTests(unittest.TestCase):
         self.assertNotIn(".app { margin-left: 0", mobile)
         self.assertNotIn(".sidebar {\n    position: static", mobile)
 
+    def test_learning_modes_have_distinct_dashboard_actions(self):
+        self.assertIn('id="modeInsights"', self.html)
+        self.assertIn('id="examReviewSection"', self.html)
+        self.assertIn("async function startModeFocus()", self.js)
+        self.assertIn('state.learningMode === "interest"', self.js)
+        self.assertIn('$("#examReviewSection").hidden = interest', self.js)
+        self.assertIn('data-quiz-article="${article.id}"', self.js)
+
 
 if __name__ == "__main__":
     unittest.main()
