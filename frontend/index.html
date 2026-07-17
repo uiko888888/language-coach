@@ -234,6 +234,10 @@
         <div class="band-head">
           <h2>题目</h2>
           <div class="toolbar">
+            <select id="quizSessionMode" aria-label="答题反馈方式">
+              <option value="practice">训练模式</option>
+              <option value="mock">模考模式</option>
+            </select>
             <select id="quizPracticeMode" aria-label="训练模式">
               <option value="mixed">综合训练</option>
               <option value="reading">阅读理解</option>
@@ -242,10 +246,20 @@
             <select id="quizPracticeType" aria-label="考试题型"></select>
             <button class="primary" id="generatePracticeBtn">按当前文章出题</button>
             <button id="loadQuizzesBtn">载入题目</button>
-            <button id="showAnswersBtn">显示答案</button>
           </div>
         </div>
         <div class="quiz-session-summary" id="quizSessionSummary"></div>
+        <div class="quiz-session-tools">
+          <div class="quiz-view-switch" role="group" aria-label="题目显示方式">
+            <button data-quiz-display="single">逐题</button>
+            <button data-quiz-display="all">全部</button>
+          </div>
+          <div class="quiz-session-clock"><span>用时</span><strong id="quizTimer">00:00</strong></div>
+          <button id="restartQuizSessionBtn">重新开始</button>
+          <button class="primary" id="finishQuizSessionBtn">结束训练</button>
+        </div>
+        <div class="quiz-navigator" id="quizNavigator" aria-label="题号导航"></div>
+        <section class="quiz-result" id="quizSessionResult" hidden></section>
         <div class="list quiz-list" id="quizList"></div>
       </section>
       </div>

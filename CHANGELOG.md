@@ -8,6 +8,33 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.8.0-alpha.2] - 2026-07-17
+
+### Added
+
+- Added separate practice and mock-session behavior: practice reveals evidence immediately, while mock sessions defer scoring and explanations until submission.
+- Added question navigation with answered, unanswered, correct, wrong, active, and flagged states.
+- Added elapsed-time tracking, single-question and all-question views, restart controls, incomplete-answer confirmation, and unified submission.
+- Added persistent mock-session results with score, completion, elapsed time, skill summaries, error summaries, and linked attempts; practice mode continues to persist each immediate attempt.
+- Added a post-session result panel with direct mistake-review and retry actions.
+- Added a Playwright browser smoke test covering desktop split layout, mock submission, diagnosis rendering, and mobile horizontal overflow.
+
+### Changed
+
+- Kept the source passage visible beside the question workspace on desktop and stacked it before questions on narrow screens.
+- Refactored single-answer and batch-session scoring to share one persistence and diagnosis path.
+- Practice loading no longer resets an active session whenever the user returns to the practice-center view.
+
+### Fixed
+
+- Unanswered mock questions are now included in the denominator and recorded with the `未作答` diagnosis instead of disappearing from results.
+- Removed the obsolete initial-letter exercise claim from current documentation.
+
+### Known limits
+
+- The session score is percentage correct, not an official IELTS band conversion.
+- Full IELTS three-passage papers, section-level time allocation, pause recovery, and calibrated distractor quality remain pending.
+
 ## [0.8.0-alpha.1] - 2026-07-17
 
 ### Added

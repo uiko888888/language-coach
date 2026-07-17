@@ -36,6 +36,17 @@ const state = {
   analysis: null,
   answerFeedback: {},
   showAnswers: false,
+  quizSession: {
+    mode: localStorage.getItem("lc-v2-quiz-session-mode") || "practice",
+    display: localStorage.getItem("lc-v2-quiz-display") || "single",
+    activeIndex: 0,
+    answers: {},
+    flagged: {},
+    startedAt: Date.now(),
+    elapsedSeconds: 0,
+    submitted: false,
+    result: null,
+  },
   lookupTranslations: {},
   wordnetTranslationsInFlight: new Set(),
   wordnetAutoTranslationFailed: false,
@@ -76,6 +87,40 @@ function toast(message) {
   el.textContent = message;
   el.classList.add("show");
   setTimeout(() => el.classList.remove("show"), 1500);
+}
+
+function formatDuration(totalSeconds) {
+  const seconds = Math.max(0, Number(totalSeconds) || 0);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const rest = Math.floor(seconds % 60);
+  return hours
+    ? `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`
+    : `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
+}
+
+function quizElapsedSeconds() {
+  const session = state.quizSession;
+  if (session.submitted) return session.elapsedSeconds;
+  return session.elapsedSeconds + Math.floor((Date.now() - session.startedAt) / 1000);
+}
+
+function resetQuizSession({ preserveSettings = true } = {}) {
+  const mode = preserveSettings ? state.quizSession.mode : "practice";
+  const display = preserveSettings ? state.quizSession.display : "single";
+  state.answerFeedback = {};
+  state.showAnswers = false;
+  state.quizSession = {
+    mode,
+    display,
+    activeIndex: 0,
+    answers: {},
+    flagged: {},
+    startedAt: Date.now(),
+    elapsedSeconds: 0,
+    submitted: false,
+    result: null,
+  };
 }
 
 function setView(name, { pushHistory = true } = {}) {
@@ -608,50 +653,118 @@ function explanationHtml(explanation, compact = false, correct = false) {
   `;
 }
 
+function quizResultHtml(result) {
+  if (!result) return "";
+  const session = result.session || result;
+  const total = session.question_count || state.quizzes.length;
+  const correct = session.correct_count || 0;
+  const answered = session.answered_count ?? Object.values(state.quizSession.answers).filter(Boolean).length;
+  const skills = session.skill_summary || {};
+  const errors = session.error_summary || {};
+  return `
+    <div class="result-overview">
+      <div><span>正确率</span><strong>${session.score ?? Math.round(correct / Math.max(1, total) * 100)}%</strong></div>
+      <div><span>答对</span><strong>${correct}/${total}</strong></div>
+      <div><span>完成</span><strong>${answered}/${total}</strong></div>
+      <div><span>用时</span><strong>${formatDuration(session.elapsed_seconds ?? quizElapsedSeconds())}</strong></div>
+    </div>
+    <div class="result-diagnosis">
+      <div>
+        <h3>能力表现</h3>
+        ${Object.entries(skills).map(([skill, stats]) => `
+          <div class="diagnosis-row"><span>${escapeHtml(skill)}</span><strong>${stats.correct}/${stats.total}</strong></div>
+        `).join("") || `<p class="muted">完成更多题目后生成能力统计。</p>`}
+      </div>
+      <div>
+        <h3>需要复盘</h3>
+        ${Object.entries(errors).map(([error, count]) => `
+          <div class="diagnosis-row"><span>${escapeHtml(error)}</span><strong>${count} 题</strong></div>
+        `).join("") || `<p class="muted">本轮没有记录到错因。</p>`}
+      </div>
+    </div>
+    <div class="toolbar result-actions">
+      ${Object.keys(errors).length ? `<button data-view-jump="mistakes">查看错题解析</button>` : ""}
+      <button data-retry-session="true">再练一次</button>
+    </div>
+  `;
+}
+
 function renderQuizzes() {
-  const answered = state.quizzes.filter(quiz => state.answerFeedback[quiz.id]).length;
+  const session = state.quizSession;
+  const answered = state.quizzes.filter(quiz => String(session.answers[quiz.id] || "").trim()).length;
+  const flagged = state.quizzes.filter(quiz => session.flagged[quiz.id]).length;
   const validated = state.quizzes.filter(quiz => quiz.validation?.valid).length;
   const activeType = state.quizzes[0]?.question_type || $("#quizPracticeType")?.value || "";
   const typeLabel = state.examTypes.find(item => item.id === activeType)?.label || activeType || "当前训练";
+  session.activeIndex = Math.max(0, Math.min(session.activeIndex, Math.max(0, state.quizzes.length - 1)));
+  $("#quizSessionMode").value = session.mode;
+  $("#finishQuizSessionBtn").textContent = session.mode === "mock" ? "交卷" : "结束训练";
+  $("#finishQuizSessionBtn").disabled = !state.quizzes.length || session.submitted;
+  document.querySelectorAll("[data-quiz-display]").forEach(button => {
+    button.classList.toggle("active", button.dataset.quizDisplay === session.display);
+  });
   $("#quizSessionSummary").innerHTML = `
     <div><span>专项</span><strong>${escapeHtml(typeLabel)}</strong></div>
-    <div><span>题量</span><strong>${state.quizzes.length}</strong></div>
-    <div><span>已答</span><strong>${answered}</strong></div>
-    <div><span>校验通过</span><strong>${validated}/${state.quizzes.length}</strong></div>
+    <div><span>进度</span><strong>${answered}/${state.quizzes.length}</strong></div>
+    <div><span>标记</span><strong>${flagged}</strong></div>
+    <div><span>题目校验</span><strong>${validated}/${state.quizzes.length}</strong></div>
   `;
-  $("#quizList").innerHTML = state.quizzes.map((quiz, index) => {
+  $("#quizTimer").textContent = formatDuration(quizElapsedSeconds());
+  $("#quizNavigator").innerHTML = state.quizzes.map((quiz, index) => {
     const feedback = state.answerFeedback[quiz.id];
+    const status = feedback ? (feedback.correct ? "correct" : "wrong") : session.answers[quiz.id] ? "answered" : "unanswered";
+    return `<button class="quiz-nav-button ${status} ${session.flagged[quiz.id] ? "flagged" : ""} ${index === session.activeIndex ? "active" : ""}" data-quiz-nav="${index}" title="第 ${index + 1} 题">${index + 1}</button>`;
+  }).join("");
+  const resultPanel = $("#quizSessionResult");
+  resultPanel.hidden = !session.result;
+  resultPanel.innerHTML = quizResultHtml(session.result);
+  const visible = session.display === "single"
+    ? state.quizzes.map((quiz, index) => ({ quiz, index })).filter(item => item.index === session.activeIndex)
+    : state.quizzes.map((quiz, index) => ({ quiz, index }));
+  $("#quizList").innerHTML = visible.map(({ quiz, index }) => {
+    const feedback = state.answerFeedback[quiz.id];
+    const selected = session.answers[quiz.id] || feedback?.userAnswer || "";
+    const locked = Boolean(feedback || session.submitted);
     return `
-    <div class="item" data-quiz-card="${quiz.id}">
-      <div class="badge-row">
-        ${badge(quiz.style || state.style, "teal")}
-        ${badge(quiz.question_type || quiz.type)}
-        ${quiz.skill ? badge(quiz.skill) : ""}
-        ${quiz.difficulty ? badge(quiz.difficulty, "amber") : ""}
-        ${quiz.validation?.valid ? badge("已校验", "teal") : ""}
-        ${badge(quiz.note || "")}
+    <div class="item quiz-item" data-quiz-card="${quiz.id}">
+      <div class="quiz-item-head">
+        <div class="badge-row">
+          ${badge(`${index + 1}/${state.quizzes.length}`, "teal")}
+          ${badge(quiz.question_type || quiz.type)}
+          ${quiz.skill ? badge(quiz.skill) : ""}
+          ${quiz.difficulty ? badge(quiz.difficulty, "amber") : ""}
+          ${quiz.validation?.valid ? badge("证据已校验", "teal") : ""}
+        </div>
+        <button class="flag-button ${session.flagged[quiz.id] ? "active" : ""}" data-flag-quiz="${quiz.id}" aria-pressed="${Boolean(session.flagged[quiz.id])}">${session.flagged[quiz.id] ? "已标记" : "标记"}</button>
       </div>
       <h3>${index + 1}. ${searchableEnglish(quiz.prompt)}</h3>
       ${(quiz.options || []).length ? `
         <div class="options">
           ${quiz.options.map(option => {
-            const answerClass = feedback && option === quiz.answer ? "correct" : feedback && option === feedback.userAnswer && !feedback.correct ? "wrong" : "";
-            return `<button class="option ${answerClass}" data-answer-quiz="${quiz.id}" data-answer="${escapeHtml(option)}">${searchableEnglish(option, false)}</button>`;
+            const answerClass = feedback && option === quiz.answer ? "correct" : feedback && option === feedback.userAnswer && !feedback.correct ? "wrong" : !feedback && option === selected ? "selected" : "";
+            return `<button class="option ${answerClass}" data-select-quiz-answer="${quiz.id}" data-answer="${escapeHtml(option)}" ${locked ? "disabled" : ""}>${searchableEnglish(option, false)}</button>`;
           }).join("")}
         </div>
       ` : `
         <div class="answer-row">
-          <input data-typed-quiz="${quiz.id}" placeholder="输入完整答案" />
-          <button data-submit-typed="${quiz.id}">提交</button>
+          <input data-typed-quiz="${quiz.id}" value="${escapeHtml(selected)}" placeholder="输入完整答案" ${locked ? "disabled" : ""} />
+          ${session.mode === "practice" && !locked ? `<button data-submit-typed="${quiz.id}">确认答案</button>` : ""}
         </div>
       `}
-      ${state.showAnswers ? `
+      ${state.showAnswers && (session.mode === "practice" || session.submitted) ? `
         <div class="answer-box">
           <strong>Answer:</strong> ${escapeHtml(quiz.answer)}<br>
           <strong>Evidence:</strong> ${escapeHtml(quiz.evidence || "")}
         </div>
       ` : ""}
       ${feedback ? explanationHtml(feedback.explanation, true, feedback.correct) : ""}
+      ${session.display === "single" ? `
+        <div class="quiz-step-actions">
+          <button data-quiz-nav="${Math.max(0, index - 1)}" ${index === 0 ? "disabled" : ""}>上一题</button>
+          <span>${selected ? "已作答" : "尚未作答"}${session.flagged[quiz.id] ? " · 已标记" : ""}</span>
+          <button data-quiz-nav="${Math.min(state.quizzes.length - 1, index + 1)}" ${index === state.quizzes.length - 1 ? "disabled" : ""}>下一题</button>
+        </div>
+      ` : ""}
     </div>
   `;
   }).join("") || `<div class="item muted">暂无题目</div>`;
@@ -901,6 +1014,7 @@ async function loadQuizzes() {
   if (questionType) params.set("question_type", questionType);
   const data = await api(`/api/quizzes?${params.toString()}`);
   state.quizzes = data.quizzes || [];
+  resetQuizSession();
 }
 
 async function openArticle(id) {
@@ -929,12 +1043,14 @@ async function generateQuizzes(id = state.selectedArticle?.id, { open = true } =
     body: JSON.stringify({ mode, style: state.style, question_type: questionType }),
   });
   state.quizzes = data.quizzes || [];
+  resetQuizSession();
   if (open) setView("quiz");
   renderAll();
   toast("题目已生成");
 }
 
 async function submitAnswer(quizId, answer, button = null) {
+  state.quizSession.answers[quizId] = String(answer || "").trim();
   const data = await api("/api/attempts", {
     method: "POST",
     body: JSON.stringify({ quiz_id: quizId, answer }),
@@ -958,6 +1074,80 @@ async function submitAnswer(quizId, answer, button = null) {
   renderDashboard();
   const rewardText = data.points ? `，+${data.points} XP` : "（本题积分已结算）";
   toast(data.correct ? `答对了${rewardText}` : `错了：${data.answer}${rewardText}`);
+}
+
+async function selectQuizAnswer(quizId, answer) {
+  if (state.quizSession.submitted || state.answerFeedback[quizId]) return;
+  state.quizSession.answers[quizId] = answer;
+  if (state.quizSession.mode === "practice") {
+    await submitAnswer(quizId, answer);
+  } else {
+    renderQuizzes();
+  }
+}
+
+function localPracticeResult() {
+  const results = state.quizzes
+    .map(quiz => ({ quiz, feedback: state.answerFeedback[quiz.id] }))
+    .filter(item => item.feedback);
+  const skillSummary = {};
+  const errorSummary = {};
+  results.forEach(({ quiz, feedback }) => {
+    const skill = feedback.skill || quiz.skill || "阅读理解";
+    const stats = skillSummary[skill] || { total: 0, correct: 0 };
+    stats.total += 1;
+    stats.correct += feedback.correct ? 1 : 0;
+    skillSummary[skill] = stats;
+    if (feedback.error_type) errorSummary[feedback.error_type] = (errorSummary[feedback.error_type] || 0) + 1;
+  });
+  const unanswered = state.quizzes.length - results.length;
+  if (unanswered) errorSummary.未作答 = unanswered;
+  const correctCount = results.filter(item => item.feedback.correct).length;
+  return {
+    question_count: state.quizzes.length,
+    answered_count: results.length,
+    correct_count: correctCount,
+    elapsed_seconds: quizElapsedSeconds(),
+    score: Math.round(correctCount / Math.max(1, state.quizzes.length) * 100),
+    skill_summary: skillSummary,
+    error_summary: errorSummary,
+  };
+}
+
+async function finishQuizSession() {
+  const session = state.quizSession;
+  if (!state.quizzes.length || session.submitted) return;
+  const answered = state.quizzes.filter(quiz => String(session.answers[quiz.id] || "").trim()).length;
+  if (!answered) return toast("至少完成一题再结束训练");
+  const unanswered = state.quizzes.length - answered;
+  if (unanswered && !window.confirm(`还有 ${unanswered} 题未作答，仍要${session.mode === "mock" ? "交卷" : "结束训练"}吗？`)) return;
+  const elapsedSeconds = quizElapsedSeconds();
+  if (session.mode === "mock") {
+    const data = await api("/api/practice-sessions", {
+      method: "POST",
+      body: JSON.stringify({
+        session_mode: "mock",
+        elapsed_seconds: elapsedSeconds,
+        answers: state.quizzes.map(quiz => ({ quiz_id: quiz.id, answer: session.answers[quiz.id] || "" })),
+      }),
+    });
+    (data.results || []).forEach(result => {
+      state.answerFeedback[result.quiz_id] = { ...result, userAnswer: result.user_answer };
+    });
+    session.result = data;
+    if (data.progress) state.progress = data.progress;
+    await loadMistakes();
+    renderMistakes();
+    renderStats();
+    renderDashboard();
+  } else {
+    session.result = localPracticeResult();
+  }
+  session.elapsedSeconds = elapsedSeconds;
+  session.submitted = true;
+  state.showAnswers = true;
+  renderQuizzes();
+  toast(session.mode === "mock" ? "交卷完成，已生成能力与错因分析" : "训练结束，已生成本轮总结");
 }
 
 async function saveTranslation() {
@@ -1182,7 +1372,7 @@ document.addEventListener("click", async event => {
     if (button.dataset.lexiconFilter) renderLexicon();
     if (button.dataset.viewJump) setView(button.dataset.viewJump);
     if (button.dataset.view === "quiz") {
-      await loadQuizzes();
+      if (!state.quizzes.length) await loadQuizzes();
       if (!state.quizzes.length && state.selectedArticle) await generateQuizzes(state.selectedArticle.id, { open: false });
       renderQuizzes();
       renderQuizSource();
@@ -1216,6 +1406,27 @@ document.addEventListener("click", async event => {
       renderQuizzes();
     }
     if (button.id === "generatePracticeBtn") await generateQuizzes();
+    if (button.id === "restartQuizSessionBtn" || button.dataset.retrySession) {
+      resetQuizSession();
+      renderQuizzes();
+      toast("已重新开始本轮训练");
+    }
+    if (button.id === "finishQuizSessionBtn") await finishQuizSession();
+    if (button.dataset.quizDisplay) {
+      state.quizSession.display = button.dataset.quizDisplay;
+      localStorage.setItem("lc-v2-quiz-display", state.quizSession.display);
+      renderQuizzes();
+    }
+    if (button.dataset.quizNav !== undefined) {
+      state.quizSession.activeIndex = Number(button.dataset.quizNav);
+      renderQuizzes();
+      document.querySelector(`[data-quiz-card]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    if (button.dataset.flagQuiz) {
+      const quizId = Number(button.dataset.flagQuiz);
+      state.quizSession.flagged[quizId] = !state.quizSession.flagged[quizId];
+      renderQuizzes();
+    }
     if (button.id === "showAnswersBtn") {
       state.showAnswers = !state.showAnswers;
       renderQuizzes();
@@ -1275,6 +1486,9 @@ document.addEventListener("click", async event => {
     if (button.dataset.answerQuiz) {
       await submitAnswer(Number(button.dataset.answerQuiz), button.dataset.answer, button);
     }
+    if (button.dataset.selectQuizAnswer) {
+      await selectQuizAnswer(Number(button.dataset.selectQuizAnswer), button.dataset.answer);
+    }
     if (button.dataset.submitTyped) {
       const input = document.querySelector(`[data-typed-quiz="${button.dataset.submitTyped}"]`);
       await submitAnswer(Number(button.dataset.submitTyped), input.value.trim(), button);
@@ -1319,6 +1533,29 @@ $("#globalStyle").addEventListener("change", async event => {
 $("#quizPracticeType").addEventListener("change", async () => {
   await loadQuizzes();
   renderQuizzes();
+});
+
+$("#quizSessionMode").addEventListener("change", event => {
+  state.quizSession.mode = event.target.value === "mock" ? "mock" : "practice";
+  localStorage.setItem("lc-v2-quiz-session-mode", state.quizSession.mode);
+  resetQuizSession();
+  renderQuizzes();
+  toast(state.quizSession.mode === "mock" ? "模考模式：交卷后统一显示解析" : "训练模式：作答后立即讲解");
+});
+
+document.addEventListener("input", event => {
+  if (!event.target.matches("[data-typed-quiz]")) return;
+  const quizId = Number(event.target.dataset.typedQuiz);
+  state.quizSession.answers[quizId] = event.target.value;
+  const answered = state.quizzes.filter(quiz => String(state.quizSession.answers[quiz.id] || "").trim()).length;
+  const progress = $("#quizSessionSummary")?.querySelectorAll("strong")[1];
+  if (progress) progress.textContent = `${answered}/${state.quizzes.length}`;
+  const index = state.quizzes.findIndex(quiz => quiz.id === quizId);
+  const nav = document.querySelector(`.quiz-nav-button[data-quiz-nav="${index}"]`);
+  if (nav) {
+    nav.classList.toggle("answered", Boolean(event.target.value.trim()));
+    nav.classList.toggle("unanswered", !event.target.value.trim());
+  }
 });
 
 $("#articleSearch").addEventListener("keydown", async event => {
@@ -1393,6 +1630,12 @@ async function boot() {
 
 $("#globalStyle").value = state.style;
 $("#newArticleBody").value = sampleImport;
+
+setInterval(() => {
+  if (state.quizSession.submitted || !state.quizzes.length || !$("#view-quiz")?.classList.contains("active")) return;
+  const timer = $("#quizTimer");
+  if (timer) timer.textContent = formatDuration(quizElapsedSeconds());
+}, 1000);
 
 boot().catch(error => {
   $("#serverStatus").textContent = "后端未连接";

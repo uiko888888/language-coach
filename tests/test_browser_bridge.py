@@ -207,6 +207,49 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(saved["skill"], quiz["skill"])
         self.assertEqual(saved["error_type"], attempt["error_type"])
 
+    def test_mock_session_scores_unanswered_items_and_persists_diagnosis(self):
+        created, _ = self.request(
+            "/api/articles",
+            "POST",
+            {"title": "IELTS mock session", "body": server.SAMPLE_ARTICLE, "source": "manual"},
+        )
+        generated, _ = self.request(
+            f"/api/articles/{created['article']['id']}/quizzes",
+            "POST",
+            {"mode": "reading", "style": "IELTS", "question_type": "tfng"},
+        )
+        quizzes = generated["quizzes"]
+        submitted, _ = self.request(
+            "/api/practice-sessions",
+            "POST",
+            {
+                "session_mode": "mock",
+                "elapsed_seconds": 95,
+                "answers": [
+                    {"quiz_id": quizzes[0]["id"], "answer": quizzes[0]["answer"]},
+                    {"quiz_id": quizzes[1]["id"], "answer": ""},
+                    {"quiz_id": quizzes[2]["id"], "answer": "TRUE" if quizzes[2]["answer"] != "TRUE" else "FALSE"},
+                ],
+            },
+        )
+        session = submitted["session"]
+        self.assertEqual(session["session_mode"], "mock")
+        self.assertEqual(session["question_count"], 3)
+        self.assertEqual(session["answered_count"], 2)
+        self.assertEqual(session["correct_count"], 1)
+        self.assertEqual(session["elapsed_seconds"], 95)
+        self.assertEqual(session["score"], 33)
+        self.assertEqual(session["error_summary"]["未作答"], 1)
+        self.assertEqual(len(submitted["results"]), 3)
+        self.assertTrue(all("explanation" in result for result in submitted["results"]))
+        history, _ = self.request("/api/practice-sessions")
+        self.assertEqual(history["sessions"][0]["id"], session["id"])
+        with server.db() as conn:
+            linked = conn.execute(
+                "SELECT COUNT(*) FROM attempts WHERE session_id = ?", (session["id"],)
+            ).fetchone()[0]
+        self.assertEqual(linked, 3)
+
     def test_article_one_click_translation_uses_aligned_cached_paragraphs(self):
         body = "First paragraph explains the evidence.\n\nSecond paragraph states the conclusion."
         created, _ = self.request(
