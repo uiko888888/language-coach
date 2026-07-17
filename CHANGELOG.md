@@ -8,6 +8,27 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.8.0-alpha.8] - 2026-07-17
+
+### Added
+
+- Added independent TOEFL reading generators for factual information, inference, paragraph main idea, sentence simplification, and vocabulary in context.
+- Added TOEFL-specific skill, difficulty, paragraph-reference, option-count, essential-information, and vocabulary-context validation.
+- Added `toefl-rule-v1` generation provenance and structured TOEFL error labels.
+- Added mixed single-passage TOEFL generation and same-specialty remedial generation.
+- Added unit and API coverage for every TOEFL template, mixed generation, wrong-answer diagnosis, and remedial question isolation.
+
+### Changed
+
+- The five current TOEFL specialties no longer use the shared `general-rule-v1` generator.
+- TOEFL practice continues to reuse the shared session, confidence, evidence replay, mistake, and next-set infrastructure.
+
+### Known limits
+
+- Negative factual information, rhetorical purpose, text insertion, prose summary, and category completion are not implemented.
+- A complete TOEFL reading section, official timing/scoring, listening, speaking, and writing remain pending.
+- Current questions are rule-validated simulations, not official ETS questions.
+
 ## [0.8.0-alpha.7] - 2026-07-17
 
 ### Added

@@ -1422,6 +1422,141 @@ def ielts_gap_fill_items(text: str) -> list[dict]:
     return items
 
 
+TOEFL_TASK_META = {
+    "factual": {"skill": "事实定位与限定信息核对", "difficulty": "B2", "type": "factual"},
+    "inference": {"skill": "文本推断与证据边界", "difficulty": "B2-C1", "type": "inference"},
+    "main-idea": {"skill": "段落主旨与信息层级", "difficulty": "B2", "type": "main-idea"},
+    "simplification": {"skill": "核心信息与逻辑关系保真", "difficulty": "B2-C1", "type": "simplification"},
+    "vocabulary": {"skill": "语境词义与近义辨析", "difficulty": "B2", "type": "vocabulary"},
+}
+
+
+def toefl_content_options(answer: str, evidence: str, kind: str) -> list[str]:
+    wrong = {
+        "factual": [
+            contradicted_statement(evidence),
+            "The paragraph presents the topic but does not make this claim.",
+            "The paragraph reaches a broader conclusion than the evidence supports.",
+        ],
+        "inference": [
+            "The evidence proves an absolute conclusion with no exceptions.",
+            "The writer rejects the topic entirely.",
+            "The paragraph supports a cause that it never discusses.",
+        ],
+        "simplification": [
+            "The sentence removes the original condition and changes the conclusion.",
+            "The sentence reverses the relationship between the two ideas.",
+            "The sentence preserves a detail but omits the essential point.",
+        ],
+    }[kind]
+    return with_options(answer, wrong)
+
+
+def toefl_factual_items(text: str) -> list[dict]:
+    items = []
+    for paragraph_index, paragraph in enumerate(article_paragraphs(text)[:4], start=1):
+        evidence = sorted(sentences(paragraph), key=score_sentence, reverse=True)[0]
+        keyword = (article_keywords(evidence) or article_keywords(paragraph) or ["the topic"])[0]
+        answer = paraphrase(evidence)
+        items.append({
+            "question_type": "factual",
+            "prompt": f"According to paragraph {paragraph_index}, what does the passage state about {keyword}?",
+            "answer": answer,
+            "options": toefl_content_options(answer, evidence, "factual"),
+            "evidence": evidence,
+            "paragraph_index": paragraph_index,
+            "note": "TOEFL / 事实信息题",
+            **TOEFL_TASK_META["factual"],
+        })
+    return items
+
+
+def toefl_inference_items(text: str) -> list[dict]:
+    items = []
+    for paragraph_index, paragraph in enumerate(article_paragraphs(text)[:4], start=1):
+        evidence = sorted(sentences(paragraph), key=score_sentence, reverse=True)[0]
+        answer = paraphrase(evidence)
+        items.append({
+            "question_type": "inference",
+            "prompt": f"What can be inferred from paragraph {paragraph_index}?",
+            "answer": answer,
+            "options": toefl_content_options(answer, evidence, "inference"),
+            "evidence": evidence,
+            "paragraph_index": paragraph_index,
+            "note": "TOEFL / 推断题",
+            **TOEFL_TASK_META["inference"],
+        })
+    return items
+
+
+def toefl_main_idea_items(text: str) -> list[dict]:
+    paragraphs = article_paragraphs(text)
+    headings = [paragraph_heading(paragraph) for paragraph in paragraphs]
+    items = []
+    for index, paragraph in enumerate(paragraphs[:4]):
+        answer = headings[index]
+        wrong = [value for position, value in enumerate(headings) if position != index]
+        wrong.extend(["A detail that the paragraph does not develop", "A conclusion broader than the passage"])
+        options = list(dict.fromkeys([answer, *wrong]))[:4]
+        if len(options) < 4:
+            options.extend([f"An unrelated interpretation {number}" for number in range(1, 5 - len(options))])
+        random.shuffle(options)
+        items.append({
+            "question_type": "main-idea",
+            "prompt": f"What is the main idea of paragraph {index + 1}?",
+            "answer": answer,
+            "options": options,
+            "evidence": paragraph,
+            "paragraph_index": index + 1,
+            "note": "TOEFL / 段落主旨题",
+            **TOEFL_TASK_META["main-idea"],
+        })
+    return items
+
+
+def toefl_simplification_items(text: str) -> list[dict]:
+    items = []
+    for evidence in sorted(sentences(text), key=lambda value: (-len(words(value)), -score_sentence(value))):
+        answer = paraphrase(evidence)
+        if answer == evidence:
+            continue
+        items.append({
+            "question_type": "simplification",
+            "prompt": "Which choice best expresses the essential information in the highlighted sentence?",
+            "answer": answer,
+            "options": toefl_content_options(answer, evidence, "simplification"),
+            "evidence": evidence,
+            "note": "TOEFL / 句子简化题",
+            **TOEFL_TASK_META["simplification"],
+        })
+        if len(items) >= 4:
+            break
+    return items
+
+
+def toefl_vocabulary_items(text: str) -> list[dict]:
+    items = []
+    for keyword in article_keywords(text):
+        if keyword not in LEXICON:
+            continue
+        evidence = sentence_for(text, keyword)
+        answer = LEXICON[keyword][0]
+        distractors = [values[0] for term, values in LEXICON.items() if term != keyword and values[0] != answer]
+        items.append({
+            "question_type": "vocabulary",
+            "prompt": f"The word “{keyword}” in the passage is closest in meaning to",
+            "answer": answer,
+            "options": with_options(answer, distractors[:3]),
+            "evidence": evidence,
+            "target_word": keyword,
+            "note": "TOEFL / 语境词义题",
+            **TOEFL_TASK_META["vocabulary"],
+        })
+        if len(items) >= 5:
+            break
+    return items
+
+
 def validate_quiz_item(item: dict, text: str, style: str, question_type: str) -> dict:
     errors = []
     checks = {
@@ -1474,6 +1609,25 @@ def validate_quiz_item(item: dict, text: str, style: str, question_type: str) ->
         checks["word_limit"] = len(str(item.get("answer") or "").split()) == 1 and "ONE WORD ONLY" in item.get("prompt", "")
         if not checks["word_limit"]:
             errors.append("word_limit_violation")
+    if style == "TOEFL" and question_type in TOEFL_TASK_META:
+        checks["toefl_option_count"] = len(options) == 4
+        if not checks["toefl_option_count"]:
+            errors.append("invalid_toefl_option_count")
+        if item.get("paragraph_index"):
+            paragraphs = article_paragraphs(text)
+            index = int(item["paragraph_index"]) - 1
+            checks["paragraph_reference"] = 0 <= index < len(paragraphs) and evidence in paragraphs[index]
+            if not checks["paragraph_reference"]:
+                errors.append("invalid_paragraph_reference")
+        if question_type == "simplification":
+            checks["essential_information_rewrite"] = item.get("answer") != evidence and "essential information" in item.get("prompt", "")
+            if not checks["essential_information_rewrite"]:
+                errors.append("invalid_simplification")
+        if question_type == "vocabulary":
+            target_word = str(item.get("target_word") or "")
+            checks["word_in_context"] = bool(target_word) and re.search(rf"\b{re.escape(target_word)}\b", evidence, re.I) is not None
+            if not checks["word_in_context"]:
+                errors.append("vocabulary_target_not_in_context")
     return {"valid": not errors, "errors": errors, "checks": checks, "validator": "rule-v1"}
 
 
@@ -1501,6 +1655,29 @@ def ielts_quiz_items(text: str, question_type: str) -> list[dict]:
     for item in items:
         item["validation"] = validate_quiz_item(item, text, "IELTS", item["question_type"])
         item["generation_source"] = "ielts-rule-v1"
+        if item["validation"]["valid"]:
+            validated.append(item)
+    return validated
+
+
+def toefl_quiz_items(text: str, question_type: str) -> list[dict]:
+    builders = {
+        "factual": toefl_factual_items,
+        "inference": toefl_inference_items,
+        "main-idea": toefl_main_idea_items,
+        "simplification": toefl_simplification_items,
+        "vocabulary": toefl_vocabulary_items,
+    }
+    if question_type in {"mixed", "passage"}:
+        items = []
+        for builder in builders.values():
+            items.extend(builder(text))
+    else:
+        items = builders.get(question_type or "factual", toefl_factual_items)(text)
+    validated = []
+    for item in items:
+        item["validation"] = validate_quiz_item(item, text, "TOEFL", item["question_type"])
+        item["generation_source"] = "toefl-rule-v1"
         if item["validation"]["valid"]:
             validated.append(item)
     return validated
@@ -1778,6 +1955,8 @@ def kaoyan_quiz_items(text: str, question_type: str) -> list[dict]:
 def generate_quiz_items(text: str, mode: str, style: str, question_type: str = "") -> list[dict]:
     if style == "IELTS":
         return ielts_quiz_items(text, question_type or "tfng")
+    if style == "TOEFL":
+        return toefl_quiz_items(text, question_type or "factual")
     if style == "KAOYAN":
         return kaoyan_quiz_items(text, question_type or "detail-inference")
     profile = style_profile(style)
@@ -1913,6 +2092,26 @@ def explain_mistake(quiz: sqlite3.Row | dict, user_answer: str) -> dict:
             "correct": f"答案 {answer} 直接来自原文，并同时满足句意、词性和 ONE WORD ONLY 的字数限制。",
             "method": ["先判断空格词性", "定位摘要的同义句", "从原文抄取并检查字数与拼写"],
         },
+        "factual": {
+            "point": "事实定位与限定信息核对",
+            "correct": "正确选项完整保留证据中的主体、动作、范围和限定条件，不会因为复现原词就偷换事实。",
+            "method": ["用题干对象定位对应段落", "圈出数字、程度和否定等限定词", "逐项核对主体、动作和范围"],
+        },
+        "inference": {
+            "point": "文本推断与证据边界",
+            "correct": "正确推断可以由原文信息合理推出，但不会加入新的原因、绝对结论或作者没有表达的态度。",
+            "method": ["先写出原文明示事实", "判断选项是否只前进一步", "排除依赖常识或扩大范围的结论"],
+        },
+        "simplification": {
+            "point": "核心信息与逻辑关系保真",
+            "correct": "正确改写保留原句的核心主干和因果、转折、条件关系，可以删除次要细节，但不能改变逻辑方向。",
+            "method": ["拆出主句与从句", "标记因果、转折和条件", "检查改写是否遗漏必要信息或改变关系"],
+        },
+        "vocabulary": {
+            "point": "语境词义与近义辨析",
+            "correct": "正确词义能够放回当前句子并保持语义和语域成立，而不是选择这个词在其他场景中的常见译法。",
+            "method": ["先遮住目标词读完整句", "判断目标词在句中的词性和语义角色", "把选项逐一代回原句"],
+        },
     }
     guide = type_guides.get(quiz_type, type_guides["reading"])
 
@@ -1973,6 +2172,16 @@ def classify_answer_error(quiz: sqlite3.Row | dict, selected: str) -> str:
         return "段落定位或同义替换错误"
     if question_type == "gap-fill":
         return "词性、拼写或字数限制错误"
+    if question_type == "factual":
+        return "事实定位或限定范围错误"
+    if question_type == "inference":
+        return "推断距离过远或证据范围扩大"
+    if question_type == "main-idea":
+        return "主旨与细节混淆"
+    if question_type == "simplification":
+        return "关键信息遗漏或逻辑关系改变"
+    if question_type == "vocabulary":
+        return "语境词义判断错误"
     if question_type == "detail-inference":
         return "证据范围扩大或推断过度"
     if question_type == "main-attitude":
@@ -1990,6 +2199,10 @@ def generate_similar_items(text: str, original: dict, count: int = 3) -> list[di
     question_type = original.get("question_type") or quiz_type
     if style == "IELTS" and question_type in IELTS_TASK_META:
         candidates = ielts_quiz_items(text, question_type)
+        distinct = [item for item in candidates if item.get("evidence") != original.get("evidence")]
+        return (distinct or candidates)[:count]
+    if style == "TOEFL" and question_type in TOEFL_TASK_META:
+        candidates = toefl_quiz_items(text, question_type)
         distinct = [item for item in candidates if item.get("evidence") != original.get("evidence")]
         return (distinct or candidates)[:count]
     if style == "KAOYAN" and question_type in KAOYAN_TASK_META:

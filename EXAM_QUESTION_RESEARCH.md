@@ -87,3 +87,9 @@ The current rule generator is the baseline. A future model pipeline should gener
 The current KAOYAN baseline has independent templates for detail/inference, main idea/attitude, complex-sentence meaning, and cloze logic. Each generated item stores its skill, difficulty, evidence, validation report, and `kaoyan-rule-v1` source.
 
 This is not yet a complete National Postgraduate Entrance Examination paper. English I/II separation, Reading Part B variants, translation, writing, official score structure, and licensed/private past-paper import remain separate milestones. The CHSI portal is stored as a link-only official resource; protected paper text is not redistributed.
+
+## TOEFL implementation boundary
+
+The current TOEFL baseline has independent templates for factual information, inference, paragraph main idea, sentence simplification, and vocabulary in context. Each item stores paragraph/evidence references, skill, difficulty, validation, and `toefl-rule-v1` provenance.
+
+This is not yet a complete TOEFL iBT Reading section. Negative factual information, rhetorical purpose, text insertion, prose summary, category completion, section timing, score conversion, and licensed/private official-material import remain separate milestones. ETS resources are link-only; generated items are labelled simulations and do not copy official question text.

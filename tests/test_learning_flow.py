@@ -59,6 +59,32 @@ class LearningFlowTests(unittest.TestCase):
             self.assertTrue(all(item["skill"] and item["difficulty"] for item in items))
             self.assertTrue(all(item["validation"]["valid"] for item in items))
 
+    def test_toefl_templates_are_independent_validated_and_mixed(self):
+        for question_type in server.TOEFL_TASK_META:
+            items = server.generate_quiz_items(server.SAMPLE_ARTICLE, "reading", "TOEFL", question_type)
+            self.assertTrue(items, question_type)
+            self.assertTrue(all(item["question_type"] == question_type for item in items))
+            self.assertTrue(all(item["generation_source"] == "toefl-rule-v1" for item in items))
+            self.assertTrue(all(item["validation"]["valid"] for item in items))
+            self.assertTrue(all(len(item["options"]) == 4 for item in items))
+            self.assertTrue(all(item["skill"] and item["difficulty"] for item in items))
+        mixed = server.generate_quiz_items(server.SAMPLE_ARTICLE, "reading", "TOEFL", "mixed")
+        self.assertEqual({item["question_type"] for item in mixed}, set(server.TOEFL_TASK_META))
+
+    def test_toefl_error_types_are_specific(self):
+        expected = {
+            "factual": "事实定位或限定范围错误",
+            "inference": "推断距离过远或证据范围扩大",
+            "main-idea": "主旨与细节混淆",
+            "simplification": "关键信息遗漏或逻辑关系改变",
+            "vocabulary": "语境词义判断错误",
+        }
+        for question_type, error_type in expected.items():
+            self.assertEqual(
+                server.classify_answer_error({"question_type": question_type, "answer": "A"}, "B"),
+                error_type,
+            )
+
     def test_validator_rejects_untraceable_evidence(self):
         item = {
             "prompt": "Choose the answer.", "answer": "TRUE",
