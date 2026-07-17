@@ -58,7 +58,7 @@ SAMPLE_TRANSLATION = """智能设备承诺带来便利，但它们也会悄然�
 更清晰的同意机制、更简短的隐私声明以及更严格的数据共享限制，会让智能设备更值得信任。缺少这些保障时，便利可能逐渐演变为一种监控。"""
 
 EXAM_QUESTION_TYPES = {
-    "IELTS": [("tfng", "判断题 True / False / Not Given", "reading"), ("heading", "段落标题匹配", "main-idea"), ("paraphrase", "同义替换", "paraphrase"), ("gap-fill", "摘要填空", "cloze")],
+    "IELTS": [("tfng", "判断题 True / False / Not Given", "reading"), ("heading", "段落标题匹配", "main-idea"), ("matching-info", "段落信息匹配", "reading"), ("gap-fill", "摘要填空", "cloze")],
     "TOEFL": [("factual", "事实信息题", "reading"), ("inference", "推断题", "reading"), ("main-idea", "主旨题", "main-idea"), ("simplification", "句子简化", "paraphrase"), ("vocabulary", "语境词义", "cloze")],
     "CET4": [("detail", "仔细阅读·细节定位", "reading"), ("matching", "长篇阅读·信息匹配", "main-idea"), ("inference", "推断判断", "paraphrase"), ("banked-cloze", "选词填空", "cloze")],
     "CET6": [("inference", "深层推断", "reading"), ("matching", "长篇阅读·信息匹配", "main-idea"), ("paraphrase", "同义转述", "paraphrase"), ("banked-cloze", "选词填空", "cloze")],
@@ -576,11 +576,16 @@ def init_db() -> None:
               style TEXT NOT NULL,
               mode TEXT NOT NULL,
               type TEXT NOT NULL,
+              question_type TEXT NOT NULL DEFAULT '',
+              skill TEXT NOT NULL DEFAULT '',
+              difficulty TEXT NOT NULL DEFAULT 'B2',
               prompt TEXT NOT NULL,
               answer TEXT NOT NULL,
               options_json TEXT NOT NULL DEFAULT '[]',
               evidence TEXT NOT NULL DEFAULT '',
               note TEXT NOT NULL DEFAULT '',
+              validation_json TEXT NOT NULL DEFAULT '{}',
+              generation_source TEXT NOT NULL DEFAULT 'legacy',
               created_at TEXT NOT NULL,
               FOREIGN KEY (article_id) REFERENCES articles(id)
             );
@@ -590,6 +595,7 @@ def init_db() -> None:
               quiz_id INTEGER NOT NULL,
               user_answer TEXT NOT NULL,
               correct INTEGER NOT NULL,
+              error_type TEXT NOT NULL DEFAULT '',
               created_at TEXT NOT NULL,
               FOREIGN KEY (quiz_id) REFERENCES quizzes(id)
             );
@@ -602,6 +608,9 @@ def init_db() -> None:
               user_answer TEXT NOT NULL,
               evidence TEXT NOT NULL DEFAULT '',
               source TEXT NOT NULL DEFAULT 'quiz',
+              skill TEXT NOT NULL DEFAULT '',
+              error_type TEXT NOT NULL DEFAULT '',
+              explanation_json TEXT NOT NULL DEFAULT '{}',
               solved INTEGER NOT NULL DEFAULT 0,
               created_at TEXT NOT NULL,
               FOREIGN KEY (quiz_id) REFERENCES quizzes(id)
@@ -730,6 +739,25 @@ def init_db() -> None:
         mistake_columns = {row[1] for row in conn.execute("PRAGMA table_info(mistakes)")}
         if "reward_claimed" not in mistake_columns:
             conn.execute("ALTER TABLE mistakes ADD COLUMN reward_claimed INTEGER NOT NULL DEFAULT 0")
+        if "skill" not in mistake_columns:
+            conn.execute("ALTER TABLE mistakes ADD COLUMN skill TEXT NOT NULL DEFAULT ''")
+        if "error_type" not in mistake_columns:
+            conn.execute("ALTER TABLE mistakes ADD COLUMN error_type TEXT NOT NULL DEFAULT ''")
+        if "explanation_json" not in mistake_columns:
+            conn.execute("ALTER TABLE mistakes ADD COLUMN explanation_json TEXT NOT NULL DEFAULT '{}'")
+        quiz_columns = {row[1] for row in conn.execute("PRAGMA table_info(quizzes)")}
+        for column, definition in {
+            "question_type": "TEXT NOT NULL DEFAULT ''",
+            "skill": "TEXT NOT NULL DEFAULT ''",
+            "difficulty": "TEXT NOT NULL DEFAULT 'B2'",
+            "validation_json": "TEXT NOT NULL DEFAULT '{}'",
+            "generation_source": "TEXT NOT NULL DEFAULT 'legacy'",
+        }.items():
+            if column not in quiz_columns:
+                conn.execute(f"ALTER TABLE quizzes ADD COLUMN {column} {definition}")
+        attempt_columns = {row[1] for row in conn.execute("PRAGMA table_info(attempts)")}
+        if "error_type" not in attempt_columns:
+            conn.execute("ALTER TABLE attempts ADD COLUMN error_type TEXT NOT NULL DEFAULT ''")
         card_columns = {row[1] for row in conn.execute("PRAGMA table_info(cards)")}
         if "kind" not in card_columns:
             conn.execute("ALTER TABLE cards ADD COLUMN kind TEXT NOT NULL DEFAULT 'word'")
@@ -1119,7 +1147,213 @@ def with_options(answer: str, wrong: list[str]) -> list[str]:
     return options
 
 
+IELTS_TASK_META = {
+    "tfng": {"skill": "证据一致、矛盾与未提及判断", "difficulty": "B2", "type": "tfng"},
+    "heading": {"skill": "段落主旨与信息层级", "difficulty": "B2", "type": "heading"},
+    "matching-info": {"skill": "段落定位与同义替换", "difficulty": "B2", "type": "matching-info"},
+    "gap-fill": {"skill": "摘要定位、词性与字数限制", "difficulty": "B2", "type": "gap-fill"},
+}
+
+
+def article_paragraphs(text: str) -> list[str]:
+    paragraphs = [re.sub(r"\s+", " ", value).strip() for value in re.split(r"\n\s*\n", text or "") if value.strip()]
+    if len(paragraphs) >= 2:
+        return paragraphs
+    values = sentences(text)
+    return [" ".join(values[index:index + 2]) for index in range(0, len(values), 2) if values[index:index + 2]]
+
+
+def paragraph_heading(paragraph: str) -> str:
+    first = sentences(paragraph)[0] if sentences(paragraph) else paragraph
+    heading = re.sub(r"^(However|Therefore|Moreover|Meanwhile|In contrast|For example),?\s+", "", first, flags=re.I)
+    heading = re.sub(r"[,;:].*$", "", heading).strip()
+    words_in_heading = heading.split()
+    return " ".join(words_in_heading[:11]) or "The paragraph's central idea"
+
+
+def contradicted_statement(sentence: str) -> str:
+    replacements = [
+        (r"\bcannot\b", "can"), (r"\bcan\b", "cannot"),
+        (r"\bshould not\b", "should"), (r"\bshould\b", "should not"),
+        (r"\bwill not\b", "will"), (r"\bwill\b", "will not"),
+        (r"\bdoes not\b", "does"), (r"\bdoes\b", "does not"),
+        (r"\bis not\b", "is"), (r"\bis\b", "is not"),
+        (r"\bare not\b", "are"), (r"\bare\b", "are not"),
+    ]
+    for pattern, replacement in replacements:
+        changed, count = re.subn(pattern, replacement, sentence, count=1, flags=re.I)
+        if count:
+            return changed
+    return "The passage rejects the central claim described in this sentence."
+
+
+def ielts_tfng_items(text: str) -> list[dict]:
+    ranked = sorted(sentences(text), key=score_sentence, reverse=True)
+    if not ranked:
+        return []
+    true_evidence = ranked[0]
+    false_evidence = next((value for value in ranked[1:] if contradicted_statement(value) != "The passage rejects the central claim described in this sentence."), ranked[0])
+    rows = [
+        (paraphrase(true_evidence), "TRUE", true_evidence, "证据一致"),
+        (contradicted_statement(false_evidence), "FALSE", false_evidence, "证据矛盾"),
+        ("The passage states that the policy was first introduced in 2010.", "NOT GIVEN", "全文未提供该时间信息", "原文未提及"),
+    ]
+    return [
+        {
+            "type": "tfng",
+            "question_type": "tfng",
+            "prompt": f"Statement: {statement}\nChoose TRUE, FALSE, or NOT GIVEN.",
+            "answer": answer,
+            "statement": statement,
+            "evidence_relation": {"TRUE": "agrees", "FALSE": "contradicts", "NOT GIVEN": "absent"}[answer],
+            "options": ["TRUE", "FALSE", "NOT GIVEN"],
+            "evidence": evidence,
+            "note": f"IELTS / 判断题 / {reason}",
+            **IELTS_TASK_META["tfng"],
+        }
+        for statement, answer, evidence, reason in rows
+    ]
+
+
+def ielts_heading_items(text: str) -> list[dict]:
+    paragraphs = article_paragraphs(text)
+    headings = [paragraph_heading(value) for value in paragraphs]
+    distractors = ["A historical overview unrelated to the writer's argument", "A complete rejection of the topic"]
+    items = []
+    for index, paragraph in enumerate(paragraphs[:5]):
+        answer = headings[index]
+        options = list(dict.fromkeys([answer, *[value for position, value in enumerate(headings) if position != index], *distractors]))[:6]
+        random.shuffle(options)
+        items.append({
+            "type": "heading",
+            "question_type": "heading",
+            "prompt": f"Choose the best heading for Paragraph {chr(65 + index)}.",
+            "answer": answer,
+            "options": options,
+            "evidence": paragraph,
+            "note": "IELTS / 段落标题匹配",
+            **IELTS_TASK_META["heading"],
+        })
+    return items
+
+
+def ielts_matching_items(text: str) -> list[dict]:
+    paragraphs = article_paragraphs(text)
+    options = [f"Paragraph {chr(65 + index)}" for index in range(len(paragraphs))]
+    items = []
+    for index, paragraph in enumerate(paragraphs[:5]):
+        evidence = sorted(sentences(paragraph), key=score_sentence, reverse=True)[0] if sentences(paragraph) else paragraph
+        items.append({
+            "type": "matching-info",
+            "question_type": "matching-info",
+            "prompt": f"Which paragraph contains the following information?\n{paraphrase(evidence)}",
+            "answer": options[index],
+            "options": options,
+            "evidence": evidence,
+            "note": "IELTS / 段落信息匹配",
+            **IELTS_TASK_META["matching-info"],
+        })
+    return items
+
+
+def ielts_gap_fill_items(text: str) -> list[dict]:
+    items = []
+    for keyword in article_keywords(text)[:6]:
+        if not re.fullmatch(r"[A-Za-z][A-Za-z'-]*", keyword):
+            continue
+        evidence = sentence_for(text, keyword)
+        prompt_text = re.sub(rf"\b{re.escape(keyword)}\b", "_____", evidence, count=1, flags=re.I)
+        if prompt_text == evidence:
+            continue
+        items.append({
+            "type": "gap-fill",
+            "question_type": "gap-fill",
+            "prompt": f"Complete the summary below. Choose ONE WORD ONLY from the passage.\n{prompt_text}",
+            "answer": keyword,
+            "options": [],
+            "evidence": evidence,
+            "note": "IELTS / 摘要填空 / ONE WORD ONLY",
+            **IELTS_TASK_META["gap-fill"],
+        })
+    return items
+
+
+def validate_quiz_item(item: dict, text: str, style: str, question_type: str) -> dict:
+    errors = []
+    checks = {
+        "has_prompt": bool(str(item.get("prompt") or "").strip()),
+        "has_answer": bool(str(item.get("answer") or "").strip()),
+        "has_skill": bool(str(item.get("skill") or "").strip()),
+        "has_difficulty": bool(str(item.get("difficulty") or "").strip()),
+    }
+    for name, passed in checks.items():
+        if not passed:
+            errors.append(name)
+    options = item.get("options") or []
+    if options:
+        checks["unique_options"] = len(options) == len(set(options))
+        checks["answer_in_options"] = item.get("answer") in options
+        if not checks["unique_options"]:
+            errors.append("duplicate_options")
+        if not checks["answer_in_options"]:
+            errors.append("answer_not_in_options")
+    evidence = str(item.get("evidence") or "")
+    checks["evidence_traceable"] = item.get("answer") == "NOT GIVEN" or evidence in text
+    if not checks["evidence_traceable"]:
+        errors.append("evidence_not_in_source")
+    if style == "IELTS" and question_type == "tfng":
+        checks["tfng_format"] = options == ["TRUE", "FALSE", "NOT GIVEN"] and item.get("answer") in options
+        if not checks["tfng_format"]:
+            errors.append("invalid_tfng_format")
+        statement = str(item.get("statement") or "")
+        expected_relation = {"TRUE": "agrees", "FALSE": "contradicts", "NOT GIVEN": "absent"}.get(item.get("answer"))
+        checks["evidence_relation"] = item.get("evidence_relation") == expected_relation
+        if item.get("answer") == "FALSE":
+            checks["controlled_contradiction"] = contradicted_statement(evidence) == statement and not statement.startswith("The passage rejects")
+        elif item.get("answer") == "NOT GIVEN":
+            key_markers = re.findall(r"\b(?:\d{4}|[A-Z][a-z]{3,})\b", statement)
+            checks["absent_from_source"] = all(marker.casefold() not in text.casefold() for marker in key_markers)
+        else:
+            checks["statement_grounded"] = bool(statement) and evidence in text
+        for name in ("evidence_relation", "controlled_contradiction", "absent_from_source", "statement_grounded"):
+            if name in checks and not checks[name]:
+                errors.append(name)
+    if style == "IELTS" and question_type == "heading":
+        checks["heading_option_count"] = len(options) >= 3
+        if not checks["heading_option_count"]:
+            errors.append("too_few_headings")
+    if style == "IELTS" and question_type == "matching-info":
+        checks["matching_option_count"] = len(options) >= 2
+        if not checks["matching_option_count"]:
+            errors.append("too_few_paragraph_options")
+    if style == "IELTS" and question_type == "gap-fill":
+        checks["word_limit"] = len(str(item.get("answer") or "").split()) == 1 and "ONE WORD ONLY" in item.get("prompt", "")
+        if not checks["word_limit"]:
+            errors.append("word_limit_violation")
+    return {"valid": not errors, "errors": errors, "checks": checks, "validator": "rule-v1"}
+
+
+def ielts_quiz_items(text: str, question_type: str) -> list[dict]:
+    builders = {
+        "tfng": ielts_tfng_items,
+        "heading": ielts_heading_items,
+        "matching-info": ielts_matching_items,
+        "gap-fill": ielts_gap_fill_items,
+    }
+    builder = builders.get(question_type or "tfng", ielts_tfng_items)
+    items = builder(text)
+    validated = []
+    for item in items:
+        item["validation"] = validate_quiz_item(item, text, "IELTS", item["question_type"])
+        item["generation_source"] = "ielts-rule-v1"
+        if item["validation"]["valid"]:
+            validated.append(item)
+    return validated
+
+
 def generate_quiz_items(text: str, mode: str, style: str, question_type: str = "") -> list[dict]:
+    if style == "IELTS":
+        return ielts_quiz_items(text, question_type or "tfng")
     profile = style_profile(style)
     configured = next((item for item in EXAM_QUESTION_TYPES.get(style, EXAM_QUESTION_TYPES["general"]) if item[0] == question_type), None)
     if configured:
@@ -1132,16 +1366,6 @@ def generate_quiz_items(text: str, mode: str, style: str, question_type: str = "
     first = sents[0] if sents else ""
     title_idea = re.sub(r"[,;:].*$", "", first).strip() or "The central issue discussed in the article."
     items: list[dict] = []
-    if style == "IELTS" and question_type == "tfng":
-        statement = paraphrase(evidence)
-        return [{
-            "type": "reading",
-            "prompt": f"Statement: {statement}\nChoose TRUE if the statement agrees with the passage, FALSE if it contradicts the passage, or NOT GIVEN if the passage does not say.",
-            "answer": "TRUE",
-            "options": ["TRUE", "FALSE", "NOT GIVEN"],
-            "evidence": evidence,
-            "note": "IELTS / 判断题 True / False / Not Given / 证据一致",
-        }]
     if mode in {"mixed", "reading"}:
         items.extend(
             [
@@ -1195,11 +1419,27 @@ def generate_quiz_items(text: str, mode: str, style: str, question_type: str = "
             items = [item for item in items if item["type"] == engine_type]
             for item in items:
                 item["note"] = f"{style} / {label}"
-    return items
+    generic_skills = {
+        "reading": "证据定位与同义替换",
+        "main-idea": "主旨概括与信息层级",
+        "paraphrase": "句意改写与逻辑保真",
+        "cloze": "语境词义、词性与搭配",
+    }
+    validated = []
+    for item in items:
+        item["question_type"] = question_type or item["type"]
+        item["skill"] = generic_skills.get(item["type"], "阅读理解")
+        item["difficulty"] = "B2"
+        item["generation_source"] = "general-rule-v1"
+        item["validation"] = validate_quiz_item(item, text, style, item["question_type"])
+        if item["validation"]["valid"]:
+            validated.append(item)
+    return validated
 
 
 def explain_mistake(quiz: sqlite3.Row | dict, user_answer: str) -> dict:
     quiz_type = quiz.get("quiz_type") or quiz.get("type") or "reading"
+    question_type = quiz.get("question_type") or quiz_type
     style = quiz.get("style") or "general"
     answer = str(quiz.get("answer") or "").strip()
     selected = str(user_answer or "").strip()
@@ -1227,10 +1467,25 @@ def explain_mistake(quiz: sqlite3.Row | dict, user_answer: str) -> dict:
             "correct": f"把 {answer} 放回空格后，词义、词性和上下文搭配能够同时成立。选词填空不能只看中文近义，还要看句法位置和固定搭配。",
             "method": ["先判断空格需要的词性", "读取空格前后的搭配", "最后用整句含义排除近义干扰词"],
         },
-        "initial": {
-            "point": "语境提取与完整拼写",
-            "correct": f"语境指向 {answer}，首字母和词长也与答案一致。这类题同时考词义提取和完整拼写。",
-            "method": ["根据句意回忆目标词", "用首字母和词长核对", "检查词形、单复数和时态"],
+        "tfng": {
+            "point": "证据一致、矛盾与未提及判断",
+            "correct": "TRUE 必须与原文一致，FALSE 必须被原文明确信息反驳，NOT GIVEN 表示原文没有足够信息判断，三者不能凭常识互换。",
+            "method": ["拆出题干中的主体、动作和限定词", "定位原文同义表达", "分别判断一致、矛盾还是信息缺失"],
+        },
+        "heading": {
+            "point": "段落主旨与信息层级",
+            "correct": "标题需要覆盖整段的主要功能，不能只复述一个例子，也不能加入段落没有表达的评价。",
+            "method": ["概括每句功能", "找重复对象与作者推进方向", "用整段覆盖度排除局部标题"],
+        },
+        "matching-info": {
+            "point": "段落定位与同义替换",
+            "correct": "匹配依据是信息关系而非重复词。正确段落必须包含题干所述的完整事实或观点。",
+            "method": ["圈出题干中的不可替代信息", "预判同义替换", "逐段核对主体、动作和限定条件"],
+        },
+        "gap-fill": {
+            "point": "摘要定位、词性与字数限制",
+            "correct": f"答案 {answer} 直接来自原文，并同时满足句意、词性和 ONE WORD ONLY 的字数限制。",
+            "method": ["先判断空格词性", "定位摘要的同义句", "从原文抄取并检查字数与拼写"],
         },
     }
     guide = type_guides.get(quiz_type, type_guides["reading"])
@@ -1239,7 +1494,7 @@ def explain_mistake(quiz: sqlite3.Row | dict, user_answer: str) -> dict:
     if not selected:
         trap = "未作答"
         why_wrong = "这次没有形成可比较的答案。先写出一个候选，再用证据排除，训练效果会比直接跳过更好。"
-    elif quiz_type in {"cloze", "initial"}:
+    elif quiz_type in {"cloze", "gap-fill"}:
         trap = "词义或词形未同时满足"
         why_wrong = f"{selected} 放回原句后，至少有一项不匹配：语境含义、词性、固定搭配或拼写。正确答案是 {answer}。"
     elif any(word in lower for word in ["not given", "not stated", "does not mention", "outside"]):
@@ -1260,7 +1515,9 @@ def explain_mistake(quiz: sqlite3.Row | dict, user_answer: str) -> dict:
 
     return {
         "style": style,
-        "question_type": quiz_type,
+        "question_type": question_type,
+        "skill": quiz.get("skill") or guide["point"],
+        "error_type": classify_answer_error(quiz, selected),
         "test_point": note or guide["point"],
         "trap": trap,
         "why_wrong": why_wrong,
@@ -1272,9 +1529,35 @@ def explain_mistake(quiz: sqlite3.Row | dict, user_answer: str) -> dict:
     }
 
 
+def classify_answer_error(quiz: sqlite3.Row | dict, selected: str) -> str:
+    question_type = str(quiz.get("question_type") or quiz.get("type") or "reading")
+    answer = str(quiz.get("answer") or "").strip().upper()
+    choice = str(selected or "").strip().upper()
+    if not choice:
+        return "未作答"
+    if question_type == "tfng":
+        if {answer, choice} == {"FALSE", "NOT GIVEN"}:
+            return "矛盾与未提及混淆"
+        if {answer, choice} == {"TRUE", "NOT GIVEN"}:
+            return "一致与未提及混淆"
+        return "证据方向判断错误"
+    if question_type == "heading":
+        return "主旨与细节混淆"
+    if question_type == "matching-info":
+        return "段落定位或同义替换错误"
+    if question_type == "gap-fill":
+        return "词性、拼写或字数限制错误"
+    return "语义或逻辑关系错误"
+
+
 def generate_similar_items(text: str, original: dict, count: int = 3) -> list[dict]:
     quiz_type = original.get("type") or original.get("quiz_type") or "reading"
     style = original.get("style") or "IELTS"
+    question_type = original.get("question_type") or quiz_type
+    if style == "IELTS" and question_type in IELTS_TASK_META:
+        candidates = ielts_quiz_items(text, question_type)
+        distinct = [item for item in candidates if item.get("evidence") != original.get("evidence")]
+        return (distinct or candidates)[:count]
     original_answer = str(original.get("answer") or "").lower()
     profile = style_profile(style)
     sents = [sentence for sentence in sentences(text) if sentence != original.get("evidence")]
@@ -1340,22 +1623,6 @@ def generate_similar_items(text: str, original: dict, count: int = 3) -> list[di
                     "options": with_options(keyword, distractors[:3]),
                     "evidence": context,
                     "note": f"同类巩固 / {profile['notes'][3]}",
-                }
-            )
-    else:
-        keywords = [word for word in article_keywords(text) if word != original_answer]
-        for keyword in keywords[:count]:
-            context = sentence_for(text, keyword)
-            clue = keyword[0] + "_" * max(2, len(keyword) - 1)
-            prompt = re.sub(rf"\b{re.escape(keyword)}\b", clue, context, flags=re.I)
-            items.append(
-                {
-                    "type": "initial",
-                    "prompt": prompt,
-                    "answer": keyword,
-                    "options": [],
-                    "evidence": context,
-                    "note": f"同类巩固 / {profile['notes'][4]}",
                 }
             )
     return items[:count]
@@ -2422,11 +2689,22 @@ class App(BaseHTTPRequestHandler):
                 return json_response(self, {"cards": cards})
             if path == "/api/quizzes":
                 article_id = query.get("article_id", [""])[0]
+                style = query.get("style", [""])[0]
+                question_type = query.get("question_type", [""])[0]
                 sql = "SELECT * FROM quizzes"
+                where = []
                 params: list[str] = []
                 if article_id:
-                    sql += " WHERE article_id = ?"
+                    where.append("article_id = ?")
                     params.append(article_id)
+                if style:
+                    where.append("style = ?")
+                    params.append(style)
+                if question_type:
+                    where.append("question_type = ?")
+                    params.append(question_type)
+                if where:
+                    sql += " WHERE " + " AND ".join(where)
                 sql += " ORDER BY created_at DESC, id DESC"
                 with db() as conn:
                     quizzes = [self.quiz_row(row) for row in conn.execute(sql, params).fetchall()]
@@ -2435,7 +2713,8 @@ class App(BaseHTTPRequestHandler):
                 with db() as conn:
                     rows = conn.execute(
                         """
-                        SELECT m.*, q.style, q.type AS quiz_type, q.note AS quiz_note,
+                        SELECT m.*, q.style, q.type AS quiz_type, q.question_type,
+                               q.skill AS quiz_skill, q.difficulty, q.note AS quiz_note,
                                q.article_id, a.title AS article_title
                         FROM mistakes m
                         LEFT JOIN quizzes q ON q.id = m.quiz_id
@@ -2446,7 +2725,11 @@ class App(BaseHTTPRequestHandler):
                     mistakes = []
                     for row in rows:
                         item = dict(row)
-                        item["explanation"] = explain_mistake(item, item["user_answer"])
+                        item["skill"] = item.get("skill") or item.get("quiz_skill") or "阅读理解"
+                        try:
+                            item["explanation"] = json.loads(item.get("explanation_json") or "{}") or explain_mistake(item, item["user_answer"])
+                        except json.JSONDecodeError:
+                            item["explanation"] = explain_mistake(item, item["user_answer"])
                         mistakes.append(item)
                 return json_response(self, {"mistakes": mistakes})
             if path == "/api/feeds":
@@ -2719,19 +3002,25 @@ class App(BaseHTTPRequestHandler):
                         cursor = conn.execute(
                             """
                             INSERT INTO quizzes
-                            (article_id, style, mode, type, prompt, answer, options_json, evidence, note, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            (article_id, style, mode, type, question_type, skill, difficulty,
+                             prompt, answer, options_json, evidence, note, validation_json, generation_source, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 article_id,
                                 style,
                                 mode,
                                 item["type"],
+                                item.get("question_type") or question_type or item["type"],
+                                item.get("skill") or "阅读理解",
+                                item.get("difficulty") or "B2",
                                 item["prompt"],
                                 item["answer"],
                                 json.dumps(item["options"], ensure_ascii=False),
                                 item["evidence"],
                                 item["note"],
+                                json.dumps(item.get("validation") or {}, ensure_ascii=False),
+                                item.get("generation_source") or "general-rule-v1",
                                 now,
                             ),
                         )
@@ -2795,21 +3084,28 @@ class App(BaseHTTPRequestHandler):
                     if not quiz:
                         return json_response(self, {"error": "Quiz not found"}, 404)
                     correct = answer.lower() == quiz["answer"].lower()
+                    quiz_data = dict(quiz)
+                    error_type = "" if correct else classify_answer_error(quiz_data, answer)
+                    explanation = explain_mistake(quiz_data, answer)
                     first_attempt = conn.execute("SELECT COUNT(*) FROM attempts WHERE quiz_id = ?", (quiz_id,)).fetchone()[0] == 0
                     now = utc_now()
                     conn.execute(
-                        "INSERT INTO attempts (quiz_id, user_answer, correct, created_at) VALUES (?, ?, ?, ?)",
-                        (quiz_id, answer, 1 if correct else 0, now),
+                        "INSERT INTO attempts (quiz_id, user_answer, correct, error_type, created_at) VALUES (?, ?, ?, ?, ?)",
+                        (quiz_id, answer, 1 if correct else 0, error_type, now),
                     )
                     if not correct:
                         conn.execute(
                             """
-                            INSERT INTO mistakes (quiz_id, prompt, answer, user_answer, evidence, source, solved, created_at)
-                            VALUES (?, ?, ?, ?, ?, 'quiz', 0, ?)
+                            INSERT INTO mistakes
+                            (quiz_id, prompt, answer, user_answer, evidence, source, skill, error_type, explanation_json, solved, created_at)
+                            VALUES (?, ?, ?, ?, ?, 'quiz', ?, ?, ?, 0, ?)
                             """,
-                            (quiz_id, quiz["prompt"], quiz["answer"], answer, quiz["evidence"], now),
+                            (
+                                quiz_id, quiz["prompt"], quiz["answer"], answer, quiz["evidence"],
+                                quiz_data.get("skill") or "阅读理解", error_type,
+                                json.dumps(explanation, ensure_ascii=False), now,
+                            ),
                         )
-                    explanation = explain_mistake(dict(quiz), answer)
                     points = (10 if correct else 2) if first_attempt else 0
                     progress = award_progress(conn, points, correct=correct) if first_attempt else progress_payload(conn)
                 return json_response(
@@ -2819,6 +3115,8 @@ class App(BaseHTTPRequestHandler):
                         "answer": quiz["answer"],
                         "evidence": quiz["evidence"],
                         "explanation": explanation,
+                        "skill": quiz_data.get("skill") or "阅读理解",
+                        "error_type": error_type,
                         "points": points,
                         "progress": progress,
                     },
@@ -2830,8 +3128,8 @@ class App(BaseHTTPRequestHandler):
                     original = conn.execute(
                         """
                         SELECT m.id AS mistake_id, m.user_answer, q.id AS quiz_id,
-                               q.article_id, q.style, q.type, q.prompt, q.answer,
-                               q.evidence, q.note, a.body AS article_body
+                               q.article_id, q.style, q.type, q.question_type, q.skill, q.difficulty,
+                               q.prompt, q.answer, q.evidence, q.note, a.body AS article_body
                         FROM mistakes m
                         LEFT JOIN quizzes q ON q.id = m.quiz_id
                         LEFT JOIN articles a ON a.id = q.article_id
@@ -2850,15 +3148,21 @@ class App(BaseHTTPRequestHandler):
                         cursor = conn.execute(
                             """
                             INSERT INTO quizzes
-                            (article_id, style, mode, type, prompt, answer, options_json, evidence, note, created_at)
-                            VALUES (?, ?, 'remedial', ?, ?, ?, ?, ?, ?, ?)
+                            (article_id, style, mode, type, question_type, skill, difficulty,
+                             prompt, answer, options_json, evidence, note, validation_json, generation_source, created_at)
+                            VALUES (?, ?, 'remedial', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 original_item["article_id"],
                                 original_item["style"] or "IELTS",
-                                item["type"], item["prompt"], item["answer"],
+                                item["type"], item.get("question_type") or original_item.get("question_type") or item["type"],
+                                item.get("skill") or original_item.get("skill") or "阅读理解",
+                                item.get("difficulty") or original_item.get("difficulty") or "B2",
+                                item["prompt"], item["answer"],
                                 json.dumps(item["options"], ensure_ascii=False),
-                                item["evidence"], item["note"], now,
+                                item["evidence"], item["note"],
+                                json.dumps(item.get("validation") or {}, ensure_ascii=False),
+                                item.get("generation_source") or "remedial-rule-v1", now,
                             ),
                         )
                         saved.append({**item, "id": cursor.lastrowid, "article_id": original_item["article_id"], "style": original_item["style"] or "IELTS", "mode": "remedial"})
@@ -2904,6 +3208,7 @@ class App(BaseHTTPRequestHandler):
     def quiz_row(self, row: sqlite3.Row) -> dict:
         item = dict(row)
         item["options"] = json.loads(item.pop("options_json") or "[]")
+        item["validation"] = json.loads(item.pop("validation_json", "{}") or "{}")
         return item
 
     def serve_static(self, path: str) -> None:

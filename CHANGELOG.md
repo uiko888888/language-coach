@@ -8,6 +8,28 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.8.0-alpha.1] - 2026-07-17
+
+### Added
+
+- Added independent IELTS generators for True / False / Not Given, heading matching, paragraph information matching, and one-word summary completion.
+- Added structured question metadata for exam question type, skill, difficulty, generation source, and validation report.
+- Added pre-save validation for source evidence, option uniqueness, answer membership, TFNG evidence relation, heading coverage, paragraph matching, and gap-fill word limits.
+- Added practice-session summaries for specialty, question count, answered count, and validation status.
+- Added structured attempt and mistake records with skill and error type, including TFNG confusion diagnosis.
+- Added integration tests covering generation, validation, persistence, wrong-answer diagnosis, and mistake retrieval.
+
+### Changed
+
+- IELTS specialty training no longer falls back to generic reading, main-idea, paraphrase, or cloze items.
+- Legacy questions remain stored, but current practice loading filters by exam and question type.
+- IELTS remedial generation now reuses the original IELTS specialty template and validator.
+
+### Known limits
+
+- This release is a validated rule baseline, not an official IELTS paper or an AI-generated question service.
+- Full three-passage, 40-question papers, timing, scoring conversion, richer distractors, and human-rated quality evaluation remain pending.
+
 ## [0.7.0-alpha.17] - 2026-07-17
 
 ### Added

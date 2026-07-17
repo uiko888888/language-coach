@@ -31,7 +31,7 @@ class LearningFlowTests(unittest.TestCase):
     def test_exam_question_type_filters_engine_output(self):
         items = server.generate_quiz_items(server.SAMPLE_ARTICLE, "mixed", "IELTS", "heading")
         self.assertTrue(items)
-        self.assertTrue(all(item["type"] == "main-idea" for item in items))
+        self.assertTrue(all(item["type"] == "heading" for item in items))
         self.assertTrue(all("段落标题匹配" in item["note"] for item in items))
 
     def test_mixed_generation_no_longer_creates_initial_letter_items(self):
@@ -41,9 +41,41 @@ class LearningFlowTests(unittest.TestCase):
 
     def test_ielts_tfng_uses_official_answer_format(self):
         items = server.generate_quiz_items(server.SAMPLE_ARTICLE, "mixed", "IELTS", "tfng")
-        self.assertEqual(len(items), 1)
-        self.assertEqual(items[0]["options"], ["TRUE", "FALSE", "NOT GIVEN"])
-        self.assertIn(items[0]["answer"], items[0]["options"])
+        self.assertEqual(len(items), 3)
+        self.assertEqual({item["answer"] for item in items}, {"TRUE", "FALSE", "NOT GIVEN"})
+        self.assertTrue(all(item["options"] == ["TRUE", "FALSE", "NOT GIVEN"] for item in items))
+        self.assertTrue(all(item["validation"]["valid"] for item in items))
+
+    def test_every_ielts_template_has_metadata_and_passes_validation(self):
+        for question_type in ("tfng", "heading", "matching-info", "gap-fill"):
+            items = server.generate_quiz_items(server.SAMPLE_ARTICLE, "mixed", "IELTS", question_type)
+            self.assertTrue(items, question_type)
+            self.assertTrue(all(item["question_type"] == question_type for item in items))
+            self.assertTrue(all(item["skill"] and item["difficulty"] for item in items))
+            self.assertTrue(all(item["validation"]["valid"] for item in items))
+
+    def test_validator_rejects_untraceable_evidence(self):
+        item = {
+            "prompt": "Choose the answer.", "answer": "TRUE",
+            "options": ["TRUE", "FALSE", "NOT GIVEN"],
+            "evidence": "This sentence does not occur.",
+            "skill": "证据判断", "difficulty": "B2",
+        }
+        result = server.validate_quiz_item(item, server.SAMPLE_ARTICLE, "IELTS", "tfng")
+        self.assertFalse(result["valid"])
+        self.assertIn("evidence_not_in_source", result["errors"])
+
+    def test_tfng_validator_rejects_uncontrolled_false_statement(self):
+        evidence = "A speaker can learn when a family is at home."
+        item = {
+            "prompt": "Statement: A speaker is expensive.", "statement": "A speaker is expensive.",
+            "answer": "FALSE", "evidence_relation": "contradicts",
+            "options": ["TRUE", "FALSE", "NOT GIVEN"], "evidence": evidence,
+            "skill": "证据判断", "difficulty": "B2",
+        }
+        result = server.validate_quiz_item(item, server.SAMPLE_ARTICLE, "IELTS", "tfng")
+        self.assertFalse(result["valid"])
+        self.assertIn("controlled_contradiction", result["errors"])
 
     def test_domestic_exam_styles_have_independent_types_and_profiles(self):
         expected = {

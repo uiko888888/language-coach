@@ -609,13 +609,26 @@ function explanationHtml(explanation, compact = false, correct = false) {
 }
 
 function renderQuizzes() {
+  const answered = state.quizzes.filter(quiz => state.answerFeedback[quiz.id]).length;
+  const validated = state.quizzes.filter(quiz => quiz.validation?.valid).length;
+  const activeType = state.quizzes[0]?.question_type || $("#quizPracticeType")?.value || "";
+  const typeLabel = state.examTypes.find(item => item.id === activeType)?.label || activeType || "当前训练";
+  $("#quizSessionSummary").innerHTML = `
+    <div><span>专项</span><strong>${escapeHtml(typeLabel)}</strong></div>
+    <div><span>题量</span><strong>${state.quizzes.length}</strong></div>
+    <div><span>已答</span><strong>${answered}</strong></div>
+    <div><span>校验通过</span><strong>${validated}/${state.quizzes.length}</strong></div>
+  `;
   $("#quizList").innerHTML = state.quizzes.map((quiz, index) => {
     const feedback = state.answerFeedback[quiz.id];
     return `
     <div class="item" data-quiz-card="${quiz.id}">
       <div class="badge-row">
         ${badge(quiz.style || state.style, "teal")}
-        ${badge(quiz.type)}
+        ${badge(quiz.question_type || quiz.type)}
+        ${quiz.skill ? badge(quiz.skill) : ""}
+        ${quiz.difficulty ? badge(quiz.difficulty, "amber") : ""}
+        ${quiz.validation?.valid ? badge("已校验", "teal") : ""}
         ${badge(quiz.note || "")}
       </div>
       <h3>${index + 1}. ${searchableEnglish(quiz.prompt)}</h3>
@@ -700,7 +713,7 @@ function renderMistakes() {
       <span class="master-number">${String(index + 1).padStart(2, "0")}</span>
       <span class="master-copy">
         <strong>${escapeHtml(excerpt(item.prompt, 72))}</strong>
-        <small>${escapeHtml(item.quiz_note || item.quiz_type || "阅读理解")} · ${item.solved ? "已懂" : "待学"}</small>
+        <small>${escapeHtml(item.question_type || item.quiz_type || "阅读理解")} · ${escapeHtml(item.error_type || item.skill || "待诊断")} · ${item.solved ? "已懂" : "待学"}</small>
       </span>
     </button>
   `).join("");
@@ -708,7 +721,7 @@ function renderMistakes() {
   coach.innerHTML = `
     <div class="detail-head">
       <div>
-        <div class="badge-row">${badge(selected.solved ? "已掌握" : "正在讲解", selected.solved ? "teal" : "red")}${badge(selected.style || "通用")}${badge(selected.quiz_type || "reading")}</div>
+        <div class="badge-row">${badge(selected.solved ? "已掌握" : "正在讲解", selected.solved ? "teal" : "red")}${badge(selected.style || "通用")}${badge(selected.question_type || selected.quiz_type || "reading")}${selected.skill ? badge(selected.skill) : ""}${selected.error_type ? badge(selected.error_type, "red") : ""}</div>
         <h2>${escapeHtml(selected.prompt)}</h2>
       </div>
       ${selected.article_id ? `<button data-open-article="${selected.article_id}">回到原文</button>` : ""}
@@ -747,6 +760,8 @@ function renderExamTypes() {
   select.innerHTML = `<option value="">全部对应题型</option>${state.examTypes.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join("")}`;
   if (state.examTypes.some(item => item.id === previous)) select.value = previous;
   const practiceSelect = $("#quizPracticeType");
+  const practiceMode = $("#quizPracticeMode");
+  if (practiceMode) practiceMode.hidden = state.style !== "general";
   if (practiceSelect) {
     const practicePrevious = practiceSelect.value;
     practiceSelect.innerHTML = `<option value="">选择专项题型</option>${state.examTypes.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join("")}`;
@@ -879,8 +894,12 @@ async function setSourceSubscription(name, active) {
 }
 
 async function loadQuizzes() {
-  const suffix = state.selectedArticle ? `?article_id=${state.selectedArticle.id}` : "";
-  const data = await api(`/api/quizzes${suffix}`);
+  const params = new URLSearchParams();
+  if (state.selectedArticle) params.set("article_id", state.selectedArticle.id);
+  params.set("style", state.style);
+  const questionType = $("#quizPracticeType")?.value || "";
+  if (questionType) params.set("question_type", questionType);
+  const data = await api(`/api/quizzes?${params.toString()}`);
   state.quizzes = data.quizzes || [];
 }
 
@@ -1291,9 +1310,15 @@ $("#globalStyle").addEventListener("change", async event => {
   state.style = event.target.value;
   localStorage.setItem("lc-v2-style", state.style);
   await Promise.all([loadArticles(), loadFeeds(), loadExamTypes(), loadToday()]);
+  await loadQuizzes();
   renderArticles();
   renderDashboard();
   toast(`文章池已切换为 ${state.style} 来源`);
+});
+
+$("#quizPracticeType").addEventListener("change", async () => {
+  await loadQuizzes();
+  renderQuizzes();
 });
 
 $("#articleSearch").addEventListener("keydown", async event => {

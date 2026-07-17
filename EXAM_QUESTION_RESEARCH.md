@@ -73,3 +73,12 @@ Required validation: author stance, long-sentence logical structure, cross-parag
 ## Model strategy
 
 The current rule generator is the baseline. A future model pipeline should generate structured candidates, run deterministic validators, record rejection reasons, and collect human ratings. Fine-tuning starts only after enough licensed, validated examples exist.
+
+## Shared implementation contract
+
+`v0.8.0-alpha.1` establishes the reusable question contract: `question_type`, `skill`, `difficulty`, `evidence`, `validation`, `generation_source`, and structured `error_type`.
+
+- TOEFL reuses evidence traceability and option validation, then adds negative-factual, rhetorical-purpose, sentence-insertion, and multi-point-summary rules.
+- CET-4/CET-6 reuse paragraph matching and gap validation, then add word-bank morphology and cross-section distractor rules.
+- Postgraduate entrance English reuses evidence and logic labels, then adds author-attitude, ordering/coherence, long-sentence translation, and discourse-cloze validators.
+- Every future exam generator remains isolated at the template layer while sharing persistence, attempts, mistakes, ability diagnosis, and validator reporting.

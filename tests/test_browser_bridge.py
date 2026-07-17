@@ -182,6 +182,31 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(today["mode"], "interest")
         self.assertTrue(any(lane["label"] == "15 分钟沉浸" for lane in today["lanes"]))
 
+    def test_ielts_generation_and_wrong_answer_record_skill_and_error(self):
+        created, _ = self.request(
+            "/api/articles",
+            "POST",
+            {"title": "IELTS evidence test", "body": server.SAMPLE_ARTICLE, "source": "manual"},
+        )
+        generated, _ = self.request(
+            f"/api/articles/{created['article']['id']}/quizzes",
+            "POST",
+            {"mode": "reading", "style": "IELTS", "question_type": "tfng"},
+        )
+        quiz = generated["quizzes"][0]
+        self.assertEqual(quiz["question_type"], "tfng")
+        self.assertTrue(quiz["skill"])
+        self.assertTrue(quiz["validation"]["valid"])
+        attempt, _ = self.request(
+            "/api/attempts", "POST", {"quiz_id": quiz["id"], "answer": "NOT GIVEN"}
+        )
+        self.assertFalse(attempt["correct"])
+        self.assertEqual(attempt["error_type"], "一致与未提及混淆")
+        mistakes, _ = self.request("/api/mistakes")
+        saved = next(item for item in mistakes["mistakes"] if item["quiz_id"] == quiz["id"])
+        self.assertEqual(saved["skill"], quiz["skill"])
+        self.assertEqual(saved["error_type"], attempt["error_type"])
+
     def test_article_one_click_translation_uses_aligned_cached_paragraphs(self):
         body = "First paragraph explains the evidence.\n\nSecond paragraph states the conclusion."
         created, _ = self.request(

@@ -534,6 +534,10 @@ label {
 }
 
 .quiz-workspace { display: grid; grid-template-columns: minmax(360px, 0.9fr) minmax(0, 1.1fr); gap: 14px; align-items: start; }
+.quiz-session-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; margin: 0 0 14px; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: var(--line); }
+.quiz-session-summary div { min-width: 0; padding: 9px 11px; background: var(--surface); }
+.quiz-session-summary span { display: block; color: var(--muted); font-size: 11px; }
+.quiz-session-summary strong { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .quiz-source-panel { position: sticky; top: 14px; max-height: calc(100vh - 28px); overflow-y: auto; }
 .quiz-source-text { font-family: Georgia, "Times New Roman", serif; font-size: 16px; line-height: 1.85; }
 .quiz-question-panel { min-width: 0; }
