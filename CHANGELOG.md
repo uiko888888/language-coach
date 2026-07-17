@@ -9,6 +9,19 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.12.1] - 2026-07-18
+
+### Changed
+
+- Kept the primary navigation as a fixed left sidebar at every supported viewport width.
+- Added compact 92px and 78px sidebar variants for narrow screens instead of moving navigation above content.
+- Kept master/detail views, including article titles and selected content, in left/right columns on narrow screens.
+- Added a layout contract test that rejects top/bottom sidebar regressions.
+
+### Known limits
+
+- Very narrow master/detail workspaces scroll horizontally so the selected content retains a usable minimum width.
+
 ## [0.8.0-alpha.12] - 2026-07-18
 
 ### Added

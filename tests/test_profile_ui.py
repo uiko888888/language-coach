@@ -36,6 +36,16 @@ class ProfileUiContractTests(unittest.TestCase):
         self.assertIn(".profile-grid", responsive)
         self.assertIn("grid-template-columns: 1fr", responsive)
 
+    def test_sidebar_and_master_detail_never_switch_to_top_bottom_layout(self):
+        mobile = self.css.split("@media (max-width: 720px)", 1)[1]
+        self.assertIn(".sidebar", mobile)
+        self.assertIn("position: fixed", mobile)
+        self.assertIn(".app { margin-left: 92px", mobile)
+        self.assertIn(".master-detail", mobile)
+        self.assertIn("grid-template-columns: minmax(108px, 34vw) minmax(280px, 1fr)", mobile)
+        self.assertNotIn(".app { margin-left: 0", mobile)
+        self.assertNotIn(".sidebar {\n    position: static", mobile)
+
 
 if __name__ == "__main__":
     unittest.main()
