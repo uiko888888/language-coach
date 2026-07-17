@@ -54,6 +54,29 @@ class BrowserBridgeTests(unittest.TestCase):
         else:
             self.fail("Browser clips endpoint accepted a request without a token")
 
+    def test_profile_api_supports_score_and_quick_test_paths(self):
+        original = server.learner_settings()
+        try:
+            quick, _ = self.request("/api/profile/quick-test")
+            self.assertEqual(len(quick["items"]), 6)
+            self.assertTrue(all("answer" not in item for item in quick["items"]))
+            score, _ = self.request("/api/learner-profile", "POST", {
+                "profile_source": "score", "assessment_type": "TOEFL", "overall_score": 86,
+                "target_exam": "TOEFL", "target_score": 100, "weak_areas": ["listening"],
+                "interest_topics": ["影视娱乐"], "interest_content_types": ["subtitles"],
+            })
+            self.assertEqual(score["profile"]["cefr"], "B2")
+            responses = {item["id"]: source["answer"] for item, source in zip(quick["items"], server.QUICK_TEST_ITEMS)}
+            baseline, _ = self.request("/api/profile/quick-test", "POST", {
+                "responses": responses, "target_exam": "IELTS", "target_score": 7,
+                "weak_areas": ["paraphrase"], "interest_topics": ["明星访谈"],
+                "interest_content_types": ["interview"],
+            })
+            self.assertEqual(baseline["profile"]["source"], "quick_test")
+            self.assertEqual(baseline["profile"]["cefr"], "C1")
+        finally:
+            server.save_learner_settings(original)
+
     def test_selection_saves_context_and_source_to_wordbook(self):
         payload = {
             "kind": "selection",

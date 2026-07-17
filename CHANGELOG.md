@@ -9,6 +9,30 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.12] - 2026-07-18
+
+### Added
+
+- Added optional profile paths for an existing score, a six-question reading/vocabulary baseline, or CEFR self-assessment.
+- Added validated IELTS, TOEFL, EF SET, CET, KAOYAN and custom score anchors with optional section scores and assessment dates.
+- Added target exam, target score, target date, weak areas, interest topics and preferred content types.
+- Added a profile summary with CEFR baseline, evidence source, confidence, target and recommended reading levels.
+- Added profile-aware article ranking and explicit difficulty, interest and goal recommendation reasons.
+- Added a maturity benchmark covering current competitiveness, universal delivery gaps, efficiency principles and the clip-study roadmap.
+- Added automated coverage for score validation, quick-test answer privacy, profile persistence and recommendation linkage.
+
+### Changed
+
+- Learner-plan updates now preserve profile fields instead of rebuilding only daily-plan settings.
+- Assessment confidence now accounts for evidence type and score age.
+- Ability evidence remains separate from XP and daily-plan completion.
+
+### Known limits
+
+- The quick baseline covers reading and vocabulary only; it is not an IELTS, TOEFL, listening, speaking or full CEFR certification.
+- Profile calibration currently uses explicit scores, self-assessment and the quick baseline; weekly longitudinal updates are not implemented yet.
+- Clip study is planned for `v0.9.0`; timed subtitle playback and media controls are not included in this release.
+
 ## [0.8.0-alpha.11.4] - 2026-07-18
 
 ### Added

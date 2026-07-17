@@ -109,6 +109,90 @@
         </div>
         <button class="primary" id="modePrimaryAction">开始今日训练</button>
       </section>
+      <section class="band learner-profile-band">
+        <div class="band-head">
+          <div><span class="eyebrow">Learning profile</span><h2>学习画像</h2></div>
+          <span class="profile-status" id="profileStatus">待建立</span>
+        </div>
+        <div class="profile-summary" id="profileSummary"></div>
+        <details class="profile-editor" id="profileEditor">
+          <summary>建立或修改画像</summary>
+          <div class="profile-source-switch" role="group" aria-label="画像建立方式">
+            <button type="button" data-profile-source="score">已有成绩</button>
+            <button type="button" data-profile-source="quick_test">快速基线</button>
+            <button type="button" data-profile-source="self_assessment">自评</button>
+          </div>
+
+          <div class="profile-source-panel" data-profile-panel="score">
+            <div class="profile-grid">
+              <label>测试类型
+                <select id="profileAssessmentType">
+                  <option value="IELTS">IELTS</option><option value="TOEFL">TOEFL</option><option value="EF_SET">EF SET</option>
+                  <option value="CET4">四级</option><option value="CET6">六级</option><option value="KAOYAN">考研英语</option><option value="OTHER">其他</option>
+                </select>
+              </label>
+              <label>测试日期<input id="profileAssessmentDate" type="date" /></label>
+              <label>总分<input id="profileOverallScore" type="number" min="0" step="0.5" placeholder="至少填写总分或一个分项" /></label>
+              <label>阅读<input data-profile-section-score="reading" type="number" min="0" step="0.5" /></label>
+              <label>听力<input data-profile-section-score="listening" type="number" min="0" step="0.5" /></label>
+              <label>写作<input data-profile-section-score="writing" type="number" min="0" step="0.5" /></label>
+              <label>口语<input data-profile-section-score="speaking" type="number" min="0" step="0.5" /></label>
+            </div>
+          </div>
+
+          <div class="profile-source-panel" data-profile-panel="quick_test" hidden>
+            <div class="quick-test-head">
+              <div><strong>阅读与词汇快速基线</strong><span>6 题 · 约 8 分钟</span></div>
+              <button type="button" id="loadQuickTestBtn">载入题目</button>
+            </div>
+            <div class="quick-test-items" id="quickTestItems"></div>
+            <button type="button" class="primary" id="submitQuickTestBtn" hidden>提交快速基线</button>
+          </div>
+
+          <div class="profile-source-panel" data-profile-panel="self_assessment" hidden>
+            <div class="profile-grid self-level-grid">
+              <label>阅读<select data-self-level="reading"><option value="">未选择</option><option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option></select></label>
+              <label>听力<select data-self-level="listening"><option value="">未选择</option><option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option></select></label>
+              <label>词汇<select data-self-level="vocabulary"><option value="">未选择</option><option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option></select></label>
+              <label>写作<select data-self-level="writing"><option value="">未选择</option><option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option></select></label>
+              <label>口语<select data-self-level="speaking"><option value="">未选择</option><option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option></select></label>
+            </div>
+          </div>
+
+          <div class="profile-grid profile-target-grid">
+            <label>目标考试
+              <select id="profileTargetExam">
+                <option value="IELTS">IELTS</option><option value="TOEFL">TOEFL</option><option value="CET4">四级</option><option value="CET6">六级</option>
+                <option value="KAOYAN">考研英语</option><option value="TEM4">专四</option><option value="TEM8">专八</option><option value="GRE">GRE</option><option value="GMAT">GMAT</option><option value="GENERAL">通用提升</option>
+              </select>
+            </label>
+            <label>目标分数<input id="profileTargetScore" type="number" min="0" step="0.5" /></label>
+            <label>目标日期<input id="profileTargetDate" type="date" /></label>
+          </div>
+
+          <fieldset class="profile-choice-fieldset"><legend>当前薄弱项</legend>
+            <label><input type="checkbox" data-profile-weak="reading-speed" />阅读速度</label><label><input type="checkbox" data-profile-weak="evidence" />证据定位</label>
+            <label><input type="checkbox" data-profile-weak="inference" />推断</label><label><input type="checkbox" data-profile-weak="paraphrase" />同义替换</label>
+            <label><input type="checkbox" data-profile-weak="vocabulary-use" />词汇运用</label><label><input type="checkbox" data-profile-weak="listening" />听力</label>
+            <label><input type="checkbox" data-profile-weak="speaking" />口语</label><label><input type="checkbox" data-profile-weak="writing" />写作</label><label><input type="checkbox" data-profile-weak="grammar" />语法</label>
+          </fieldset>
+          <fieldset class="profile-choice-fieldset"><legend>兴趣主题</legend>
+            <label><input type="checkbox" data-profile-interest="国际时政" />国际时政</label><label><input type="checkbox" data-profile-interest="社会文化" />社会文化</label>
+            <label><input type="checkbox" data-profile-interest="科学技术" />科学技术</label><label><input type="checkbox" data-profile-interest="商业经济" />商业经济</label>
+            <label><input type="checkbox" data-profile-interest="环境保护" />环境保护</label><label><input type="checkbox" data-profile-interest="健康医学" />健康医学</label>
+            <label><input type="checkbox" data-profile-interest="影视娱乐" />影视娱乐</label><label><input type="checkbox" data-profile-interest="明星访谈" />明星访谈</label>
+            <label><input type="checkbox" data-profile-interest="小说文学" />小说文学</label><label><input type="checkbox" data-profile-interest="日常生活" />日常生活</label>
+          </fieldset>
+          <fieldset class="profile-choice-fieldset"><legend>内容偏好</legend>
+            <label><input type="checkbox" data-profile-content="report" />新闻</label><label><input type="checkbox" data-profile-content="opinion" />时评</label>
+            <label><input type="checkbox" data-profile-content="explainer" />知识解释</label><label><input type="checkbox" data-profile-content="research" />研究</label>
+            <label><input type="checkbox" data-profile-content="institution" />机构公告</label><label><input type="checkbox" data-profile-content="culture" />文化内容</label>
+            <label><input type="checkbox" data-profile-content="subtitles" />影视字幕</label><label><input type="checkbox" data-profile-content="interview" />访谈</label>
+            <label><input type="checkbox" data-profile-content="fiction" />小说</label><label><input type="checkbox" data-profile-content="blog" />博客</label>
+          </fieldset>
+          <div class="toolbar profile-actions"><button type="button" class="primary" id="saveLearnerProfileBtn">保存画像</button></div>
+        </details>
+      </section>
       <section class="band daily-plan-band">
         <div class="band-head">
           <div>

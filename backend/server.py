@@ -2912,6 +2912,59 @@ LEARNER_SETTINGS_KEY = "learner_profile"
 DAILY_PLAN_MINUTES = {5, 15, 30, 60}
 DAILY_PLAN_TASKS = {"reading", "practice", "review", "vocabulary"}
 DAILY_PLAN_DEFAULT_TARGETS = {"reading": 1, "practice": 5, "review": 2, "vocabulary": 5}
+PROFILE_SECTIONS = {"reading", "listening", "writing", "speaking", "vocabulary"}
+PROFILE_WEAK_AREAS = {
+    "reading-speed", "evidence", "inference", "paraphrase", "vocabulary-use",
+    "listening", "speaking", "writing", "grammar",
+}
+PROFILE_INTEREST_TOPICS = {
+    "国际时政", "社会文化", "科学技术", "商业经济", "环境保护", "健康医学",
+    "影视娱乐", "明星访谈", "小说文学", "日常生活",
+}
+PROFILE_TOPIC_ALIASES = {
+    "国际时政": {"国际时政", "法律政策"}, "社会文化": {"社会文化", "教育学习", "心理行为"},
+    "科学技术": {"科技创新", "太空探索", "自然与生态"}, "商业经济": {"经济商业"},
+    "环境保护": {"环境保护", "自然与生态"}, "健康医学": {"健康医学", "心理行为"},
+    "影视娱乐": {"社会文化"}, "明星访谈": {"社会文化"}, "小说文学": {"社会文化", "历史考古"},
+    "日常生活": {"社会文化", "教育学习", "健康医学"},
+}
+PROFILE_CONTENT_TYPES = {"report", "opinion", "explainer", "research", "institution", "culture", "subtitles", "interview", "fiction", "blog"}
+ASSESSMENT_RANGES = {
+    "IELTS": (0, 9), "TOEFL": (0, 120), "EF_SET": (0, 100),
+    "CET4": (0, 710), "CET6": (0, 710), "KAOYAN": (0, 100), "OTHER": (0, 1000),
+}
+QUICK_TEST_ITEMS = [
+    {
+        "id": "context-a2", "domain": "vocabulary", "level": "A2",
+        "prompt": "The train was delayed, so Maya arrived later than expected. What does delayed mean?",
+        "options": ["made late", "made cheaper", "made quieter", "made shorter"], "answer": "made late",
+    },
+    {
+        "id": "purpose-b1", "domain": "reading", "level": "B1",
+        "prompt": "A library extended its opening hours after students asked for more evening study space. Why did it extend its hours?",
+        "options": ["To answer student demand", "To sell more books", "To reduce staffing", "To host a concert"], "answer": "To answer student demand",
+    },
+    {
+        "id": "contrast-b1", "domain": "reading", "level": "B1",
+        "prompt": "The device is inexpensive to buy; however, replacement parts are costly. Which statement is supported?",
+        "options": ["Maintenance may be expensive", "The device is never repaired", "Replacement parts are free", "The purchase price is high"], "answer": "Maintenance may be expensive",
+    },
+    {
+        "id": "context-b2", "domain": "vocabulary", "level": "B2",
+        "prompt": "The committee rejected the proposal because its benefits were speculative rather than proven. What does speculative mean here?",
+        "options": ["uncertain", "immediate", "measurable", "unrelated"], "answer": "uncertain",
+    },
+    {
+        "id": "inference-b2", "domain": "reading", "level": "B2",
+        "prompt": "Although remote work reduced commuting, several employees visited the office weekly to exchange ideas informally. What can be inferred?",
+        "options": ["Some collaboration benefits from meeting in person", "Remote work ended completely", "Employees disliked exchanging ideas", "Commuting time increased for everyone"], "answer": "Some collaboration benefits from meeting in person",
+    },
+    {
+        "id": "stance-c1", "domain": "reading", "level": "C1",
+        "prompt": "The author calls the policy 'a useful first step, though hardly a substitute for structural reform.' What is the author's position?",
+        "options": ["Cautious approval with reservations", "Complete rejection", "Unqualified enthusiasm", "Indifference to reform"], "answer": "Cautious approval with reservations",
+    },
+]
 DEFAULT_LEARNER_SETTINGS = {
     "daily_minutes": 15,
     "daily_tasks": ["reading", "practice", "review"],
@@ -2921,6 +2974,17 @@ DEFAULT_LEARNER_SETTINGS = {
     "long_goal": "",
     "long_goal_date": "",
     "recommendations_enabled": True,
+    "profile_completed": False,
+    "profile_source": "",
+    "assessment": {"type": "", "date": "", "overall": None, "sections": {}},
+    "target_exam": "IELTS",
+    "target_score": None,
+    "target_date": "",
+    "self_levels": {},
+    "weak_areas": [],
+    "interest_topics": [],
+    "interest_content_types": [],
+    "quick_test_result": {},
 }
 
 
@@ -2934,6 +2998,14 @@ def learner_settings() -> dict:
     except (TypeError, ValueError):
         saved = {}
     settings = {**DEFAULT_LEARNER_SETTINGS, **(saved if isinstance(saved, dict) else {})}
+    assessment = settings.get("assessment") if isinstance(settings.get("assessment"), dict) else {}
+    settings["assessment"] = {"type": "", "date": "", "overall": None, "sections": {}, **assessment}
+    settings["assessment"]["sections"] = settings["assessment"]["sections"] if isinstance(settings["assessment"].get("sections"), dict) else {}
+    settings["self_levels"] = settings["self_levels"] if isinstance(settings.get("self_levels"), dict) else {}
+    settings["quick_test_result"] = settings["quick_test_result"] if isinstance(settings.get("quick_test_result"), dict) else {}
+    settings["weak_areas"] = [value for value in settings.get("weak_areas", []) if value in PROFILE_WEAK_AREAS]
+    settings["interest_topics"] = [value for value in settings.get("interest_topics", []) if value in PROFILE_INTEREST_TOPICS]
+    settings["interest_content_types"] = [value for value in settings.get("interest_content_types", []) if value in PROFILE_CONTENT_TYPES]
     settings["daily_minutes"] = settings["daily_minutes"] if settings["daily_minutes"] in DAILY_PLAN_MINUTES else 15
     settings["daily_tasks"] = [task for task in settings["daily_tasks"] if task in DAILY_PLAN_TASKS] or ["reading"]
     raw_targets = settings.get("daily_targets") if isinstance(settings.get("daily_targets"), dict) else {}
@@ -2943,6 +3015,180 @@ def learner_settings() -> dict:
     }
     settings["recommendations_enabled"] = bool(settings["recommendations_enabled"])
     return settings
+
+
+def save_learner_settings(settings: dict) -> None:
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (LEARNER_SETTINGS_KEY, json.dumps(settings, ensure_ascii=False)),
+        )
+
+
+def optional_score(value: object, minimum: float, maximum: float, field: str) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        score = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field} must be a number") from exc
+    if not minimum <= score <= maximum:
+        raise ValueError(f"{field} must be between {minimum:g} and {maximum:g}")
+    return round(score, 2)
+
+
+def assessment_cefr(assessment_type: str, score: float | None) -> str:
+    if score is None:
+        return ""
+    if assessment_type == "IELTS":
+        return "C2" if score >= 8.5 else "C1" if score >= 7 else "B2" if score >= 5.5 else "B1" if score >= 4 else "A2"
+    if assessment_type == "TOEFL":
+        return "C1" if score >= 95 else "B2" if score >= 72 else "B1" if score >= 42 else "A2"
+    if assessment_type == "EF_SET":
+        return "C2" if score >= 71 else "C1" if score >= 61 else "B2" if score >= 51 else "B1" if score >= 41 else "A2" if score >= 31 else "A1"
+    if assessment_type in {"CET4", "CET6"}:
+        return "C1" if score >= 600 else "B2" if score >= 500 else "B1" if score >= 425 else "A2"
+    if assessment_type == "KAOYAN":
+        return "C1" if score >= 80 else "B2" if score >= 65 else "B1" if score >= 50 else "A2"
+    return ""
+
+
+def learner_profile_summary(settings: dict | None = None) -> dict:
+    settings = settings or learner_settings()
+    assessment = settings.get("assessment") or {}
+    quick = settings.get("quick_test_result") or {}
+    self_levels = settings.get("self_levels") or {}
+    source = settings.get("profile_source") or ""
+    assessment_type = str(assessment.get("type") or "")
+    assessment_score = assessment.get("overall")
+    section_values = [float(value) for value in (assessment.get("sections") or {}).values() if isinstance(value, (int, float))]
+    if assessment_score is None and section_values:
+        section_average = sum(section_values) / len(section_values)
+        assessment_score = section_average * 4 if assessment_type == "TOEFL" else section_average
+    level = assessment_cefr(assessment_type, assessment_score) if source == "score" else ""
+    confidence = "medium" if level else ""
+    if level and assessment.get("date"):
+        try:
+            age_days = (datetime.now().date() - datetime.fromisoformat(str(assessment["date"])).date()).days
+            confidence = "high" if age_days <= 365 else "medium" if age_days <= 730 else "low"
+        except ValueError:
+            confidence = "medium"
+    evidence = "已有成绩"
+    if source == "quick_test" and quick.get("cefr"):
+        level, confidence, evidence = quick["cefr"], "medium", "阅读与词汇快速基线"
+    if source == "self_assessment" or not level:
+        valid_self = [value for value in self_levels.values() if value in CEFR_ORDER]
+        if valid_self:
+            rank = round(sum(CEFR_ORDER[value] for value in valid_self) / len(valid_self))
+            level = next((key for key, value in CEFR_ORDER.items() if value == rank), "B1")
+            confidence, evidence = "low", "自评"
+    level = level or "B1"
+    current_rank = CEFR_ORDER[level]
+    recommended_levels = [key for key, value in CEFR_ORDER.items() if value in {current_rank, min(6, current_rank + 1)}]
+    return {
+        "completed": bool(settings.get("profile_completed")),
+        "source": settings.get("profile_source") or "",
+        "cefr": level,
+        "confidence": confidence or "low",
+        "evidence": evidence if settings.get("profile_completed") else "默认起点",
+        "recommended_levels": recommended_levels,
+        "target_exam": settings.get("target_exam") or "IELTS",
+        "target_score": settings.get("target_score"),
+        "target_date": settings.get("target_date") or "",
+        "weak_areas": settings.get("weak_areas") or [],
+        "interest_topics": settings.get("interest_topics") or [],
+        "interest_content_types": settings.get("interest_content_types") or [],
+    }
+
+
+def update_learner_profile(payload: dict) -> dict:
+    settings = learner_settings()
+    source = str(payload.get("profile_source") or "self_assessment")
+    if source not in {"score", "quick_test", "self_assessment"}:
+        raise ValueError("profile_source must be score, quick_test, or self_assessment")
+    if source == "quick_test" and not settings.get("quick_test_result"):
+        raise ValueError("Complete the quick test before saving this profile")
+    assessment_type = str(payload.get("assessment_type") or "").upper()
+    assessment = settings.get("assessment") if source == "quick_test" else {"type": "", "date": "", "overall": None, "sections": {}}
+    if source == "score":
+        if assessment_type not in ASSESSMENT_RANGES:
+            raise ValueError("Select a supported assessment type")
+        minimum, maximum = ASSESSMENT_RANGES[assessment_type]
+        overall = optional_score(payload.get("overall_score"), minimum, maximum, "overall_score")
+        raw_sections = payload.get("section_scores") if isinstance(payload.get("section_scores"), dict) else {}
+        section_maximum = 9 if assessment_type == "IELTS" else 30 if assessment_type == "TOEFL" else maximum
+        sections = {
+            key: score for key in PROFILE_SECTIONS
+            if (score := optional_score(raw_sections.get(key), 0, section_maximum, f"section_scores.{key}")) is not None
+        }
+        if overall is None and not sections:
+            raise ValueError("Enter at least one overall or section score")
+        assessment = {"type": assessment_type, "date": str(payload.get("assessment_date") or "")[:10], "overall": overall, "sections": sections}
+    self_levels = {
+        key: str(value) for key, value in (payload.get("self_levels") or {}).items()
+        if key in PROFILE_SECTIONS and str(value) in CEFR_ORDER
+    }
+    if source == "quick_test":
+        self_levels = settings.get("self_levels") or {}
+    if source == "self_assessment" and not self_levels:
+        raise ValueError("Select at least one self-assessed skill level")
+    target_exam = str(payload.get("target_exam") or "IELTS").upper()
+    if target_exam not in SUPPORTED_EXAMS and target_exam != "GENERAL":
+        raise ValueError("Select a supported target exam")
+    target_range = ASSESSMENT_RANGES.get(target_exam, (0, 1000))
+    target_score = optional_score(payload.get("target_score"), target_range[0], target_range[1], "target_score")
+    settings.update({
+        "profile_completed": True,
+        "profile_source": source,
+        "assessment": assessment,
+        "target_exam": target_exam,
+        "target_score": target_score,
+        "target_date": str(payload.get("target_date") or "")[:10],
+        "self_levels": self_levels,
+        "weak_areas": list(dict.fromkeys(value for value in payload.get("weak_areas", []) if value in PROFILE_WEAK_AREAS)),
+        "interest_topics": list(dict.fromkeys(value for value in payload.get("interest_topics", []) if value in PROFILE_INTEREST_TOPICS)),
+        "interest_content_types": list(dict.fromkeys(value for value in payload.get("interest_content_types", []) if value in PROFILE_CONTENT_TYPES)),
+    })
+    save_learner_settings(settings)
+    return {"settings": settings, "profile": learner_profile_summary(settings)}
+
+
+def quick_test_payload() -> list[dict]:
+    return [{key: value for key, value in item.items() if key != "answer"} for item in QUICK_TEST_ITEMS]
+
+
+def submit_quick_test(payload: dict) -> dict:
+    responses = payload.get("responses") if isinstance(payload.get("responses"), dict) else {}
+    answered = [item for item in QUICK_TEST_ITEMS if str(responses.get(item["id"], "")).strip()]
+    if len(answered) < 4:
+        raise ValueError("Answer at least four quick-test questions")
+    correct = [item for item in answered if responses.get(item["id"]) == item["answer"]]
+    count = len(correct)
+    cefr = "C1" if count == 6 else "B2" if count >= 4 else "B1" if count >= 2 else "A2"
+    domains = {}
+    for domain in {item["domain"] for item in QUICK_TEST_ITEMS}:
+        domain_answered = [item for item in answered if item["domain"] == domain]
+        domain_correct = [item for item in correct if item["domain"] == domain]
+        domains[domain] = {"correct": len(domain_correct), "answered": len(domain_answered)}
+    settings = learner_settings()
+    target_exam = str(payload.get("target_exam") or settings.get("target_exam") or "IELTS").upper()
+    if target_exam not in SUPPORTED_EXAMS and target_exam != "GENERAL":
+        raise ValueError("Select a supported target exam")
+    target_range = ASSESSMENT_RANGES.get(target_exam, (0, 1000))
+    target_score = optional_score(payload.get("target_score"), target_range[0], target_range[1], "target_score")
+    settings.update({
+        "profile_completed": True,
+        "profile_source": "quick_test",
+        "quick_test_result": {"cefr": cefr, "correct": count, "answered": len(answered), "domains": domains, "completed_at": utc_now()},
+        "target_exam": target_exam,
+        "target_score": target_score,
+        "target_date": str(payload.get("target_date") or "")[:10],
+        "weak_areas": list(dict.fromkeys(value for value in payload.get("weak_areas", []) if value in PROFILE_WEAK_AREAS)),
+        "interest_topics": list(dict.fromkeys(value for value in payload.get("interest_topics", []) if value in PROFILE_INTEREST_TOPICS)),
+        "interest_content_types": list(dict.fromkeys(value for value in payload.get("interest_content_types", []) if value in PROFILE_CONTENT_TYPES)),
+    })
+    save_learner_settings(settings)
+    return {"result": settings["quick_test_result"], "settings": settings, "profile": learner_profile_summary(settings)}
 
 
 def update_learner_settings(payload: dict) -> dict:
@@ -2965,12 +3211,10 @@ def update_learner_settings(payload: dict) -> dict:
         "long_goal_date": str(payload.get("long_goal_date") or "").strip()[:20],
         "recommendations_enabled": bool(payload.get("recommendations_enabled", True)),
     }
-    with db() as conn:
-        conn.execute(
-            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (LEARNER_SETTINGS_KEY, json.dumps(settings, ensure_ascii=False)),
-        )
-    return settings
+    current = learner_settings()
+    current.update(settings)
+    save_learner_settings(current)
+    return current
 
 
 def current_plan_day() -> str:
@@ -3279,6 +3523,7 @@ def estimated_study_minutes(article: dict) -> int:
 def today_content(exam: str = "", mode: str = "exam") -> dict:
     mode = mode if mode in {"interest", "exam"} else "exam"
     settings = learner_settings()
+    profile = learner_profile_summary(settings)
     plan = daily_plan_snapshot(settings)
     articles = list_articles({"exam": [exam]})
     catalog = {item["name"]: item for item in source_catalog()}
@@ -3298,12 +3543,21 @@ def today_content(exam: str = "", mode: str = "exam") -> dict:
             + (8 if article.get("level") in {"B1", "B2", "B1-B2"} else 0)
         )
         exam_bonus = round(article["exam_fit"] * 0.25) + (10 if study_minutes >= 15 else 0)
+        article_levels = [value for value in re.findall(r"A1|A2|B1|B2|C1|C2", str(article.get("level") or ""))]
+        level_distance = min((abs(CEFR_ORDER[value] - CEFR_ORDER[profile["cefr"]]) for value in article_levels), default=2)
+        level_bonus = 18 if level_distance == 0 else 8 if level_distance == 1 else -4
+        preferred_theme_tags = set().union(*(PROFILE_TOPIC_ALIASES.get(value, {value}) for value in profile["interest_topics"])) if profile["interest_topics"] else set()
+        topic_bonus = 14 if set(article.get("theme_tags") or []) & preferred_theme_tags else 0
+        content_bonus = 12 if article["content_type"] in profile["interest_content_types"] else 0
         enriched.append({
             **article,
             "catalog_category": category,
             "subscribed": subscribed,
             "study_minutes": study_minutes,
-            "today_score": article["recommendation_score"] + ((interest_bonus if mode == "interest" else exam_bonus) if settings["recommendations_enabled"] else 0),
+            "profile_level_distance": level_distance,
+            "profile_topic_match": topic_bonus > 0,
+            "profile_content_match": content_bonus > 0,
+            "today_score": article["recommendation_score"] + (((interest_bonus if mode == "interest" else exam_bonus) + level_bonus + topic_bonus + content_bonus) if settings["recommendations_enabled"] else 0),
         })
     enriched.sort(key=lambda item: (-item["today_score"], item["id"]))
 
@@ -3353,6 +3607,10 @@ def today_content(exam: str = "", mode: str = "exam") -> dict:
             reason = "通用内容安排"
         else:
             reason = "来自你的订阅" if item["subscribed"] else base_reason
+            if item["profile_level_distance"] == 0:
+                reason = f"{reason} · 难度接近你的 {profile['cefr']}"
+            if item["profile_topic_match"] or item["profile_content_match"]:
+                reason = f"{reason} · 匹配兴趣画像"
             active_goal = settings["short_goal"] or settings["long_goal"]
             if active_goal:
                 reason = f"{reason} · 对应当前目标"
@@ -3362,6 +3620,7 @@ def today_content(exam: str = "", mode: str = "exam") -> dict:
         "exam": exam or "general",
         "mode": mode,
         "subscription_count": len(active),
+        "profile": profile,
         "plan": {**plan, "recommendations_enabled": settings["recommendations_enabled"]},
         "goals": {
             "short": settings["short_goal"],
@@ -4485,7 +4744,10 @@ class App(BaseHTTPRequestHandler):
                 with db() as conn:
                     return json_response(self, {"progress": progress_payload(conn)})
             if path == "/api/learner-settings":
-                return json_response(self, {"settings": learner_settings()})
+                settings = learner_settings()
+                return json_response(self, {"settings": settings, "profile": learner_profile_summary(settings)})
+            if path == "/api/profile/quick-test":
+                return json_response(self, {"items": quick_test_payload(), "estimated_minutes": 8, "domains": ["reading", "vocabulary"]})
             if path == "/api/feeds/status":
                 return json_response(self, feed_refresh_status())
             if path == "/api/books":
@@ -4685,6 +4947,18 @@ class App(BaseHTTPRequestHandler):
                 except (TypeError, ValueError) as exc:
                     return json_response(self, {"error": str(exc)}, 400)
                 return json_response(self, {"settings": settings})
+            if path == "/api/learner-profile":
+                try:
+                    result = update_learner_profile(payload)
+                except (TypeError, ValueError) as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, result)
+            if path == "/api/profile/quick-test":
+                try:
+                    result = submit_quick_test(payload)
+                except (TypeError, ValueError) as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, result)
             if path == "/api/import/epub":
                 try:
                     book, created = import_epub(str(payload.get("path") or ""))

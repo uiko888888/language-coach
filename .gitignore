@@ -1,6 +1,7 @@
 data/*.sqlite
 data/*.sqlite-*
 data/*.log
+data/edge-profile-check/
 .env.local
 backend/__pycache__/
 artifacts/

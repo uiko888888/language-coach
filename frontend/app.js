@@ -34,6 +34,9 @@ const state = {
     long_goal_date: "",
     recommendations_enabled: true,
   },
+  learnerProfile: { completed: false, cefr: "B1", confidence: "low", recommended_levels: ["B1", "B2"] },
+  profileSource: "",
+  quickTestItems: [],
   examTypes: [],
   examResources: [],
   examPapers: [],
@@ -298,6 +301,13 @@ const dailyTaskLabels = {
   vocabulary: "词块复习",
 };
 
+const profileWeakLabels = {
+  "reading-speed": "阅读速度", evidence: "证据定位", inference: "推断", paraphrase: "同义替换",
+  "vocabulary-use": "词汇运用", listening: "听力", speaking: "口语", writing: "写作", grammar: "语法",
+};
+
+const profileConfidenceLabels = { high: "较高", medium: "中等", low: "待校准" };
+
 function renderLearnerSettings() {
   const settings = state.learnerSettings;
   $("#dailyMinutes").value = String(settings.daily_minutes || 15);
@@ -316,6 +326,109 @@ function renderLearnerSettings() {
   if (settings.short_goal) goals.push(`<span><strong>近期：</strong>${escapeHtml(settings.short_goal)}${settings.short_goal_date ? ` · ${escapeHtml(settings.short_goal_date)}` : ""}</span>`);
   if (settings.long_goal) goals.push(`<span><strong>长期：</strong>${escapeHtml(settings.long_goal)}${settings.long_goal_date ? ` · ${escapeHtml(settings.long_goal_date)}` : ""}</span>`);
   $("#goalSummary").innerHTML = goals.join("") || `<span>尚未设置近期或长期目标</span>`;
+  renderLearnerProfile();
+}
+
+function setProfileSource(source) {
+  state.profileSource = ["score", "quick_test", "self_assessment"].includes(source) ? source : "score";
+  document.querySelectorAll("[data-profile-source]").forEach(button => {
+    button.classList.toggle("active", button.dataset.profileSource === state.profileSource);
+  });
+  document.querySelectorAll("[data-profile-panel]").forEach(panel => {
+    panel.hidden = panel.dataset.profilePanel !== state.profileSource;
+  });
+}
+
+function renderLearnerProfile() {
+  const settings = state.learnerSettings;
+  const profile = state.learnerProfile || {};
+  $("#profileStatus").textContent = profile.completed ? `${profile.cefr} · ${profileConfidenceLabels[profile.confidence] || "待校准"}` : "待建立";
+  const target = profile.target_exam ? `${profile.target_exam}${profile.target_score != null ? ` ${profile.target_score}` : ""}${profile.target_date ? ` · ${profile.target_date}` : ""}` : "未设置";
+  const weak = (profile.weak_areas || []).map(value => profileWeakLabels[value] || value).join("、") || "待训练数据校准";
+  $("#profileSummary").innerHTML = `
+    <div><span>当前基线</span><strong>${escapeHtml(profile.cefr || "B1")}</strong><small>${escapeHtml(profile.evidence || "默认起点")}</small></div>
+    <div><span>目标</span><strong>${escapeHtml(target)}</strong><small>能力分与 XP 分开记录</small></div>
+    <div><span>当前薄弱项</span><strong>${escapeHtml(weak)}</strong><small>推荐难度：${escapeHtml((profile.recommended_levels || ["B1", "B2"]).join(" / "))}</small></div>
+  `;
+  if (!profile.completed) $("#profileEditor").open = true;
+
+  const assessment = settings.assessment || {};
+  $("#profileAssessmentType").value = assessment.type || "IELTS";
+  $("#profileAssessmentDate").value = assessment.date || "";
+  $("#profileOverallScore").value = assessment.overall ?? "";
+  document.querySelectorAll("[data-profile-section-score]").forEach(input => {
+    input.value = assessment.sections?.[input.dataset.profileSectionScore] ?? "";
+  });
+  $("#profileTargetExam").value = settings.target_exam || "IELTS";
+  $("#profileTargetScore").value = settings.target_score ?? "";
+  $("#profileTargetDate").value = settings.target_date || "";
+  document.querySelectorAll("[data-self-level]").forEach(select => {
+    select.value = settings.self_levels?.[select.dataset.selfLevel] || "";
+  });
+  document.querySelectorAll("[data-profile-weak]").forEach(input => { input.checked = (settings.weak_areas || []).includes(input.dataset.profileWeak); });
+  document.querySelectorAll("[data-profile-interest]").forEach(input => { input.checked = (settings.interest_topics || []).includes(input.dataset.profileInterest); });
+  document.querySelectorAll("[data-profile-content]").forEach(input => { input.checked = (settings.interest_content_types || []).includes(input.dataset.profileContent); });
+  if (!state.profileSource || !profile.completed) state.profileSource = settings.profile_source === "self_assessment" ? "self_assessment" : settings.profile_source === "quick_test" ? "quick_test" : "score";
+  setProfileSource(state.profileSource);
+}
+
+function learnerProfilePayload() {
+  return {
+    profile_source: state.profileSource,
+    assessment_type: $("#profileAssessmentType").value,
+    assessment_date: $("#profileAssessmentDate").value,
+    overall_score: $("#profileOverallScore").value,
+    section_scores: Object.fromEntries([...document.querySelectorAll("[data-profile-section-score]")].map(input => [input.dataset.profileSectionScore, input.value])),
+    target_exam: $("#profileTargetExam").value,
+    target_score: $("#profileTargetScore").value,
+    target_date: $("#profileTargetDate").value,
+    self_levels: Object.fromEntries([...document.querySelectorAll("[data-self-level]")].map(input => [input.dataset.selfLevel, input.value])),
+    weak_areas: [...document.querySelectorAll("[data-profile-weak]:checked")].map(input => input.dataset.profileWeak),
+    interest_topics: [...document.querySelectorAll("[data-profile-interest]:checked")].map(input => input.dataset.profileInterest),
+    interest_content_types: [...document.querySelectorAll("[data-profile-content]:checked")].map(input => input.dataset.profileContent),
+  };
+}
+
+async function saveLearnerProfile() {
+  const data = await api("/api/learner-profile", { method: "POST", body: JSON.stringify(learnerProfilePayload()) });
+  state.learnerSettings = data.settings;
+  state.learnerProfile = data.profile;
+  await loadToday();
+  renderLearnerSettings();
+  renderDashboard();
+  $("#profileEditor").open = false;
+  toast("学习画像已保存");
+}
+
+function renderQuickTest() {
+  $("#quickTestItems").innerHTML = state.quickTestItems.map((item, index) => `
+    <fieldset class="quick-test-item">
+      <legend>${index + 1}. ${escapeHtml(item.prompt)}</legend>
+      ${item.options.map(option => `<label><input type="radio" name="quick-${escapeHtml(item.id)}" value="${escapeHtml(option)}" />${escapeHtml(option)}</label>`).join("")}
+    </fieldset>
+  `).join("");
+  $("#submitQuickTestBtn").hidden = !state.quickTestItems.length;
+}
+
+async function loadQuickTest() {
+  const data = await api("/api/profile/quick-test");
+  state.quickTestItems = data.items || [];
+  renderQuickTest();
+}
+
+async function submitQuickTest() {
+  const responses = Object.fromEntries(state.quickTestItems.map(item => {
+    const selected = document.querySelector(`input[name="quick-${CSS.escape(item.id)}"]:checked`);
+    return [item.id, selected?.value || ""];
+  }));
+  const data = await api("/api/profile/quick-test", { method: "POST", body: JSON.stringify({ ...learnerProfilePayload(), responses }) });
+  state.learnerSettings = data.settings;
+  state.learnerProfile = data.profile;
+  await loadToday();
+  renderLearnerSettings();
+  renderDashboard();
+  $("#profileEditor").open = false;
+  toast(`快速基线完成：${data.result.cefr}`);
 }
 
 function renderDailyPlan() {
@@ -1161,6 +1274,7 @@ async function loadProgress() {
 async function loadLearnerSettings() {
   const data = await api("/api/learner-settings");
   state.learnerSettings = data.settings;
+  state.learnerProfile = data.profile;
   renderLearnerSettings();
 }
 
@@ -1966,6 +2080,10 @@ document.addEventListener("click", async event => {
     }
     if (button.id === "refreshAllBtn") await boot();
     if (button.id === "saveLearnerSettingsBtn") await saveLearnerSettings();
+    if (button.dataset.profileSource) setProfileSource(button.dataset.profileSource);
+    if (button.id === "saveLearnerProfileBtn") await saveLearnerProfile();
+    if (button.id === "loadQuickTestBtn") await loadQuickTest();
+    if (button.id === "submitQuickTestBtn") await submitQuickTest();
     if (button.dataset.completeDailyTask) {
       await setDailyTaskComplete(
         button.dataset.completeDailyTask,

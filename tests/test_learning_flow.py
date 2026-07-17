@@ -28,6 +28,83 @@ class LearningFlowTests(unittest.TestCase):
         self.assertEqual(enriched["paragraph_count"], enriched["translation_paragraph_count"])
         self.assertTrue(enriched["translation_aligned"])
 
+    def test_score_profile_validates_and_stays_separate_from_xp(self):
+        original = server.learner_settings()
+        try:
+            result = server.update_learner_profile({
+                "profile_source": "score",
+                "assessment_type": "IELTS",
+                "assessment_date": "2026-07-01",
+                "overall_score": 6.5,
+                "section_scores": {"reading": 7, "listening": 5.5},
+                "target_exam": "IELTS",
+                "target_score": 7.5,
+                "target_date": "2026-12-01",
+                "weak_areas": ["listening", "paraphrase"],
+                "interest_topics": ["影视娱乐", "科学技术"],
+                "interest_content_types": ["subtitles", "interview"],
+            })
+            self.assertEqual(result["profile"]["cefr"], "B2")
+            self.assertEqual(result["profile"]["confidence"], "high")
+            self.assertNotIn("xp", result["profile"])
+            self.assertEqual(result["settings"]["target_score"], 7.5)
+        finally:
+            server.save_learner_settings(original)
+
+    def test_score_profile_requires_at_least_one_valid_score(self):
+        with self.assertRaisesRegex(ValueError, "at least one"):
+            server.update_learner_profile({
+                "profile_source": "score", "assessment_type": "TOEFL", "target_exam": "TOEFL",
+            })
+
+    def test_quick_test_builds_reading_vocabulary_baseline_without_exposing_answers(self):
+        original = server.learner_settings()
+        try:
+            public_items = server.quick_test_payload()
+            self.assertTrue(public_items)
+            self.assertTrue(all("answer" not in item for item in public_items))
+            responses = {item["id"]: item["answer"] for item in server.QUICK_TEST_ITEMS[:5]}
+            result = server.submit_quick_test({"responses": responses})
+            self.assertEqual(result["profile"]["source"], "quick_test")
+            self.assertEqual(result["profile"]["cefr"], "B2")
+            self.assertEqual(result["result"]["domains"]["reading"]["answered"], 3)
+        finally:
+            server.save_learner_settings(original)
+
+    def test_profile_shapes_today_difficulty_and_explains_recommendation(self):
+        original = server.learner_settings()
+        try:
+            server.update_learner_profile({
+                "profile_source": "self_assessment",
+                "self_levels": {"reading": "B2", "vocabulary": "B2"},
+                "target_exam": "IELTS",
+                "interest_topics": ["科学技术"],
+                "interest_content_types": ["explainer"],
+            })
+            today = server.today_content("IELTS", "interest")
+            self.assertEqual(today["profile"]["cefr"], "B2")
+            self.assertTrue(today["lanes"])
+            self.assertTrue(any("难度接近你的 B2" in lane["reason"] for lane in today["lanes"]))
+        finally:
+            server.save_learner_settings(original)
+
+    def test_daily_plan_update_preserves_profile(self):
+        original = server.learner_settings()
+        try:
+            server.update_learner_profile({
+                "profile_source": "self_assessment", "self_levels": {"reading": "B1"},
+                "target_exam": "TOEFL", "interest_topics": ["影视娱乐"],
+            })
+            updated = server.update_learner_settings({
+                "daily_minutes": 30, "daily_tasks": ["reading", "vocabulary"],
+                "daily_targets": {"reading": 1, "vocabulary": 5},
+            })
+            self.assertEqual(updated["profile_source"], "self_assessment")
+            self.assertEqual(updated["target_exam"], "TOEFL")
+            self.assertEqual(updated["interest_topics"], ["影视娱乐"])
+        finally:
+            server.save_learner_settings(original)
+
     def test_exam_question_type_filters_engine_output(self):
         items = server.generate_quiz_items(server.SAMPLE_ARTICLE, "mixed", "IELTS", "heading")
         self.assertTrue(items)
