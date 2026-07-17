@@ -9,6 +9,30 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.14] - 2026-07-18
+
+### Added
+
+- Added a first-run learner-profile dialog with score, quick baseline and self-assessment paths.
+- Added a reopenable quick-start assistant for interest mode, exam mode and the main learning workflows.
+- Added UI contract coverage for onboarding dialogs and exam-specific practice controls.
+
+### Changed
+
+- Reduced the practice toolbar to feedback mode, training scope and exam-specific question type; full-paper selection replaces question type when applicable.
+- Removed the redundant generic reading/cloze controls from the reader and practice center.
+- Changing the target exam, scope or specialty now immediately loads matching questions or generates a new matching set when needed.
+
+### Fixed
+
+- Fixed question-type changes updating the selector without replacing the displayed questions.
+- Fixed stale specialty questions remaining visible after switching to passage or full-paper scope.
+
+### Known limits
+
+- Full-paper generation is currently implemented only for the IELTS three-passage simulation.
+- The quick-start assistant explains existing paths but is not yet a conversational AI coach.
+
 ## [0.8.0-alpha.13] - 2026-07-18
 
 ### Added

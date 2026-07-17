@@ -28,6 +28,7 @@
       <button class="nav-item" data-view="quiz">练习中心</button>
       <button class="nav-item" data-view="mistakes">错题本</button>
       <button class="nav-item" data-view="history">训练记录</button>
+      <button class="nav-item" id="openAssistantBtn">学习助手</button>
     </nav>
     <div class="server-pill" id="serverStatus">连接中</div>
   </aside>
@@ -113,12 +114,15 @@
       <section class="band learner-profile-band">
         <div class="band-head">
           <div><span class="eyebrow">Learning profile</span><h2>学习画像</h2></div>
-          <span class="profile-status" id="profileStatus">待建立</span>
+          <div class="toolbar"><span class="profile-status" id="profileStatus">待建立</span><button id="openProfileDialogBtn">编辑画像</button></div>
         </div>
         <div class="profile-summary" id="profileSummary"></div>
         <div class="calibration-summary" id="calibrationSummary"></div>
-        <details class="profile-editor" id="profileEditor">
-          <summary>建立或修改画像</summary>
+        <dialog class="profile-dialog" id="profileEditor" aria-labelledby="profileDialogTitle">
+          <div class="dialog-head">
+            <div><span class="eyebrow">Personal baseline</span><h2 id="profileDialogTitle">建立学习画像</h2></div>
+            <button type="button" id="closeProfileDialogBtn" aria-label="关闭画像窗口">关闭</button>
+          </div>
           <div class="profile-source-switch" role="group" aria-label="画像建立方式">
             <button type="button" data-profile-source="score">已有成绩</button>
             <button type="button" data-profile-source="quick_test">快速基线</button>
@@ -192,8 +196,8 @@
             <label><input type="checkbox" data-profile-content="subtitles" />影视字幕</label><label><input type="checkbox" data-profile-content="interview" />访谈</label>
             <label><input type="checkbox" data-profile-content="fiction" />小说</label><label><input type="checkbox" data-profile-content="blog" />博客</label>
           </fieldset>
-          <div class="toolbar profile-actions"><button type="button" class="primary" id="saveLearnerProfileBtn">保存画像</button></div>
-        </details>
+          <div class="toolbar profile-actions"><button type="button" id="cancelProfileDialogBtn">取消</button><button type="button" class="primary" id="saveLearnerProfileBtn">保存画像</button></div>
+        </dialog>
       </section>
       <section class="band daily-plan-band">
         <div class="band-head">
@@ -352,14 +356,8 @@
             <div class="toolbar">
               <button id="toggleTranslationBtn" aria-pressed="false">显示译文</button>
               <button id="translateArticleBtn">一键翻译</button>
-              <select id="quizMode">
-                <option value="mixed">综合拆解</option>
-                <option value="reading">阅读题</option>
-                <option value="cloze">选词填空</option>
-              </select>
-              <select id="examQuestionType" aria-label="考试题型"></select>
               <button id="analyzeBtn">分析</button>
-              <button class="primary" id="generateQuizBtn">生成题</button>
+              <button class="primary" id="generateQuizBtn">转为练习</button>
             </div>
           </div>
           <div id="readerContentNotice"></div>
@@ -402,16 +400,10 @@
               <option value="full-paper">整套模拟</option>
             </select>
             <select id="quizPaperSelect" aria-label="已生成套题" hidden></select>
-            <select id="quizPracticeMode" aria-label="训练模式">
-              <option value="mixed">综合训练</option>
-              <option value="reading">阅读理解</option>
-              <option value="cloze">选词填空</option>
-            </select>
             <select id="quizPracticeType" aria-label="考试题型"></select>
             <button class="primary" id="generatePracticeBtn">按当前文章出题</button>
             <button class="primary" id="generateFullPaperBtn" hidden>生成 3 篇 / 40 题整套</button>
             <button id="loadPaperBtn" hidden>载入套题</button>
-            <button id="loadQuizzesBtn">载入题目</button>
           </div>
         </div>
         <div class="quiz-session-summary" id="quizSessionSummary"></div>
@@ -494,6 +486,31 @@
       </div>
     </section>
   </main>
+
+  <dialog class="assistant-dialog" id="assistantDialog" aria-labelledby="assistantDialogTitle">
+    <div class="dialog-head">
+      <div><span class="eyebrow">Quick start</span><h2 id="assistantDialogTitle">学习助手</h2></div>
+      <button type="button" id="closeAssistantBtn" aria-label="关闭学习助手">关闭</button>
+    </div>
+    <div class="assistant-mode-grid">
+      <section>
+        <span class="eyebrow">Interest</span><h3>兴趣模式</h3>
+        <ol><li>从今日内容或文章池选素材</li><li>阅读、查词并保存词块</li><li>需要时再把素材转成练习</li></ol>
+        <button type="button" data-assistant-mode="interest">进入兴趣模式</button>
+      </section>
+      <section>
+        <span class="eyebrow">Exam</span><h3>备考模式</h3>
+        <ol><li>选择目标考试</li><li>选择专项、单篇或整套</li><li>按考试题型训练并复盘错题</li></ol>
+        <button type="button" class="primary" data-assistant-mode="exam">进入备考模式</button>
+      </section>
+    </div>
+    <div class="assistant-steps">
+      <button type="button" data-assistant-view="dashboard">今日安排</button>
+      <button type="button" data-assistant-view="articles">选择素材</button>
+      <button type="button" data-assistant-view="quiz">进入练习</button>
+      <button type="button" data-assistant-view="mistakes">复盘错题</button>
+    </div>
+  </dialog>
 
   <div class="toast" id="toast"></div>
   <script type="module" src="/app.js"></script>

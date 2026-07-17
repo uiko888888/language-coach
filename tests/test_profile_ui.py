@@ -54,6 +54,36 @@ class ProfileUiContractTests(unittest.TestCase):
         self.assertIn('$("#examReviewSection").hidden = interest', self.js)
         self.assertIn('data-quiz-article="${article.id}"', self.js)
 
+    def test_first_run_profile_and_quick_start_use_dialogs(self):
+        self.assertIn('<dialog class="profile-dialog" id="profileEditor"', self.html)
+        self.assertIn('id="openProfileDialogBtn"', self.html)
+        self.assertIn('id="closeProfileDialogBtn"', self.html)
+        self.assertIn('id="cancelProfileDialogBtn"', self.html)
+        self.assertIn('<dialog class="assistant-dialog" id="assistantDialog"', self.html)
+        self.assertIn('id="openAssistantBtn"', self.html)
+        self.assertIn('data-assistant-mode="interest"', self.html)
+        self.assertIn('data-assistant-mode="exam"', self.html)
+        self.assertIn('if (!state.learnerProfile?.completed) openProfileDialog();', self.js)
+        self.assertIn('const QUICK_START_SEEN_KEY = "lc-v2-quick-start-seen";', self.js)
+
+    def test_practice_controls_use_exam_specific_taxonomy(self):
+        for element_id in ("quizSessionMode", "quizScope", "quizPracticeType"):
+            self.assertIn(f'id="{element_id}"', self.html)
+        for removed_id in ("quizPracticeMode", "quizMode", "examQuestionType", "loadQuizzesBtn"):
+            self.assertNotIn(f'id="{removed_id}"', self.html)
+            self.assertNotIn(f'$("#{removed_id}")', self.js)
+        self.assertIn('async function applyQuizControlChange()', self.js)
+        self.assertIn('$("#quizPracticeType").addEventListener("change", applyQuizControlChange);', self.js)
+        self.assertIn('await applyQuizControlChange();', self.js)
+        self.assertIn('const mode = "mixed";', self.js)
+        self.assertIn('async function generatePassagePractice(', self.js)
+        self.assertIn('$("#quizScope").value = "passage";', self.js)
+
+    def test_scope_switch_replaces_question_type_with_paper_selector(self):
+        self.assertIn('$("#quizPracticeType").hidden = isFull || scope === "passage";', self.js)
+        self.assertIn('$("#quizPaperSelect").hidden = !isFull;', self.js)
+        self.assertIn('state.quizzes = state.selectedPaper ? flattenPaperQuizzes(state.selectedPaper) : [];', self.js)
+
 
 if __name__ == "__main__":
     unittest.main()

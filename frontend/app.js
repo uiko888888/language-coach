@@ -116,6 +116,34 @@ function toast(message) {
   setTimeout(() => el.classList.remove("show"), 1500);
 }
 
+const QUICK_START_SEEN_KEY = "lc-v2-quick-start-seen";
+
+function openProfileDialog() {
+  const dialog = $("#profileEditor");
+  if (!dialog?.open) dialog?.showModal();
+}
+
+function closeProfileDialog() {
+  const dialog = $("#profileEditor");
+  if (dialog?.open) dialog.close();
+}
+
+function openAssistant() {
+  const dialog = $("#assistantDialog");
+  if (!dialog?.open) dialog?.showModal();
+}
+
+function closeAssistant() {
+  const dialog = $("#assistantDialog");
+  if (dialog?.open) dialog.close();
+}
+
+function maybeOpenAssistant() {
+  if (!state.learnerProfile?.completed || localStorage.getItem(QUICK_START_SEEN_KEY)) return;
+  localStorage.setItem(QUICK_START_SEEN_KEY, "1");
+  openAssistant();
+}
+
 function formatDuration(totalSeconds) {
   const seconds = Math.max(0, Number(totalSeconds) || 0);
   const hours = Math.floor(seconds / 3600);
@@ -356,7 +384,6 @@ function renderLearnerProfile() {
   $("#calibrationSummary").innerHTML = calibration.profile_completed
     ? `<strong>分项：</strong>${escapeHtml(domainText || "等待训练数据")}<br><strong>下次校准：</strong>${calibration.due ? "完成下一次训练后执行" : `${calibration.days_remaining ?? 7} 天后`} · 只调整达到样本门槛的分项`
     : `建立画像后开始累计七天分项证据。`;
-  if (!profile.completed) $("#profileEditor").open = true;
 
   const assessment = settings.assessment || {};
   $("#profileAssessmentType").value = assessment.type || "IELTS";
@@ -402,8 +429,9 @@ async function saveLearnerProfile() {
   await loadToday();
   renderLearnerSettings();
   renderDashboard();
-  $("#profileEditor").open = false;
+  $("#profileEditor").close();
   toast("学习画像已保存");
+  maybeOpenAssistant();
 }
 
 function renderQuickTest() {
@@ -433,8 +461,9 @@ async function submitQuickTest() {
   await loadToday();
   renderLearnerSettings();
   renderDashboard();
-  $("#profileEditor").open = false;
+  $("#profileEditor").close();
   toast(`快速基线完成：${data.result.cefr}`);
+  maybeOpenAssistant();
 }
 
 function renderDailyPlan() {
@@ -1261,13 +1290,7 @@ function renderAll() {
 }
 
 function renderExamTypes() {
-  const select = $("#examQuestionType");
-  const previous = select.value;
-  select.innerHTML = `<option value="">全部对应题型</option>${state.examTypes.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join("")}`;
-  if (state.examTypes.some(item => item.id === previous)) select.value = previous;
   const practiceSelect = $("#quizPracticeType");
-  const practiceMode = $("#quizPracticeMode");
-  if (practiceMode) practiceMode.hidden = state.style !== "general";
   if (practiceSelect) {
     const practicePrevious = practiceSelect.value;
     practiceSelect.innerHTML = `<option value="">选择专项题型</option>${state.examTypes.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join("")}`;
@@ -1441,13 +1464,41 @@ function updateQuizScopeControls() {
   if (state.style !== "IELTS" && scopeSelect?.value === "full-paper") scopeSelect.value = "specialty";
   const scope = scopeSelect?.value || "specialty";
   const isFull = scope === "full-paper";
-  $("#quizPracticeType").hidden = isFull;
-  $("#quizPracticeMode").hidden = isFull;
+  $("#quizPracticeType").hidden = isFull || scope === "passage";
   $("#generatePracticeBtn").hidden = isFull;
   $("#quizPaperSelect").hidden = !isFull;
   $("#generateFullPaperBtn").hidden = !isFull;
   $("#loadPaperBtn").hidden = !isFull;
   $("#generatePracticeBtn").textContent = scope === "passage" ? "生成单篇组合题" : "按当前文章出题";
+}
+
+async function applyQuizControlChange() {
+  updateQuizScopeControls();
+  const scope = $("#quizScope").value;
+  if (scope === "full-paper") {
+    state.quizzes = state.selectedPaper ? flattenPaperQuizzes(state.selectedPaper) : [];
+    resetQuizSession();
+    renderQuizzes();
+    renderQuizSource();
+    return;
+  }
+  if (!state.selectedArticle) {
+    state.quizzes = [];
+    renderQuizzes();
+    return toast("先选择一篇文章");
+  }
+  if (scope === "passage") {
+    await generateQuizzes(state.selectedArticle.id, { open: false });
+    return;
+  }
+  await loadQuizzes();
+  if (!state.quizzes.length) await generateQuizzes(state.selectedArticle.id, { open: false });
+  else {
+    resetQuizSession();
+    renderQuizzes();
+    renderQuizSource();
+    toast(`已切换到 ${$("#quizPracticeType").selectedOptions[0]?.textContent || "当前题型"}`);
+  }
 }
 
 function flattenPaperQuizzes(paper) {
@@ -1676,7 +1727,7 @@ async function loadQuizzes() {
   const params = new URLSearchParams();
   if (state.selectedArticle) params.set("article_id", state.selectedArticle.id);
   params.set("style", state.style);
-  const questionType = $("#quizPracticeType")?.value || "";
+  const questionType = $("#quizScope")?.value === "specialty" ? $("#quizPracticeType")?.value || "" : "";
   if (questionType) params.set("question_type", questionType);
   const data = await api(`/api/quizzes?${params.toString()}`);
   state.quizzes = data.quizzes || [];
@@ -1721,10 +1772,10 @@ async function analyzeArticle() {
 
 async function generateQuizzes(id = state.selectedArticle?.id, { open = true } = {}) {
   if (!id) return toast("先选文章");
-  const mode = $("#quizPracticeMode")?.value || $("#quizMode")?.value || "mixed";
+  const mode = "mixed";
   const questionType = $("#quizScope")?.value === "passage"
     ? "mixed"
-    : $("#quizPracticeType")?.value || $("#examQuestionType")?.value || "";
+    : $("#quizPracticeType")?.value || "";
   const data = await api(`/api/articles/${id}/quizzes`, {
     method: "POST",
     body: JSON.stringify({ mode, style: state.style, question_type: questionType }),
@@ -1735,6 +1786,13 @@ async function generateQuizzes(id = state.selectedArticle?.id, { open = true } =
   if (open) setView("quiz");
   renderAll();
   toast("题目已生成");
+}
+
+async function generatePassagePractice(id = state.selectedArticle?.id) {
+  $("#quizScope").value = "passage";
+  state.selectedPaper = null;
+  updateQuizScopeControls();
+  await generateQuizzes(id);
 }
 
 async function submitAnswer(quizId, answer, button = null, confidence = state.quizSession.confidence[quizId] || null) {
@@ -2096,6 +2154,21 @@ document.addEventListener("click", async event => {
   const button = event.target.closest("button");
   if (!button) return;
   try {
+    if (button.id === "openProfileDialogBtn") openProfileDialog();
+    if (button.id === "closeProfileDialogBtn" || button.id === "cancelProfileDialogBtn") closeProfileDialog();
+    if (button.id === "openAssistantBtn") openAssistant();
+    if (button.id === "closeAssistantBtn") closeAssistant();
+    if (button.dataset.assistantMode) {
+      closeAssistant();
+      await setLearningMode(button.dataset.assistantMode);
+      setView("dashboard");
+      renderDashboard();
+    }
+    if (button.dataset.assistantView) {
+      closeAssistant();
+      setView(button.dataset.assistantView);
+      renderAll();
+    }
     if (button.dataset.lexiconFilter) state.lexiconFilter = button.dataset.lexiconFilter;
     if (button.dataset.learningMode) await setLearningMode(button.dataset.learningMode);
     if (button.dataset.view) setView(button.dataset.view);
@@ -2162,11 +2235,7 @@ document.addEventListener("click", async event => {
     if (button.id === "importEpubBtn") await importEpub();
     if (button.id === "openEpubChapterBtn") await openEpubChapter();
     if (button.id === "analyzeBtn") await analyzeArticle();
-    if (button.id === "generateQuizBtn") await generateQuizzes();
-    if (button.id === "loadQuizzesBtn") {
-      await loadQuizzes();
-      renderQuizzes();
-    }
+    if (button.id === "generateQuizBtn") await generatePassagePractice();
     if (button.id === "generatePracticeBtn") await generateQuizzes();
     if (button.id === "generateFullPaperBtn") await generateFullPaper();
     if (button.id === "nextSetBtn" || button.dataset.nextSet) await generateNextSet();
@@ -2220,7 +2289,7 @@ document.addEventListener("click", async event => {
     }
     if (button.dataset.quizArticle) {
       await openArticle(button.dataset.quizArticle);
-      await generateQuizzes(button.dataset.quizArticle);
+      await generatePassagePractice(button.dataset.quizArticle);
     }
     if (button.dataset.word) await renderLookup(button.dataset.word);
     if (button.dataset.lexiconTab) {
@@ -2305,23 +2374,18 @@ $("#globalStyle").addEventListener("change", async event => {
   state.selectedPaper = null;
   state.selectedPracticeSession = null;
   await Promise.all([loadArticles(), loadFeeds(), loadExamTypes(), loadExamLibrary(), loadToday(), loadPracticeHistory()]);
-  await loadQuizzes();
+  await applyQuizControlChange();
   renderAll();
   toast(`文章池已切换为 ${state.style} 来源`);
 });
 
-$("#quizPracticeType").addEventListener("change", async () => {
-  await loadQuizzes();
-  renderQuizzes();
-});
+$("#quizPracticeType").addEventListener("change", applyQuizControlChange);
 
-$("#quizScope").addEventListener("change", event => {
-  updateQuizScopeControls();
+$("#quizScope").addEventListener("change", async event => {
   if (event.target.value !== "full-paper") {
     state.selectedPaper = null;
-    state.quizSession.activeIndex = 0;
   }
-  renderQuizzes();
+  await applyQuizControlChange();
 });
 
 $("#quizPaperSelect").addEventListener("change", async event => {
@@ -2419,6 +2483,8 @@ async function boot() {
     await generateQuizzes(state.selectedArticle.id, { open: false });
   }
   renderAll();
+  if (!state.learnerProfile?.completed) openProfileDialog();
+  else maybeOpenAssistant();
   const startupParams = new URLSearchParams(window.location.search);
   if (startupParams.get("view") === "lexicon" || startupParams.get("q")) {
     await searchLexicon(startupParams.get("q") || "", { open: true, history: false });
