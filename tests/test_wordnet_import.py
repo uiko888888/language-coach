@@ -34,6 +34,12 @@ class WordNetImportTests(unittest.TestCase):
                         "members": ["concept"],
                         "partOfSpeech": "n",
                     },
+                    "00000003-v": {
+                        "definition": ["to examine something as a test"],
+                        "example": ["They test the system twice."],
+                        "members": ["test", "try out"],
+                        "partOfSpeech": "v",
+                    },
                 })
             )
             archive.writestr(
@@ -43,7 +49,11 @@ class WordNetImportTests(unittest.TestCase):
                         "n": {
                             "pronunciation": [{"value": "/test/"}],
                             "sense": [{"id": "test%1:00:00::", "synset": "00000001-n"}],
-                        }
+                        },
+                        "v": {
+                            "pronunciation": [{"value": "/test/"}],
+                            "sense": [{"id": "test%2:00:00::", "synset": "00000003-v"}],
+                        },
                     }
                 })
             )
@@ -55,8 +65,8 @@ class WordNetImportTests(unittest.TestCase):
         cls.temp_dir.cleanup()
 
     def test_import_records_source_and_counts(self):
-        self.assertEqual(self.result["synsets"], 2)
-        self.assertEqual(self.result["lemmas"], 1)
+        self.assertEqual(self.result["synsets"], 3)
+        self.assertEqual(self.result["lemmas"], 2)
         with server.db() as conn:
             source = conn.execute("SELECT * FROM dictionary_sources").fetchone()
         self.assertEqual(source["license"], "CC BY 4.0")
@@ -82,6 +92,13 @@ class WordNetImportTests(unittest.TestCase):
         self.assertEqual(result["core_meaning"], "a small test concept")
         relation = next(item for item in result["semantic_relations"] if item["type"] == "hypernym")
         self.assertIn("concept", relation["terms"])
+
+    def test_same_headword_parts_of_speech_are_grouped(self):
+        results = [item for item in server.lexical_search("test")["results"] if item["type"] == "wordnet"]
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["parts_of_speech"], ["noun", "verb"])
+        self.assertEqual({sense["pos"] for sense in results[0]["senses"]}, {"noun", "verb"})
+        self.assertEqual(len(results[0]["examples"]), 2)
 
     def test_cached_word_and_relation_translations_are_exposed(self):
         values = {"test": "测试", "concept": "概念"}

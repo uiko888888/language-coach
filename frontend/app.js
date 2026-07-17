@@ -800,12 +800,23 @@ function highlightLexicalText(text, item) {
 function phraseCards(items) {
   return (items || []).map(item => {
     const current = typeof item === "string" ? { phrase: item, meaning_zh: "", synonyms: [], antonyms: [] } : item;
+    const source = current.source ? `${current.source}${current.observed_count ? ` · 出现 ${current.observed_count} 次` : ""}` : "";
     return `<article class="phrase-item">
       <div class="phrase-head"><div><button class="phrase-query" data-search-query="${escapeHtml(current.phrase)}"><strong>${escapeHtml(current.phrase)}</strong></button><p>${escapeHtml(current.meaning_zh || "")}</p></div><button data-save-phrase="${escapeHtml(current.phrase)}" title="加入生词本" aria-label="加入生词本">＋</button></div>
+      ${source ? `<small class="phrase-source">${escapeHtml(source)}</small>` : ""}
       ${current.synonyms?.length ? `<div class="phrase-relation"><span>近义表达</span><div class="term-grid">${termButtons(current.synonyms, "synonym")}</div></div>` : ""}
       ${current.antonyms?.length ? `<div class="phrase-relation"><span>反义表达</span><div class="term-grid">${termButtons(current.antonyms, "antonym")}</div></div>` : ""}
     </article>`;
   }).join("");
+}
+
+function contextExamples(contexts) {
+  return (contexts || []).map(context => `<article class="example-item">
+    ${context.translation_zh ? `<p class="context-meaning">${escapeHtml(context.translation_zh)}</p>` : ""}
+    <p class="example-en">${searchableEnglish(context.text)}</p>
+    <p class="context-source">${escapeHtml(context.article_title || context.source)}</p>
+    ${context.article_id ? `<button data-open-article="${context.article_id}">回到原文</button>` : ""}
+  </article>`).join("");
 }
 
 function bilingualExamples(examples, item) {
@@ -841,7 +852,7 @@ function renderLexicalDetail(item) {
       </div>
       <p class="core-definition">${escapeHtml(translated || "本地开放词典尚未收录完整释义。你仍可保存、翻译，并从个人文章语境继续学习。")}</p>
       <div class="dictionary-columns query-columns">
-        <section class="dictionary-section"><h3>你的真实语境</h3>${item.contexts?.length ? item.contexts.map(context => `<article class="example-item"><p class="example-en">${searchableEnglish(context.text)}</p><p class="example-zh">${escapeHtml(context.article_title || context.source)}</p>${context.article_id ? `<button data-open-article="${context.article_id}">回到原文</button>` : ""}</article>`).join("") : `<div class="empty-state">尚未在个人文章中找到这个表达。</div>`}</section>
+        <section class="dictionary-section"><h3>你的真实语境</h3>${item.contexts?.length ? contextExamples(item.contexts) : `<div class="empty-state">尚未在个人文章中找到这个表达。</div>`}</section>
         <section class="dictionary-section"><h3>下一步</h3><p>先确认当前语境含义，再保存整句。后续开放词典导入会补充高频义项、搭配、近义辨析和词源。</p></section>
       </div>
     `;
@@ -861,12 +872,12 @@ function renderLexicalDetail(item) {
       <p class="core-definition">${escapeHtml(item.core_meaning || "")}</p>
       ${translated ? `<p class="zh-definition">${escapeHtml(translated)}</p>` : `<p class="muted">${state.bridge?.translation?.verified === false ? escapeHtml(state.bridge.translation.last_error || "中文翻译服务验证失败，请检查 API 配置。") : "WordNet 提供英文义项；中文确认可使用上方翻译，结果会缓存到本地。"}</p>`}
       <div class="dictionary-columns">
-        <section class="dictionary-section"><h3>义项与例句</h3><div class="sense-list">${(item.senses || []).map((sense, index) => `<article class="example-item"><strong>Sense ${index + 1}</strong>${(sense.definitions || []).map((definition, definitionIndex) => `<p class="example-en">${escapeHtml(definition)}</p>${sense.definition_translations?.[definitionIndex] ? `<p class="example-zh">${escapeHtml(sense.definition_translations[definitionIndex])}</p>` : ""}`).join("")}${(sense.examples || []).map((example, exampleIndex) => `<p class="example-en">${searchableEnglish(example)}</p>${sense.example_translations?.[exampleIndex] ? `<p class="example-zh">${escapeHtml(sense.example_translations[exampleIndex])}</p>` : ""}`).join("")}</article>`).join("") || `<div class="empty-state">暂无义项</div>`}</div></section>
-        <section class="dictionary-section"><h3>词组与搭配</h3><div class="phrase-list">${phraseCards(item.collocations) || `<div class="empty-state">当前文章中暂无可确认搭配</div>`}</div></section>
+        <section class="dictionary-section"><h3>义项与例句</h3><div class="sense-list">${(item.senses || []).map((sense, index) => `<article class="sense-item"><div class="sense-head"><strong>义项 ${index + 1}</strong>${sense.pos ? badge(sense.pos) : ""}</div>${(sense.definitions || []).map((definition, definitionIndex) => `${sense.definition_translations?.[definitionIndex] ? `<p class="sense-meaning">${escapeHtml(sense.definition_translations[definitionIndex])}</p>` : ""}<p class="sense-definition-en">${escapeHtml(definition)}</p>`).join("")}${(sense.examples || []).length ? `<div class="sense-examples">${(sense.examples || []).map((example, exampleIndex) => `<article>${sense.example_translations?.[exampleIndex] ? `<p class="example-zh">${escapeHtml(sense.example_translations[exampleIndex])}</p>` : ""}<p class="example-en">${searchableEnglish(example)}</p></article>`).join("")}</div>` : `<p class="muted">该义项暂无开放例句</p>`}</article>`).join("") || `<div class="empty-state">暂无义项</div>`}</div></section>
+        <section class="dictionary-section"><h3>搭配（按个人语料排序）</h3><div class="phrase-list">${phraseCards(item.collocations) || `<div class="empty-state">个人语料中暂无可确认搭配；后续开放搭配词典会补充常见表达。</div>`}</div></section>
         <section class="dictionary-section"><h3>近义词</h3><div class="term-grid">${termButtons(item.synonyms, "synonym") || `<div class="empty-state">WordNet 未提供近义词</div>`}</div><h4>反义词</h4><div class="term-grid">${termButtons(item.antonyms, "antonym") || `<div class="empty-state">WordNet 未提供直接反义词</div>`}</div></section>
-        <section class="dictionary-section"><h3>语义关系</h3>${relationSections || `<div class="empty-state">暂无关系数据</div>`}<p class="source-note">来源：${escapeHtml(item.source_name || "Open English WordNet")} · ${escapeHtml(item.license || "CC BY 4.0")}</p></section>
+        <section class="dictionary-section"><h3>语义关系</h3>${relationSections || `<div class="empty-state">暂无关系数据</div>`}<p class="source-note">英文语义：${escapeHtml(item.source_name || "Open English WordNet")} · ${escapeHtml(item.license || "CC BY 4.0")}<br>中文：开放双语数据或本地翻译缓存；机器翻译不冒充出版词典释义。</p></section>
       </div>
-      ${item.contexts?.length ? `<section class="dictionary-section"><h3>你的真实语境</h3>${item.contexts.map(context => `<article class="example-item"><p class="example-en">${searchableEnglish(context.text)}</p><p class="example-zh">${escapeHtml(context.article_title || context.source)}</p>${context.article_id ? `<button data-open-article="${context.article_id}">回到原文</button>` : ""}</article>`).join("")}</section>` : ""}
+      ${item.contexts?.length ? `<section class="dictionary-section"><h3>真实语境 · ${item.contexts.length} 例</h3>${contextExamples(item.contexts)}</section>` : ""}
     `;
     return;
   }
@@ -2092,6 +2103,7 @@ async function translateWordNetEntry(item, { silent = false } = {}) {
     ...(item.family || []).map(value => typeof value === "string" ? value : value.term),
     ...(item.collocations || []).map(value => typeof value === "string" ? value : value.phrase),
     ...(item.semantic_relations || []).flatMap(relation => (relation.term_details || relation.terms || []).map(value => typeof value === "string" ? value : value.term)),
+    ...(item.contexts || []).map(context => context.text),
   ]).filter(Boolean))];
   if (!segments.length) return;
   state.wordnetTranslationsInFlight.add(key);
@@ -2136,6 +2148,7 @@ async function translateWordNetEntry(item, { silent = false } = {}) {
       }),
     }));
     item.examples = (item.examples || []).map(example => ({ ...example, translation: translated[example.text] || example.translation || "" }));
+    item.contexts = (item.contexts || []).map(context => ({ ...context, translation_zh: translated[context.text] || context.translation_zh || "" }));
     item.meaning_zh = translated[item.core_meaning] || Object.values(translated)[0] || "";
     state.lookupTranslations[item.headword.toLowerCase()] = item.meaning_zh;
     state.wordnetAutoTranslationFailed = false;

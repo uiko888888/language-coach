@@ -106,6 +106,14 @@ class ProfileUiContractTests(unittest.TestCase):
         self.assertIn('$("#quizPaperSelect").hidden = !isFull;', self.js)
         self.assertIn('state.quizzes = state.selectedPaper ? flattenPaperQuizzes(state.selectedPaper) : [];', self.js)
 
+    def test_dictionary_places_chinese_before_examples_and_labels_sources(self):
+        self.assertIn("function contextExamples(contexts)", self.js)
+        self.assertIn('class="sense-meaning"', self.js)
+        self.assertIn('class="sense-examples"', self.js)
+        self.assertIn("搭配（按个人语料排序）", self.js)
+        self.assertIn("机器翻译不冒充出版词典释义", self.js)
+        self.assertIn("item.contexts = (item.contexts || []).map", self.js)
+
 
 if __name__ == "__main__":
     unittest.main()

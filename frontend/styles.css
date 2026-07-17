@@ -1064,11 +1064,22 @@ label {
 .phrase-relation { margin-top: 9px; }
 .phrase-relation > span { display: block; margin-bottom: 5px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .phrase-relation .term-link { min-height: 34px; }
+.phrase-source { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
 .example-item { padding: 11px 0; border-top: 1px solid var(--line); }
 .example-item:first-child { padding-top: 0; border-top: 0; }
 .example-item p { margin: 0; line-height: 1.65; }
 .sense-list { display: grid; gap: 4px; }
 .sense-list article strong { display: block; margin-bottom: 6px; color: var(--muted); font-size: 12px; }
+.sense-item { padding: 14px 0; border-top: 1px solid var(--line); }
+.sense-item:first-child { padding-top: 0; border-top: 0; }
+.sense-head { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
+.sense-head strong { margin: 0 !important; }
+.sense-meaning { margin: 0 0 3px; color: var(--teal-dark); font-size: 15px; font-weight: 800; line-height: 1.55; }
+.sense-definition-en { margin: 0 0 9px; color: var(--muted); font-family: Georgia, "Times New Roman", serif; font-size: 13px; line-height: 1.55; }
+.sense-examples { display: grid; gap: 8px; padding-left: 11px; border-left: 3px solid #d7e7e2; }
+.sense-examples article p { margin: 0; line-height: 1.6; }
+.context-meaning { margin-bottom: 4px !important; color: var(--teal-dark); font-weight: 700; }
+.context-source { margin-top: 5px !important; color: var(--muted); font-size: 12px; }
 .source-note { margin-top: 18px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .example-en { font-family: Georgia, "Times New Roman", serif; }
 .example-zh { margin-top: 5px !important; color: var(--muted); font-size: 13px; }

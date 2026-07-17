@@ -93,6 +93,40 @@ class LexicalSearchTests(unittest.TestCase):
         self.assertEqual(item["term"], "ubiquitous")
         self.assertEqual(item["kind"], "word")
 
+    def test_personal_contexts_keep_multiple_examples_and_cached_chinese(self):
+        sentence_one = "Readers respect evidence when evaluating a difficult claim."
+        sentence_two = "Writers respect evidence by separating facts from opinion."
+        now = server.utc_now()
+        with server.db() as conn:
+            conn.execute(
+                """INSERT INTO articles
+                   (title, language, level, topic, source, body, created_at, updated_at)
+                   VALUES (?, 'English', 'B2', 'Research', 'test', ?, ?, ?)""",
+                ("Respecting evidence", f"{sentence_one} {sentence_two}", now, now),
+            )
+            for source, translated in ((sentence_one, "读者在评估困难论点时尊重证据。"), (sentence_two, "作者通过区分事实与观点来尊重证据。")):
+                conn.execute(
+                    """INSERT INTO translation_cache
+                       (text_hash, source_lang, target_lang, provider, source_text, translated_text, created_at)
+                       VALUES (?, 'EN', 'ZH-HANS', 'test', ?, ?, ?)""",
+                    (hashlib.sha256(source.encode("utf-8")).hexdigest(), source, translated, now),
+                )
+        context = server.lexical_query_context("respect")
+        matched = [item for item in context["contexts"] if item["text"] in {sentence_one, sentence_two}]
+        self.assertEqual(len(matched), 2)
+        self.assertTrue(all(item["translation_zh"] for item in matched))
+
+    def test_contextual_collocations_are_ranked_by_observed_count(self):
+        contexts = [
+            {"text": "Teams inspect for damage."},
+            {"text": "Engineers inspect for damage."},
+            {"text": "Managers closely inspect reports."},
+        ]
+        collocations = server.contextual_collocations("inspect", contexts)
+        self.assertEqual(collocations[0]["phrase"].lower(), "inspect for damage")
+        self.assertEqual(collocations[0]["observed_count"], 2)
+        self.assertEqual(collocations[0]["source"], "个人文章语料")
+
 
 if __name__ == "__main__":
     unittest.main()

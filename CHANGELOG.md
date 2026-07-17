@@ -9,6 +9,28 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.16] - 2026-07-18
+
+### Added
+
+- Added multiple personal-context examples per queried term with cached Chinese translations.
+- Added part-of-speech labels to individual WordNet senses.
+- Added corpus source and observed-count metadata to contextual collocations.
+- Added translation coverage for personal contexts alongside definitions, examples, related terms and collocations.
+
+### Changed
+
+- Grouped the same WordNet headword across noun, verb, adjective and adverb records into one entry page.
+- Moved each Chinese sense meaning before its corresponding English definition and examples.
+- Ranked personal-context collocations by observed count and labeled curated seed collocations separately.
+- Clarified that machine translations are not published-dictionary definitions.
+
+### Known limits
+
+- Open English WordNet remains the semantic backbone; it is not an English-Chinese dictionary.
+- Kaikki/Wiktionary and Tatoeba licensed imports are not yet installed, so Chinese coverage still depends on curated seed entries and the configured translation provider.
+- Personal-corpus counts are user-specific evidence, not general-language frequency; wordfreq integration remains pending.
+
 ## [0.8.0-alpha.15] - 2026-07-18
 
 ### Added

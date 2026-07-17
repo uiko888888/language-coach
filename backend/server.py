@@ -189,7 +189,13 @@ def lexical_term(term: str, meaning_zh: str, note: str = "") -> dict:
 
 
 def phrase(term: str, meaning_zh: str, synonyms: list[dict] | None = None, antonyms: list[dict] | None = None) -> dict:
-    return {"phrase": term, "meaning_zh": meaning_zh, "synonyms": synonyms or [], "antonyms": antonyms or []}
+    return {
+        "phrase": term,
+        "meaning_zh": meaning_zh,
+        "source": "人工精选常用搭配",
+        "synonyms": synonyms or [],
+        "antonyms": antonyms or [],
+    }
 
 
 def bilingual_example(text: str, translation: str) -> dict:
@@ -3752,7 +3758,7 @@ def morpheme_entry(row: sqlite3.Row) -> dict:
     return item
 
 
-def lexical_query_context(term: str, limit: int = 5) -> dict:
+def lexical_query_context(term: str, limit: int = 12) -> dict:
     normalized = re.sub(r"\s+", " ", term).strip()
     digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
     contexts: list[dict] = []
@@ -3785,20 +3791,27 @@ def lexical_query_context(term: str, limit: int = 5) -> dict:
             "source": "生词本语境",
             "article_id": card["source_article_id"],
             "article_title": "",
+            "translation_zh": "",
         })
     pattern = re.compile(rf"(?<![A-Za-z]){re.escape(normalized)}(?![A-Za-z])", re.I)
     for row in article_rows:
-        context = next((sentence for sentence in sentences(row["body"]) if pattern.search(sentence)), "")
-        if not context or any(item["text"] == context for item in contexts):
-            continue
-        contexts.append({
-            "text": context,
-            "source": row["source"],
-            "article_id": row["id"],
-            "article_title": row["title"],
-        })
+        for context in (sentence for sentence in sentences(row["body"]) if pattern.search(sentence)):
+            if any(item["text"] == context for item in contexts):
+                continue
+            contexts.append({
+                "text": context,
+                "source": row["source"],
+                "article_id": row["id"],
+                "article_title": row["title"],
+                "translation_zh": "",
+            })
+            if len(contexts) >= limit:
+                break
         if len(contexts) >= limit:
             break
+    context_translations = cached_segment_translations([item["text"] for item in contexts])
+    for item in contexts:
+        item["translation_zh"] = context_translations.get(item["text"], "")
     return {
         "translation_zh": (clip or cached or {"translated_text": ""})["translated_text"],
         "saved": bool(card),
@@ -3834,15 +3847,23 @@ def contextual_collocations(term: str, contexts: list[dict], limit: int = 8) -> 
             leader = phrase.split()[0].lower()
             if leader not in weak_leaders and not leader.endswith("'s"):
                 candidates.append((phrase, sentence))
-    unique = []
-    seen = set()
+    grouped: dict[str, dict] = {}
     for phrase, sentence in candidates:
         key = phrase.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append({"phrase": phrase, "meaning_zh": "", "source": "个人文章语境", "context": sentence, "synonyms": [], "antonyms": []})
-    return unique[:limit]
+        item = grouped.setdefault(key, {
+            "phrase": phrase,
+            "meaning_zh": "",
+            "source": "个人文章语料",
+            "observed_count": 0,
+            "contexts": [],
+            "synonyms": [],
+            "antonyms": [],
+        })
+        item["observed_count"] += 1
+        if sentence not in item["contexts"]:
+            item["contexts"].append(sentence)
+    ranked = sorted(grouped.values(), key=lambda item: (-item["observed_count"], len(item["phrase"]), item["phrase"].casefold()))
+    return ranked[:limit]
 
 
 def cached_segment_translations(segments: list[str], source_lang: str = "EN", target_lang: str = "ZH-HANS") -> dict[str, str]:
@@ -3953,13 +3974,14 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
         source_segments.extend(json.loads(row["definitions_json"] or "[]"))
         source_segments.extend(json.loads(row["examples_json"] or "[]"))
     cached_zh = cached_segment_translations(source_segments)
-    grouped: dict[tuple[str, str], list[sqlite3.Row]] = {}
+    grouped: dict[str, list[sqlite3.Row]] = {}
     for row in rows:
-        grouped.setdefault((row["lemma"].casefold(), row["pos"]), []).append(row)
+        grouped.setdefault(row["lemma"].casefold(), []).append(row)
 
     results = []
-    for (_, pos), sense_rows in list(grouped.items())[:limit]:
+    for _, sense_rows in list(grouped.items())[:limit]:
         headword = sense_rows[0]["lemma"]
+        pos_values = list(dict.fromkeys(row["pos"] for row in sense_rows if row["pos"]))
         pronunciations = []
         senses = []
         synonyms = []
@@ -3974,6 +3996,7 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
             examples.extend(sense_examples)
             senses.append({
                 "synset_id": row["synset_id"],
+                "pos": WORDNET_POS_LABELS.get(row["pos"], row["pos"]),
                 "definitions": definitions,
                 "definition_translations": [cached_zh.get(value, "") for value in definitions],
                 "examples": sense_examples,
@@ -4006,7 +4029,8 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
             "score": 94,
             "matched_by": "Open English WordNet",
             "headword": headword,
-            "pos": WORDNET_POS_LABELS.get(pos, pos),
+            "pos": " / ".join(WORDNET_POS_LABELS.get(value, value) for value in pos_values),
+            "parts_of_speech": [WORDNET_POS_LABELS.get(value, value) for value in pos_values],
             "ipa_uk": pronunciations[0] if pronunciations else "",
             "ipa_us": pronunciations[0] if pronunciations else "",
             "core_meaning": next((definition for sense in senses for definition in sense["definitions"]), ""),
