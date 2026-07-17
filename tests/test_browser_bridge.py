@@ -182,6 +182,14 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(today["mode"], "interest")
         self.assertTrue(any(lane["label"] == "15 分钟沉浸" for lane in today["lanes"]))
 
+    def test_feed_status_api_exposes_scheduler_and_source_health(self):
+        status, _ = self.request("/api/feeds/status")
+        self.assertIn("refreshing", status)
+        self.assertIn("due", status)
+        self.assertGreaterEqual(status["interval_hours"], 1)
+        self.assertTrue(status["sources"])
+        self.assertTrue(all("consecutive_failures" in source for source in status["sources"]))
+
     def test_learner_settings_shape_daily_plan_and_goal_context(self):
         saved, _ = self.request(
             "/api/learner-settings",

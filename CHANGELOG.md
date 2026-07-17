@@ -8,6 +8,31 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.8.0-alpha.11.3] - 2026-07-18
+
+### Added
+
+- Added asynchronous stale-content refresh on startup and a six-hour in-process scheduler.
+- Added feed refresh runs and per-source logs with status, HTTP code, counts, duration, and errors.
+- Added source health fields, consecutive-failure tracking, and exponential retry backoff with manual override.
+- Added `ETag`, `Last-Modified`, and HTTP 304 handling.
+- Added article publication time, feed GUID, and normalized content hash persistence.
+- Added URL, source/GUID, and source/content-hash identity fallback.
+- Added article-page refresh status, counts, interval, failure count, and publication time.
+- Added automated coverage for metadata, health logs, caching, 304, deduplication, retry readiness, and failure isolation.
+
+### Changed
+
+- Feed requests no longer keep a database transaction open during network I/O.
+- Recommendation freshness now uses article publication time when available.
+- Manual refresh reports new, updated, and failed counts separately.
+
+### Known limits
+
+- Scheduling runs only while the local backend is running; it cannot fetch while the computer is off.
+- Repeatedly failing sources are backed off but not automatically disabled.
+- Full-page extraction remains limited to user-authorized browser imports; RSS summaries are not presented as full articles.
+
 ## [0.8.0-alpha.11.2] - 2026-07-17
 
 ### Added

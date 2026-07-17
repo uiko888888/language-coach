@@ -16,6 +16,7 @@ const state = {
   quizzes: [],
   mistakes: [],
   feeds: [],
+  feedStatus: null,
   sourceCatalog: [],
   subscriptions: [],
   today: { lanes: [], subscription_count: 0 },
@@ -120,6 +121,12 @@ function formatDuration(totalSeconds) {
   return hours
     ? `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`
     : `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
+}
+
+function formatDateTime(value) {
+  if (!value) return "--";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("zh-CN", { hour12: false });
 }
 
 function normalizeConfidenceValue(value) {
@@ -383,6 +390,13 @@ function renderDashboard() {
 function renderArticles() {
   const list = $("#articleTitleList");
   const detail = $("#articleDetail");
+  const refreshStatus = state.feedStatus;
+  const latestRun = refreshStatus?.latest_run;
+  const failedSources = (refreshStatus?.sources || []).filter(source => source.consecutive_failures > 0).length;
+  $("#feedRefreshStatus").innerHTML = refreshStatus ? `
+    <div><strong>${refreshStatus.refreshing ? "正在更新" : latestRun ? `上次更新：${formatDateTime(latestRun.completed_at)}` : "尚未更新"}</strong><span>${latestRun ? `新增 ${latestRun.imported_count} · 更新 ${latestRun.updated_count} · 未变化 ${latestRun.unchanged_count}` : `启动后自动检查`}</span></div>
+    <div class="badge-row">${badge(`${refreshStatus.interval_hours} 小时间隔`, "teal")}${failedSources ? badge(`${failedSources} 个来源异常`, "amber") : badge("来源正常")}</div>
+  ` : "";
   if (!state.articles.length) {
     list.innerHTML = `<div class="empty-state">文章池为空</div>`;
     detail.innerHTML = `<div class="empty-state">更新 RSS 或导入一篇文章。</div>`;
@@ -396,7 +410,7 @@ function renderArticles() {
         <span class="master-number">${String(index + 1).padStart(2, "0")}</span>
         <span class="master-copy">
           <strong>${escapeHtml(article.title)}</strong>
-          <small>${article.recommended_today ? `推荐 ${article.daily_rank} · ` : ""}${escapeHtml(article.content_type_label || "学术解释")} · ${escapeHtml(article.source || "manual")} · ${escapeHtml(article.level)}</small>
+          <small>${article.recommended_today ? `推荐 ${article.daily_rank} · ` : ""}${escapeHtml(article.content_type_label || "学术解释")} · ${escapeHtml(article.source || "manual")} · ${escapeHtml(article.level)}${article.published_at ? ` · ${formatDateTime(article.published_at)}` : ""}</small>
           ${article.recommended_today ? `<em>${escapeHtml((article.recommendation_reasons || []).join(" · "))}</em>` : ""}
         </span>
       </button>
@@ -414,6 +428,7 @@ function renderArticles() {
             ${selected.exam_fit ? badge(`${state.style} 匹配 ${selected.exam_fit}%`, selected.exam_fit >= 90 ? "amber" : "") : ""}
           </div>
           <h2>${escapeHtml(selected.title)}</h2>
+          ${selected.published_at ? `<p class="muted">发布于 ${formatDateTime(selected.published_at)}</p>` : ""}
         </div>
         <div class="toolbar">
           <button data-toggle-translation="true">${state.showTranslation ? "隐藏译文" : "显示译文"}</button>
@@ -1445,6 +1460,10 @@ async function loadFeeds() {
   state.feeds = data.feeds || [];
 }
 
+async function loadFeedStatus() {
+  state.feedStatus = await api("/api/feeds/status");
+}
+
 async function loadSourceCatalog() {
   const data = await api("/api/source-catalog");
   state.sourceCatalog = data.sources || [];
@@ -1886,10 +1905,10 @@ async function translateWordNetEntry(item, { silent = false } = {}) {
 async function refreshFeeds() {
   toast("开始更新 RSS");
   const result = await api("/api/feeds/refresh", { method: "POST", body: "{}" });
-  await Promise.all([loadArticles(), loadToday()]);
+  await Promise.all([loadArticles(), loadToday(), loadFeedStatus()]);
   renderAll();
   const errorText = result.errors?.length ? `，${result.errors.length} 个源失败` : "";
-  toast(`导入 ${result.imported || 0} 条${errorText}`);
+  toast(`新增 ${result.imported || 0} · 更新 ${result.updated || 0}${errorText}`);
 }
 
 async function toggleMistake(id) {
@@ -2237,7 +2256,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 
 async function boot() {
   await loadHealth();
-  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadMistakes(), loadFeeds(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleContentTypes(), loadBridgeConfig(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleContentTypes(), loadBridgeConfig(), searchLexicon("", { open: false, history: false })]);
   if (!state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);
     state.selectedArticle = data.article;

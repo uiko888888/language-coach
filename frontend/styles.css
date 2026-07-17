@@ -753,6 +753,28 @@ label {
   margin-bottom: 10px;
 }
 
+.feed-refresh-status {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  background: #f7faf8;
+  font-size: 12px;
+}
+
+.feed-refresh-status strong,
+.feed-refresh-status span {
+  display: block;
+}
+
+.feed-refresh-status span {
+  margin-top: 3px;
+  color: var(--muted);
+}
+
 .article-filters {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

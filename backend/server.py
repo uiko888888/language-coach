@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import hashlib
+import email.utils
 import json
 import mimetypes
 import posixpath
@@ -11,6 +12,8 @@ import os
 import secrets
 import sqlite3
 import sys
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -815,6 +818,9 @@ def init_db() -> None:
               content_status TEXT NOT NULL DEFAULT 'summary',
               content_type TEXT NOT NULL DEFAULT 'auto',
               body TEXT NOT NULL,
+              published_at TEXT NOT NULL DEFAULT '',
+              source_guid TEXT NOT NULL DEFAULT '',
+              content_hash TEXT NOT NULL DEFAULT '',
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -985,7 +991,41 @@ def init_db() -> None:
               language TEXT NOT NULL DEFAULT 'en',
               level_hint TEXT NOT NULL DEFAULT 'B1-B2',
               active INTEGER NOT NULL DEFAULT 1,
+              etag TEXT NOT NULL DEFAULT '',
+              last_modified TEXT NOT NULL DEFAULT '',
+              last_attempt_at TEXT NOT NULL DEFAULT '',
+              last_success_at TEXT NOT NULL DEFAULT '',
+              consecutive_failures INTEGER NOT NULL DEFAULT 0,
+              last_error TEXT NOT NULL DEFAULT '',
               created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS feed_refresh_runs (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              trigger_type TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'running',
+              imported_count INTEGER NOT NULL DEFAULT 0,
+              updated_count INTEGER NOT NULL DEFAULT 0,
+              unchanged_count INTEGER NOT NULL DEFAULT 0,
+              error_count INTEGER NOT NULL DEFAULT 0,
+              started_at TEXT NOT NULL,
+              completed_at TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE TABLE IF NOT EXISTS feed_refresh_sources (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              run_id INTEGER NOT NULL,
+              feed_id INTEGER NOT NULL,
+              status TEXT NOT NULL,
+              http_status INTEGER NOT NULL DEFAULT 0,
+              imported_count INTEGER NOT NULL DEFAULT 0,
+              updated_count INTEGER NOT NULL DEFAULT 0,
+              unchanged_count INTEGER NOT NULL DEFAULT 0,
+              duration_ms INTEGER NOT NULL DEFAULT 0,
+              error TEXT NOT NULL DEFAULT '',
+              created_at TEXT NOT NULL,
+              FOREIGN KEY(run_id) REFERENCES feed_refresh_runs(id),
+              FOREIGN KEY(feed_id) REFERENCES feeds(id)
             );
 
             CREATE TABLE IF NOT EXISTS subscriptions (
@@ -1105,6 +1145,26 @@ def init_db() -> None:
             conn.execute("ALTER TABLE articles ADD COLUMN content_status TEXT NOT NULL DEFAULT 'summary'")
         if "content_type" not in article_columns:
             conn.execute("ALTER TABLE articles ADD COLUMN content_type TEXT NOT NULL DEFAULT 'auto'")
+        for column in ("published_at", "source_guid", "content_hash"):
+            if column not in article_columns:
+                conn.execute(f"ALTER TABLE articles ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+        feed_columns = {row[1] for row in conn.execute("PRAGMA table_info(feeds)")}
+        for column, definition in {
+            "etag": "TEXT NOT NULL DEFAULT ''",
+            "last_modified": "TEXT NOT NULL DEFAULT ''",
+            "last_attempt_at": "TEXT NOT NULL DEFAULT ''",
+            "last_success_at": "TEXT NOT NULL DEFAULT ''",
+            "consecutive_failures": "INTEGER NOT NULL DEFAULT 0",
+            "last_error": "TEXT NOT NULL DEFAULT ''",
+        }.items():
+            if column not in feed_columns:
+                conn.execute(f"ALTER TABLE feeds ADD COLUMN {column} {definition}")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_source_guid ON articles(source, source_guid) WHERE source_guid != ''"
+        )
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_content_hash ON articles(source, content_hash) WHERE content_hash != ''"
+        )
         conn.execute("UPDATE articles SET translation_zh = ? WHERE source = 'seed'", (SAMPLE_TRANSLATION,))
         conn.execute("UPDATE articles SET content_status = 'full' WHERE source IN ('seed', 'manual')")
         for source, (_, content_type) in SOURCE_CLASSIFICATION.items():
@@ -3085,7 +3145,8 @@ def source_profile(source: str, exam: str = "") -> dict:
 
 def recommendation_profile(article: dict) -> dict:
     try:
-        created = datetime.fromisoformat(article["created_at"].replace("Z", "+00:00"))
+        source_date = article.get("published_at") or article["created_at"]
+        created = datetime.fromisoformat(source_date.replace("Z", "+00:00"))
         age_days = max(0, (datetime.now(timezone.utc) - created).days)
     except (TypeError, ValueError):
         age_days = 30
@@ -4115,61 +4176,276 @@ def translate_text(text: str, source_lang: str = "EN", target_lang: str = "ZH-HA
     }
 
 
-def fetch_feed_items(limit_per_feed: int = 4) -> dict:
-    imported = 0
-    errors: list[str] = []
-    with db() as conn:
-        feeds = conn.execute("SELECT * FROM feeds WHERE active = 1").fetchall()
+FEED_REFRESH_LOCK = threading.Lock()
+FEED_REFRESH_HOURS = max(1, int(os.environ.get("FEED_REFRESH_HOURS", "6")))
+
+
+def feed_entry_text(entry: ET.Element, *names: str) -> str:
+    for name in names:
+        for node in entry.iter():
+            if xml_local_name(node.tag) == name and (node.text or "").strip():
+                return node.text or ""
+    return ""
+
+
+def parse_feed_datetime(value: str) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = email.utils.parsedate_to_datetime(raw)
+        if parsed:
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc).isoformat()
+    except (TypeError, ValueError, OverflowError):
+        pass
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc).isoformat()
+    except ValueError:
+        return ""
+
+
+def feed_entry_payload(entry: ET.Element, feed: dict) -> dict:
+    title = clean_html(feed_entry_text(entry, "title") or "Untitled")
+    link = feed_entry_text(entry, "link").strip()
+    if not link:
+        link_node = next((node for node in entry.iter() if xml_local_name(node.tag) == "link"), None)
+        if link_node is not None:
+            link = link_node.attrib.get("href", "").strip()
+    guid = feed_entry_text(entry, "guid", "id").strip()
+    summary = feed_entry_text(entry, "description", "summary") or title
+    encoded = feed_entry_text(entry, "encoded", "content")
+    summary_text = clean_html(summary)
+    encoded_text = clean_html(encoded)
+    use_full = len(words(encoded_text)) >= 250 and len(encoded_text) > len(summary_text)
+    body = normalize_article_text(title, encoded_text if use_full else summary_text)
+    published_at = parse_feed_datetime(feed_entry_text(entry, "pubDate", "published", "updated"))
+    return {
+        "title": title,
+        "link": link,
+        "guid": guid,
+        "body": body,
+        "content_hash": hashlib.sha256(body.casefold().encode("utf-8")).hexdigest() if body else "",
+        "content_status": "full" if use_full else "summary",
+        "content_type": infer_content_type({"source": feed["name"], "title": title, "body": body}),
+        "published_at": published_at,
+    }
+
+
+def upsert_feed_article(conn: sqlite3.Connection, feed: dict, item: dict, now: str) -> str:
+    conditions = []
+    params: list[object] = []
+    if item["link"]:
+        conditions.append("source_url = ?")
+        params.append(item["link"])
+    if item["guid"]:
+        conditions.append("(source = ? AND source_guid = ?)")
+        params.extend([feed["name"], item["guid"]])
+    if item["content_hash"]:
+        conditions.append("(source = ? AND content_hash = ?)")
+        params.extend([feed["name"], item["content_hash"]])
+    existing = conn.execute(
+        "SELECT * FROM articles WHERE " + " OR ".join(conditions) + " ORDER BY id LIMIT 1", params
+    ).fetchone() if conditions else None
+    if not existing:
+        conn.execute(
+            """INSERT INTO articles
+               (title, language, level, topic, source, source_url, content_status, content_type,
+                body, published_at, source_guid, content_hash, created_at, updated_at)
+               VALUES (?, ?, ?, 'feed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (item["title"], feed["language"], feed["level_hint"], feed["name"], item["link"],
+             item["content_status"], item["content_type"], item["body"], item["published_at"],
+             item["guid"], item["content_hash"], now, now),
+        )
+        return "imported"
+    body = item["body"] if len(item["body"]) > len(existing["body"]) else existing["body"]
+    status = "full" if item["content_status"] == "full" or existing["content_status"] == "full" else "summary"
+    changed = any([
+        item["title"] != existing["title"], body != existing["body"], status != existing["content_status"],
+        item["content_type"] != existing["content_type"],
+        bool(item["published_at"] and item["published_at"] != existing["published_at"]),
+    ])
+    if not changed:
+        return "unchanged"
+    conn.execute(
+        """UPDATE articles SET title = ?, source_url = CASE WHEN source_url = '' THEN ? ELSE source_url END,
+           content_status = ?, content_type = ?, body = ?,
+           published_at = CASE WHEN ? != '' THEN ? ELSE published_at END,
+           source_guid = CASE WHEN source_guid = '' THEN ? ELSE source_guid END,
+           content_hash = ?, updated_at = ? WHERE id = ?""",
+        (item["title"], item["link"], status, item["content_type"], body,
+         item["published_at"], item["published_at"], item["guid"], item["content_hash"], now, existing["id"]),
+    )
+    return "updated"
+
+
+def feed_retry_ready(feed: dict, now: datetime | None = None) -> bool:
+    failures = int(feed.get("consecutive_failures") or 0)
+    if failures <= 0 or not feed.get("last_attempt_at"):
+        return True
+    try:
+        attempted = datetime.fromisoformat(str(feed["last_attempt_at"])).astimezone(timezone.utc)
+    except ValueError:
+        return True
+    delay_minutes = min(360, 15 * (2 ** min(5, failures - 1)))
+    return ((now or datetime.now(timezone.utc)) - attempted).total_seconds() >= delay_minutes * 60
+
+
+def fetch_feed_items(limit_per_feed: int = 4, trigger_type: str = "manual") -> dict:
+    if not FEED_REFRESH_LOCK.acquire(blocking=False):
+        return {"status": "busy", "imported": 0, "updated": 0, "unchanged": 0, "errors": []}
+    started_at = utc_now()
+    try:
+        with db() as conn:
+            run_id = conn.execute(
+                "INSERT INTO feed_refresh_runs (trigger_type, started_at) VALUES (?, ?)", (trigger_type, started_at)
+            ).lastrowid
+            feeds = rows_to_dicts(conn.execute("SELECT * FROM feeds WHERE active = 1 ORDER BY id").fetchall())
+        totals = {"imported": 0, "updated": 0, "unchanged": 0}
+        errors: list[str] = []
         for feed in feeds:
-            try:
-                req = urllib.request.Request(feed["url"], headers={"User-Agent": "LanguageCoachV2/0.1"})
-                with urllib.request.urlopen(req, timeout=10) as response:
-                    raw = response.read()
-                root = ET.fromstring(raw)
-                entries = root.findall(".//item") or root.findall(".//{http://www.w3.org/2005/Atom}entry")
-                for entry in entries[:limit_per_feed]:
-                    title = entry.findtext("title") or entry.findtext("{http://www.w3.org/2005/Atom}title") or "Untitled"
-                    link = entry.findtext("link") or ""
-                    atom_link = entry.find("{http://www.w3.org/2005/Atom}link")
-                    if not link and atom_link is not None:
-                        link = atom_link.attrib.get("href", "")
-                    summary = (
-                        entry.findtext("description")
-                        or entry.findtext("summary")
-                        or entry.findtext("{http://www.w3.org/2005/Atom}summary")
-                        or title
-                    )
-                    encoded = (
-                        entry.findtext("{http://purl.org/rss/1.0/modules/content/}encoded")
-                        or entry.findtext("{http://www.w3.org/2005/Atom}content")
-                        or ""
-                    )
-                    summary_text = clean_html(summary)
-                    encoded_text = clean_html(encoded)
-                    use_full = len(words(encoded_text)) >= 250 and len(encoded_text) > len(summary_text)
-                    body = normalize_article_text(clean_html(title), encoded_text if use_full else summary_text)
-                    content_status = "full" if use_full else "summary"
-                    content_type = infer_content_type({"source": feed["name"], "title": clean_html(title), "body": body})
-                    now = utc_now()
-                    before = conn.total_changes
+            source_started = time.perf_counter()
+            counts = {"imported": 0, "updated": 0, "unchanged": 0}
+            if trigger_type != "manual" and not feed_retry_ready(feed):
+                with db() as conn:
                     conn.execute(
-                        """
-                        INSERT INTO articles
-                        (title, language, level, topic, source, source_url, content_status, content_type, body, created_at, updated_at)
-                        VALUES (?, ?, ?, 'feed', ?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(source_url) WHERE source_url != '' DO UPDATE SET
-                          body = CASE WHEN length(excluded.body) > length(articles.body) THEN excluded.body ELSE articles.body END,
-                          content_status = CASE WHEN excluded.content_status = 'full' THEN 'full' ELSE articles.content_status END,
-                          content_type = excluded.content_type,
-                          updated_at = excluded.updated_at
-                        """,
-                        (clean_html(title), feed["language"], feed["level_hint"], feed["name"], link, content_status, content_type, body, now, now),
+                        """INSERT INTO feed_refresh_sources
+                           (run_id, feed_id, status, duration_ms, created_at) VALUES (?, ?, 'backoff', 0, ?)""",
+                        (run_id, feed["id"], utc_now()),
                     )
-                    if conn.total_changes > before:
-                        imported += 1
-            except Exception as exc:  # Feed failures should not break the app.
-                errors.append(f"{feed['name']}: {exc}")
-    return {"imported": imported, "errors": errors}
+                continue
+            status = "success"
+            http_status = 0
+            error_text = ""
+            attempt_at = utc_now()
+            try:
+                headers = {"User-Agent": "LanguageCoachV2/0.8 (+local-reader)"}
+                if feed.get("etag"):
+                    headers["If-None-Match"] = feed["etag"]
+                if feed.get("last_modified"):
+                    headers["If-Modified-Since"] = feed["last_modified"]
+                request = urllib.request.Request(feed["url"], headers=headers)
+                try:
+                    response_context = urllib.request.urlopen(request, timeout=12)
+                except urllib.error.HTTPError as exc:
+                    if exc.code == 304:
+                        response_context = exc
+                    else:
+                        raise
+                with response_context as response:
+                    http_status = getattr(response, "status", None) or response.getcode()
+                    raw = b"" if http_status == 304 else response.read(10 * 1024 * 1024 + 1)
+                    response_headers = response.headers
+                if len(raw) > 10 * 1024 * 1024:
+                    raise ValueError("Feed response exceeds 10 MB")
+                if http_status == 304:
+                    status = "not_modified"
+                else:
+                    root = ET.fromstring(raw)
+                    entries = [node for node in root.iter() if xml_local_name(node.tag) in {"item", "entry"}]
+                    with db() as conn:
+                        for entry in entries[:limit_per_feed]:
+                            item = feed_entry_payload(entry, feed)
+                            if not item["body"]:
+                                continue
+                            outcome = upsert_feed_article(conn, feed, item, attempt_at)
+                            counts[outcome] += 1
+                with db() as conn:
+                    conn.execute(
+                        """UPDATE feeds SET etag = ?, last_modified = ?, last_attempt_at = ?, last_success_at = ?,
+                           consecutive_failures = 0, last_error = '' WHERE id = ?""",
+                        (response_headers.get("ETag", feed.get("etag", "")),
+                         response_headers.get("Last-Modified", feed.get("last_modified", "")),
+                         attempt_at, attempt_at, feed["id"]),
+                    )
+            except Exception as exc:  # A single source must not abort the refresh run.
+                status = "error"
+                error_text = str(exc)[:500]
+                errors.append(f"{feed['name']}: {error_text}")
+                with db() as conn:
+                    conn.execute(
+                        """UPDATE feeds SET last_attempt_at = ?, consecutive_failures = consecutive_failures + 1,
+                           last_error = ? WHERE id = ?""", (attempt_at, error_text, feed["id"]),
+                    )
+            for key in totals:
+                totals[key] += counts[key]
+            with db() as conn:
+                conn.execute(
+                    """INSERT INTO feed_refresh_sources
+                       (run_id, feed_id, status, http_status, imported_count, updated_count,
+                        unchanged_count, duration_ms, error, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (run_id, feed["id"], status, http_status, counts["imported"], counts["updated"],
+                     counts["unchanged"], round((time.perf_counter() - source_started) * 1000), error_text, utc_now()),
+                )
+        completed_at = utc_now()
+        run_status = "success" if not errors else "partial" if len(errors) < len(feeds) else "failed"
+        with db() as conn:
+            conn.execute(
+                """UPDATE feed_refresh_runs SET status = ?, imported_count = ?, updated_count = ?,
+                   unchanged_count = ?, error_count = ?, completed_at = ? WHERE id = ?""",
+                (run_status, totals["imported"], totals["updated"], totals["unchanged"], len(errors), completed_at, run_id),
+            )
+        return {"status": run_status, "run_id": run_id, **totals, "errors": errors, "completed_at": completed_at}
+    finally:
+        FEED_REFRESH_LOCK.release()
+
+
+def feed_refresh_due(hours: int = FEED_REFRESH_HOURS) -> bool:
+    with db() as conn:
+        row = conn.execute(
+            "SELECT completed_at FROM feed_refresh_runs WHERE status IN ('success', 'partial') ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        failed_sources = rows_to_dicts(conn.execute(
+            "SELECT consecutive_failures, last_attempt_at FROM feeds WHERE active = 1 AND consecutive_failures > 0"
+        ).fetchall())
+    if any(feed_retry_ready(feed) for feed in failed_sources):
+        return True
+    if not row or not row["completed_at"]:
+        return True
+    try:
+        completed = datetime.fromisoformat(row["completed_at"])
+        return (datetime.now(timezone.utc) - completed.astimezone(timezone.utc)).total_seconds() >= hours * 3600
+    except ValueError:
+        return True
+
+
+def feed_refresh_status() -> dict:
+    with db() as conn:
+        latest = conn.execute("SELECT * FROM feed_refresh_runs ORDER BY id DESC LIMIT 1").fetchone()
+        feeds = rows_to_dicts(conn.execute(
+            """SELECT id, name, active, last_attempt_at, last_success_at, consecutive_failures, last_error
+               FROM feeds ORDER BY name"""
+        ).fetchall())
+    return {
+        "refreshing": FEED_REFRESH_LOCK.locked(),
+        "due": feed_refresh_due(),
+        "interval_hours": FEED_REFRESH_HOURS,
+        "latest_run": dict(latest) if latest else None,
+        "sources": feeds,
+    }
+
+
+def request_feed_refresh(trigger_type: str = "startup") -> bool:
+    if FEED_REFRESH_LOCK.locked():
+        return False
+    threading.Thread(target=fetch_feed_items, kwargs={"trigger_type": trigger_type}, daemon=True).start()
+    return True
+
+
+def start_feed_scheduler() -> None:
+    def loop() -> None:
+        if feed_refresh_due():
+            request_feed_refresh("startup")
+        while True:
+            time.sleep(300)
+            if feed_refresh_due():
+                request_feed_refresh("scheduled")
+    threading.Thread(target=loop, name="language-coach-feed-scheduler", daemon=True).start()
 
 
 class App(BaseHTTPRequestHandler):
@@ -4210,6 +4486,8 @@ class App(BaseHTTPRequestHandler):
                     return json_response(self, {"progress": progress_payload(conn)})
             if path == "/api/learner-settings":
                 return json_response(self, {"settings": learner_settings()})
+            if path == "/api/feeds/status":
+                return json_response(self, feed_refresh_status())
             if path == "/api/books":
                 with db() as conn:
                     books = [book_detail(conn, row["id"], include_chapters=False) for row in conn.execute(
@@ -5080,7 +5358,7 @@ class App(BaseHTTPRequestHandler):
                     )
                 return json_response(self, {"id": cursor.lastrowid}, 201)
             if path == "/api/feeds/refresh":
-                return json_response(self, fetch_feed_items())
+                return json_response(self, fetch_feed_items(trigger_type="manual"))
             return json_response(self, {"error": "Not found"}, 404)
         except json.JSONDecodeError:
             return json_response(self, {"error": "Invalid JSON"}, 400)
@@ -5109,6 +5387,7 @@ def main() -> None:
     server = ThreadingHTTPServer(("127.0.0.1", port), App)
     print(f"Language Coach v2 running at http://127.0.0.1:{port}")
     print(f"SQLite database: {DB_PATH}")
+    start_feed_scheduler()
     server.serve_forever()
 
 
