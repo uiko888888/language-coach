@@ -46,6 +46,11 @@ class LearningFlowTests(unittest.TestCase):
         self.assertTrue(all(item["options"] == ["TRUE", "FALSE", "NOT GIVEN"] for item in items))
         self.assertTrue(all(item["validation"]["valid"] for item in items))
 
+    def test_ielts_single_passage_combination_contains_multiple_specialties(self):
+        items = server.generate_quiz_items(server.SAMPLE_ARTICLE, "reading", "IELTS", "mixed")
+        self.assertGreaterEqual(len({item["question_type"] for item in items}), 2)
+        self.assertTrue(all(item["validation"]["valid"] for item in items))
+
     def test_every_ielts_template_has_metadata_and_passes_validation(self):
         for question_type in ("tfng", "heading", "matching-info", "gap-fill"):
             items = server.generate_quiz_items(server.SAMPLE_ARTICLE, "mixed", "IELTS", question_type)

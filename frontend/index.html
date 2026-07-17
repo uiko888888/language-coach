@@ -238,6 +238,12 @@
               <option value="practice">训练模式</option>
               <option value="mock">模考模式</option>
             </select>
+            <select id="quizScope" aria-label="训练范围">
+              <option value="specialty">专项练习</option>
+              <option value="passage">单篇组合</option>
+              <option value="full-paper">整套模拟</option>
+            </select>
+            <select id="quizPaperSelect" aria-label="已生成套题" hidden></select>
             <select id="quizPracticeMode" aria-label="训练模式">
               <option value="mixed">综合训练</option>
               <option value="reading">阅读理解</option>
@@ -245,6 +251,8 @@
             </select>
             <select id="quizPracticeType" aria-label="考试题型"></select>
             <button class="primary" id="generatePracticeBtn">按当前文章出题</button>
+            <button class="primary" id="generateFullPaperBtn" hidden>生成 3 篇 / 40 题整套</button>
+            <button id="loadPaperBtn" hidden>载入套题</button>
             <button id="loadQuizzesBtn">载入题目</button>
           </div>
         </div>
@@ -261,6 +269,11 @@
         <div class="quiz-navigator" id="quizNavigator" aria-label="题号导航"></div>
         <section class="quiz-result" id="quizSessionResult" hidden></section>
         <div class="list quiz-list" id="quizList"></div>
+        <details class="exam-library">
+          <summary>题库来源与版权边界</summary>
+          <p class="muted">官方样题以链接方式打开；未授权历年真题不会复制进应用。用户自行拥有或获授权的材料可作为私有资源登记。</p>
+          <ul id="examResourceList"></ul>
+        </details>
       </section>
       </div>
     </section>

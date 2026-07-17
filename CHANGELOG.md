@@ -8,6 +8,30 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.8.0-alpha.3] - 2026-07-17
+
+### Added
+
+- Added distinct practice scopes: specialty practice, single-passage combination, and full-paper simulation.
+- Single-passage combination now actually mixes validated IELTS specialty items instead of silently using the selected single type.
+- Added exam-resource provenance records with exam, provider, source type, external URL, access mode, and rights status.
+- Added official IELTS, British Council, IDP, ETS, and CET portal links without copying protected question text.
+- Added private user-resource registration for materials the user owns or is authorized to use.
+- Added IELTS full mock generation from three eligible full articles with a fixed 13 / 13 / 14 distribution and 40-question metadata.
+- Added paper, passage, and question relations so a full mock keeps the source passage aligned with each question.
+- Added a practice-center source and rights panel so external official materials are visibly distinct from local simulations.
+
+### Changed
+
+- Separated question scope from feedback mode: a full mock can independently run in practice or mock feedback mode.
+- Improved controlled contradiction fallback so eligible IELTS passages do not silently lose the FALSE item during validation.
+
+### Known limits
+
+- Full-paper generation currently supports IELTS only and requires three locally stored, paragraph-complete English articles.
+- Generated papers are rule-based simulations, not official past papers; the score is not an IELTS band conversion.
+- External links are not automatically fetched, parsed, or redistributed.
+
 ## [0.8.0-alpha.2] - 2026-07-17
 
 ### Added

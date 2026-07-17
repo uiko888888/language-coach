@@ -72,6 +72,51 @@ EXAM_QUESTION_TYPES = {
 
 SUPPORTED_EXAMS = [name for name in EXAM_QUESTION_TYPES if name != "general"]
 
+OFFICIAL_EXAM_RESOURCES = [
+    {
+        "title": "IELTS official sample test questions",
+        "exam": "IELTS", "provider": "IELTS", "resource_type": "official_sample",
+        "source_url": "https://ielts.org/take-a-test/preparation-resources/sample-test-questions",
+        "access_mode": "external_link", "rights_status": "link_only",
+        "description": "IELTS 官方公开样题入口；应用只保存来源信息和链接。",
+    },
+    {
+        "title": "British Council free IELTS practice tests",
+        "exam": "IELTS", "provider": "British Council", "resource_type": "official_practice",
+        "source_url": "https://takeielts.britishcouncil.org/take-ielts/prepare/free-ielts-english-practice-tests",
+        "access_mode": "external_link", "rights_status": "link_only",
+        "description": "British Council 免费练习入口；题目正文仍在官方页面使用。",
+    },
+    {
+        "title": "IDP IELTS free practice tests",
+        "exam": "IELTS", "provider": "IDP IELTS", "resource_type": "official_practice",
+        "source_url": "https://ielts.idp.com/prepare/article-free-practice-tests",
+        "access_mode": "external_link", "rights_status": "link_only",
+        "description": "IDP IELTS 官方练习资料入口。",
+    },
+    {
+        "title": "TOEFL iBT official practice",
+        "exam": "TOEFL", "provider": "ETS", "resource_type": "official_sample",
+        "source_url": "https://www.ets.org/toefl/test-takers/ibt/prepare/practice-tests.html",
+        "access_mode": "external_link", "rights_status": "link_only",
+        "description": "ETS TOEFL iBT 官方练习入口。",
+    },
+    {
+        "title": "National College English Test official portal",
+        "exam": "CET4", "provider": "NEEA", "resource_type": "official_portal",
+        "source_url": "https://cet.neea.edu.cn/",
+        "access_mode": "external_link", "rights_status": "link_only",
+        "description": "全国大学英语四、六级考试官方网站；仅建立官方入口。",
+    },
+    {
+        "title": "National College English Test official portal",
+        "exam": "CET6", "provider": "NEEA", "resource_type": "official_portal",
+        "source_url": "https://cet.neea.edu.cn/",
+        "access_mode": "external_link", "rights_status": "link_only",
+        "description": "全国大学英语四、六级考试官方网站；仅建立官方入口。",
+    },
+]
+
 ARTICLE_THEMES = {
     "环境保护": ["climate", "emission", "carbon", "pollution", "conservation", "biodiversity", "exxon", "renewable"],
     "自然与生态": ["plant", "animal", "species", "forest", "ocean", "mushroom", "wildlife", "ecology"],
@@ -618,6 +663,55 @@ def init_db() -> None:
               FOREIGN KEY (article_id) REFERENCES articles(id)
             );
 
+            CREATE TABLE IF NOT EXISTS exam_resources (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              title TEXT NOT NULL,
+              exam TEXT NOT NULL,
+              year INTEGER,
+              provider TEXT NOT NULL DEFAULT '',
+              resource_type TEXT NOT NULL,
+              source_url TEXT NOT NULL DEFAULT '',
+              access_mode TEXT NOT NULL DEFAULT 'external_link',
+              rights_status TEXT NOT NULL DEFAULT 'link_only',
+              description TEXT NOT NULL DEFAULT '',
+              created_at TEXT NOT NULL,
+              UNIQUE(exam, source_url)
+            );
+
+            CREATE TABLE IF NOT EXISTS exam_papers (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              title TEXT NOT NULL,
+              exam TEXT NOT NULL,
+              paper_type TEXT NOT NULL DEFAULT 'simulation',
+              source_class TEXT NOT NULL DEFAULT 'system_simulation',
+              duration_minutes INTEGER NOT NULL DEFAULT 60,
+              question_count INTEGER NOT NULL DEFAULT 0,
+              provenance_note TEXT NOT NULL DEFAULT '',
+              created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS exam_paper_sections (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              paper_id INTEGER NOT NULL,
+              article_id INTEGER NOT NULL,
+              position INTEGER NOT NULL,
+              title TEXT NOT NULL DEFAULT '',
+              FOREIGN KEY (paper_id) REFERENCES exam_papers(id),
+              FOREIGN KEY (article_id) REFERENCES articles(id),
+              UNIQUE(paper_id, position)
+            );
+
+            CREATE TABLE IF NOT EXISTS exam_paper_questions (
+              paper_id INTEGER NOT NULL,
+              section_id INTEGER NOT NULL,
+              quiz_id INTEGER NOT NULL,
+              position INTEGER NOT NULL,
+              FOREIGN KEY (paper_id) REFERENCES exam_papers(id),
+              FOREIGN KEY (section_id) REFERENCES exam_paper_sections(id),
+              FOREIGN KEY (quiz_id) REFERENCES quizzes(id),
+              PRIMARY KEY (paper_id, position)
+            );
+
             CREATE TABLE IF NOT EXISTS mistakes (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               quiz_id INTEGER,
@@ -752,6 +846,21 @@ def init_db() -> None:
             if normalized and normalized != row["body"]:
                 conn.execute("UPDATE articles SET body = ? WHERE id = ?", (normalized, row["id"]))
         conn.execute("INSERT OR IGNORE INTO progress (id) VALUES (1)")
+        now = utc_now()
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO exam_resources
+            (title, exam, provider, resource_type, source_url, access_mode, rights_status, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    item["title"], item["exam"], item["provider"], item["resource_type"],
+                    item["source_url"], item["access_mode"], item["rights_status"], item["description"], now,
+                )
+                for item in OFFICIAL_EXAM_RESOURCES
+            ],
+        )
         if not conn.execute("SELECT 1 FROM settings WHERE key = 'browser_bridge_token'").fetchone():
             conn.execute("INSERT INTO settings (key, value) VALUES ('browser_bridge_token', ?)", (secrets.token_urlsafe(24),))
         mistake_columns = {row[1] for row in conn.execute("PRAGMA table_info(mistakes)")}
@@ -1204,7 +1313,8 @@ def contradicted_statement(sentence: str) -> str:
         changed, count = re.subn(pattern, replacement, sentence, count=1, flags=re.I)
         if count:
             return changed
-    return "The passage rejects the central claim described in this sentence."
+    # Keep a traceable, controlled negation when the sentence has no simple modal or copular flip.
+    return f"It is not the case that {sentence}"
 
 
 def ielts_tfng_items(text: str) -> list[dict]:
@@ -1360,6 +1470,17 @@ def ielts_quiz_items(text: str, question_type: str) -> list[dict]:
         "matching-info": ielts_matching_items,
         "gap-fill": ielts_gap_fill_items,
     }
+    if question_type in {"mixed", "passage"}:
+        items = []
+        for builder in (ielts_tfng_items, ielts_heading_items, ielts_matching_items, ielts_gap_fill_items):
+            items.extend(builder(text))
+        validated = []
+        for item in items:
+            item["validation"] = validate_quiz_item(item, text, "IELTS", item["question_type"])
+            item["generation_source"] = "ielts-rule-v1"
+            if item["validation"]["valid"]:
+                validated.append(item)
+        return validated
     builder = builders.get(question_type or "tfng", ielts_tfng_items)
     items = builder(text)
     validated = []
@@ -1369,6 +1490,159 @@ def ielts_quiz_items(text: str, question_type: str) -> list[dict]:
         if item["validation"]["valid"]:
             validated.append(item)
     return validated
+
+
+def save_quiz_item(
+    conn: sqlite3.Connection,
+    article_id: int,
+    style: str,
+    mode: str,
+    item: dict,
+    created_at: str,
+) -> dict:
+    cursor = conn.execute(
+        """
+        INSERT INTO quizzes
+        (article_id, style, mode, type, question_type, skill, difficulty,
+         prompt, answer, options_json, evidence, note, validation_json, generation_source, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            article_id, style, mode, item["type"], item.get("question_type") or item["type"],
+            item.get("skill") or "阅读理解", item.get("difficulty") or "B2", item["prompt"],
+            item["answer"], json.dumps(item.get("options") or [], ensure_ascii=False),
+            item.get("evidence") or "", item.get("note") or "",
+            json.dumps(item.get("validation") or {}, ensure_ascii=False),
+            item.get("generation_source") or "general-rule-v1", created_at,
+        ),
+    )
+    return {**item, "id": cursor.lastrowid, "article_id": article_id, "style": style, "mode": mode}
+
+
+def quiz_payload(row: sqlite3.Row | dict) -> dict:
+    item = dict(row)
+    item["options"] = json.loads(item.pop("options_json", "[]") or "[]")
+    item["validation"] = json.loads(item.pop("validation_json", "{}") or "{}")
+    return item
+
+
+IELTS_MOCK_SECTION_SPECS = [
+    [("tfng", 3), ("heading", 5), ("matching-info", 5)],
+    [("tfng", 3), ("heading", 5), ("gap-fill", 5)],
+    [("tfng", 3), ("heading", 5), ("matching-info", 5), ("gap-fill", 1)],
+]
+
+
+def ielts_mock_section_items(text: str, spec: list[tuple[str, int]]) -> list[dict]:
+    selected = []
+    for question_type, count in spec:
+        candidates = ielts_quiz_items(text, question_type)
+        if len(candidates) < count:
+            return []
+        selected.extend(candidates[:count])
+    return selected
+
+
+def create_ielts_mock_paper(conn: sqlite3.Connection) -> dict:
+    candidates = conn.execute(
+        """
+        SELECT * FROM articles
+        WHERE content_status = 'full' AND language = 'en'
+        ORDER BY length(body) DESC, updated_at DESC
+        """
+    ).fetchall()
+    chosen: list[tuple[sqlite3.Row, list[dict]]] = []
+    used: set[int] = set()
+    for spec in IELTS_MOCK_SECTION_SPECS:
+        match = None
+        for article in candidates:
+            if article["id"] in used:
+                continue
+            items = ielts_mock_section_items(article["body"], spec)
+            if items:
+                match = (article, items)
+                break
+        if not match:
+            raise ValueError("需要至少 3 篇段落完整、可生成 13-14 道有效题目的英文全文")
+        chosen.append(match)
+        used.add(match[0]["id"])
+
+    now = utc_now()
+    cursor = conn.execute(
+        """
+        INSERT INTO exam_papers
+        (title, exam, paper_type, source_class, duration_minutes, question_count, provenance_note, created_at)
+        VALUES (?, 'IELTS', 'full_mock', 'system_simulation', 60, 40, ?, ?)
+        """,
+        (
+            f"IELTS Reading 模拟套题 {now[:10]}",
+            "由本地文章和经规则校验的 IELTS 专项模板生成；不是官方真题。",
+            now,
+        ),
+    )
+    paper_id = cursor.lastrowid
+    question_position = 1
+    for section_position, (article, items) in enumerate(chosen, start=1):
+        section_cursor = conn.execute(
+            """INSERT INTO exam_paper_sections (paper_id, article_id, position, title)
+               VALUES (?, ?, ?, ?)""",
+            (paper_id, article["id"], section_position, f"Passage {section_position}: {article['title']}"),
+        )
+        section_id = section_cursor.lastrowid
+        for item in items:
+            saved = save_quiz_item(conn, article["id"], "IELTS", "full-paper", item, now)
+            conn.execute(
+                """INSERT INTO exam_paper_questions (paper_id, section_id, quiz_id, position)
+                   VALUES (?, ?, ?, ?)""",
+                (paper_id, section_id, saved["id"], question_position),
+            )
+            question_position += 1
+    paper = conn.execute("SELECT * FROM exam_papers WHERE id = ?", (paper_id,)).fetchone()
+    return dict(paper)
+
+
+def exam_paper_detail(conn: sqlite3.Connection, paper_id: int) -> dict | None:
+    paper = conn.execute("SELECT * FROM exam_papers WHERE id = ?", (paper_id,)).fetchone()
+    if not paper:
+        return None
+    sections = []
+    rows = conn.execute(
+        """
+        SELECT s.id AS paper_section_id, s.position AS paper_section_position,
+               s.title AS paper_section_title,
+               a.id AS article_id, a.title AS article_title, a.language, a.level, a.topic,
+               a.source, a.source_url, a.content_status, a.content_type, a.body,
+               a.translation_zh, a.created_at, a.updated_at
+        FROM exam_paper_sections s
+        JOIN articles a ON a.id = s.article_id
+        WHERE s.paper_id = ? ORDER BY s.position
+        """,
+        (paper_id,),
+    ).fetchall()
+    for row in rows:
+        article = dict(row)
+        section_id = article.pop("paper_section_id")
+        section_position = article.pop("paper_section_position")
+        section_title = article.pop("paper_section_title")
+        article["id"] = article.pop("article_id")
+        article["title"] = article.pop("article_title")
+        question_rows = conn.execute(
+            """
+            SELECT q.*, pq.position AS paper_position
+            FROM exam_paper_questions pq
+            JOIN quizzes q ON q.id = pq.quiz_id
+            WHERE pq.paper_id = ? AND pq.section_id = ? ORDER BY pq.position
+            """,
+            (paper_id, section_id),
+        ).fetchall()
+        sections.append({
+            "id": section_id,
+            "position": section_position,
+            "title": section_title,
+            "article": enrich_article(article, "IELTS"),
+            "quizzes": [quiz_payload(question) for question in question_rows],
+        })
+    return {**dict(paper), "sections": sections}
 
 
 def generate_quiz_items(text: str, mode: str, style: str, question_type: str = "") -> list[dict]:
@@ -2785,6 +3059,35 @@ class App(BaseHTTPRequestHandler):
                 with db() as conn:
                     quizzes = [self.quiz_row(row) for row in conn.execute(sql, params).fetchall()]
                 return json_response(self, {"quizzes": quizzes})
+            if path == "/api/exam-resources":
+                exam = query.get("exam", [""])[0]
+                sql = "SELECT * FROM exam_resources"
+                params: list[str] = []
+                if exam:
+                    sql += " WHERE exam = ?"
+                    params.append(exam)
+                sql += " ORDER BY exam, provider, id"
+                with db() as conn:
+                    resources = rows_to_dicts(conn.execute(sql, params).fetchall())
+                return json_response(self, {"resources": resources})
+            if path == "/api/exam-papers":
+                exam = query.get("exam", [""])[0]
+                sql = "SELECT * FROM exam_papers"
+                params: list[str] = []
+                if exam:
+                    sql += " WHERE exam = ?"
+                    params.append(exam)
+                sql += " ORDER BY created_at DESC, id DESC"
+                with db() as conn:
+                    papers = rows_to_dicts(conn.execute(sql, params).fetchall())
+                return json_response(self, {"papers": papers})
+            match = re.fullmatch(r"/api/exam-papers/(\d+)", path)
+            if match:
+                with db() as conn:
+                    paper = exam_paper_detail(conn, int(match.group(1)))
+                if not paper:
+                    return json_response(self, {"error": "Exam paper not found"}, 404)
+                return json_response(self, {"paper": paper})
             if path == "/api/practice-sessions":
                 with db() as conn:
                     rows = conn.execute(
@@ -2973,6 +3276,39 @@ class App(BaseHTTPRequestHandler):
                         conn.execute("UPDATE articles SET translation_zh = ? WHERE id = ?", (payload["translation_zh"], cursor.lastrowid))
                         article = conn.execute("SELECT * FROM articles WHERE id = ?", (cursor.lastrowid,)).fetchone()
                 return json_response(self, {"article": dict(article), "analysis": analyze_payload(article)}, 201)
+            if path == "/api/exam-resources":
+                title = (payload.get("title") or "").strip()
+                exam = (payload.get("exam") or "").strip().upper()
+                if not title or exam not in EXAM_QUESTION_TYPES:
+                    return json_response(self, {"error": "Title and a supported exam are required"}, 400)
+                source_url = (payload.get("source_url") or "").strip() or f"user-import://{secrets.token_urlsafe(10)}"
+                now = utc_now()
+                with db() as conn:
+                    cursor = conn.execute(
+                        """
+                        INSERT INTO exam_resources
+                        (title, exam, year, provider, resource_type, source_url, access_mode, rights_status, description, created_at)
+                        VALUES (?, ?, ?, ?, 'user_import', ?, 'local_import', 'user_provided', ?, ?)
+                        """,
+                        (
+                            title, exam, int(payload["year"]) if str(payload.get("year") or "").isdigit() else None,
+                            (payload.get("provider") or "用户导入").strip(), source_url,
+                            (payload.get("description") or "由用户自行提供；未向项目分发原题文本。").strip(), now,
+                        ),
+                    )
+                    resource = conn.execute("SELECT * FROM exam_resources WHERE id = ?", (cursor.lastrowid,)).fetchone()
+                return json_response(self, {"resource": dict(resource)}, 201)
+            if path == "/api/exam-papers/generate":
+                exam = (payload.get("exam") or "IELTS").strip().upper()
+                if exam != "IELTS":
+                    return json_response(self, {"error": "Full-paper generation is currently available for IELTS only"}, 422)
+                try:
+                    with db() as conn:
+                        paper = create_ielts_mock_paper(conn)
+                        detail = exam_paper_detail(conn, paper["id"])
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 422)
+                return json_response(self, {"paper": detail}, 201)
             if path == "/api/subscriptions":
                 target_type = (payload.get("target_type") or "source").strip()
                 target_value = (payload.get("target_value") or "").strip()

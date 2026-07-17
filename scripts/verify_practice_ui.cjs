@@ -23,6 +23,11 @@ async function run() {
   const columns = await page.locator(".quiz-workspace").evaluate(element => getComputedStyle(element).gridTemplateColumns);
   if (columns.split(" ").length < 2) failures.push(`desktop layout is not split: ${columns}`);
 
+  await page.selectOption("#quizScope", "full-paper");
+  if (!(await page.locator("#generateFullPaperBtn").isVisible())) failures.push("full-paper action is not visible");
+  if ((await page.locator("#examResourceList li").count()) < 1) failures.push("official exam resource catalog is empty");
+  await page.selectOption("#quizScope", "specialty");
+
   await page.selectOption("#quizSessionMode", "mock");
   const firstOption = page.locator("[data-select-quiz-answer]").first();
   await firstOption.click();

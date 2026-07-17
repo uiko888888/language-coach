@@ -22,6 +22,9 @@ const state = {
   lexiconFilter: "all",
   progress: { xp: 0, level: 1, level_xp: 0, streak: 0 },
   examTypes: [],
+  examResources: [],
+  examPapers: [],
+  selectedPaper: null,
   showTranslation: false,
   articleTopics: [],
   articleTopic: "",
@@ -691,11 +694,14 @@ function quizResultHtml(result) {
 
 function renderQuizzes() {
   const session = state.quizSession;
+  updateQuizScopeControls();
   const answered = state.quizzes.filter(quiz => String(session.answers[quiz.id] || "").trim()).length;
   const flagged = state.quizzes.filter(quiz => session.flagged[quiz.id]).length;
   const validated = state.quizzes.filter(quiz => quiz.validation?.valid).length;
   const activeType = state.quizzes[0]?.question_type || $("#quizPracticeType")?.value || "";
   const typeLabel = state.examTypes.find(item => item.id === activeType)?.label || activeType || "当前训练";
+  const scope = $("#quizScope")?.value || "specialty";
+  const scopeLabel = scope === "full-paper" ? "整套模拟" : scope === "passage" ? "单篇组合" : typeLabel;
   session.activeIndex = Math.max(0, Math.min(session.activeIndex, Math.max(0, state.quizzes.length - 1)));
   $("#quizSessionMode").value = session.mode;
   $("#finishQuizSessionBtn").textContent = session.mode === "mock" ? "交卷" : "结束训练";
@@ -704,7 +710,7 @@ function renderQuizzes() {
     button.classList.toggle("active", button.dataset.quizDisplay === session.display);
   });
   $("#quizSessionSummary").innerHTML = `
-    <div><span>专项</span><strong>${escapeHtml(typeLabel)}</strong></div>
+    <div><span>训练范围</span><strong>${escapeHtml(scopeLabel)}</strong></div>
     <div><span>进度</span><strong>${answered}/${state.quizzes.length}</strong></div>
     <div><span>标记</span><strong>${flagged}</strong></div>
     <div><span>题目校验</span><strong>${validated}/${state.quizzes.length}</strong></div>
@@ -901,6 +907,84 @@ async function loadExamTypes() {
   renderExamTypes();
 }
 
+async function loadExamLibrary() {
+  const [resources, papers] = await Promise.all([
+    api(`/api/exam-resources?exam=${encodeURIComponent(state.style)}`),
+    api(`/api/exam-papers?exam=${encodeURIComponent(state.style)}`),
+  ]);
+  state.examResources = resources.resources || [];
+  state.examPapers = papers.papers || [];
+  renderExamLibrary();
+}
+
+function renderExamLibrary() {
+  const paperSelect = $("#quizPaperSelect");
+  if (paperSelect) {
+    paperSelect.innerHTML = `<option value="">选择已生成套题</option>${state.examPapers.map(paper => `<option value="${paper.id}">${escapeHtml(paper.title)} · ${paper.question_count} 题</option>`).join("")}`;
+  }
+  const library = $("#examResourceList");
+  if (!library) return;
+  library.innerHTML = state.examResources.map(resource => `
+    <li><span>${escapeHtml(resource.exam)} · ${escapeHtml(resource.provider)}</span><a href="${escapeHtml(resource.source_url)}" target="_blank" rel="noreferrer">${escapeHtml(resource.title)}</a><small>${escapeHtml(resource.rights_status === "link_only" ? "官方链接，不复制原题" : "用户自行提供")}</small></li>
+  `).join("") || `<li class="muted">暂无来源</li>`;
+}
+
+function updateQuizScopeControls() {
+  const scope = $("#quizScope")?.value || "specialty";
+  const isFull = scope === "full-paper";
+  $("#quizPracticeType").hidden = isFull;
+  $("#quizPracticeMode").hidden = isFull;
+  $("#generatePracticeBtn").hidden = isFull;
+  $("#quizPaperSelect").hidden = !isFull;
+  $("#generateFullPaperBtn").hidden = !isFull;
+  $("#loadPaperBtn").hidden = !isFull;
+  $("#generatePracticeBtn").textContent = scope === "passage" ? "生成单篇组合题" : "按当前文章出题";
+}
+
+function flattenPaperQuizzes(paper) {
+  return (paper?.sections || []).flatMap(section => section.quizzes || []);
+}
+
+function applyPaper(paper) {
+  state.selectedPaper = paper;
+  state.quizzes = flattenPaperQuizzes(paper);
+  if (paper?.sections?.[0]?.article) state.selectedArticle = paper.sections[0].article;
+  resetQuizSession();
+  renderAll();
+  renderExamLibrary();
+}
+
+async function loadPaper(id) {
+  if (!id) return toast("先选择一套模拟题");
+  const data = await api(`/api/exam-papers/${id}`);
+  $("#quizScope").value = "full-paper";
+  applyPaper(data.paper);
+  setView("quiz");
+  toast(`已载入 ${data.paper.question_count} 题整套模拟`);
+}
+
+async function generateFullPaper() {
+  const data = await api("/api/exam-papers/generate", {
+    method: "POST",
+    body: JSON.stringify({ exam: state.style }),
+  });
+  $("#quizScope").value = "full-paper";
+  applyPaper(data.paper);
+  await loadExamLibrary();
+  setView("quiz");
+  toast("已生成 3 篇 / 40 题 IELTS 模拟套题");
+}
+
+function syncPaperSourceForQuestion() {
+  if (!state.selectedPaper) return;
+  const quiz = state.quizzes[state.quizSession.activeIndex];
+  const section = state.selectedPaper.sections.find(item => item.quizzes.some(question => question.id === quiz?.id));
+  if (section?.article) {
+    state.selectedArticle = section.article;
+    renderQuizSource();
+  }
+}
+
 async function loadArticles(q = "") {
   const params = new URLSearchParams({ exam: state.style });
   if (q) params.set("q", q);
@@ -1037,7 +1121,9 @@ async function analyzeArticle() {
 async function generateQuizzes(id = state.selectedArticle?.id, { open = true } = {}) {
   if (!id) return toast("先选文章");
   const mode = $("#quizPracticeMode")?.value || $("#quizMode")?.value || "mixed";
-  const questionType = $("#quizPracticeType")?.value || $("#examQuestionType")?.value || "";
+  const questionType = $("#quizScope")?.value === "passage"
+    ? "mixed"
+    : $("#quizPracticeType")?.value || $("#examQuestionType")?.value || "";
   const data = await api(`/api/articles/${id}/quizzes`, {
     method: "POST",
     body: JSON.stringify({ mode, style: state.style, question_type: questionType }),
@@ -1406,6 +1492,8 @@ document.addEventListener("click", async event => {
       renderQuizzes();
     }
     if (button.id === "generatePracticeBtn") await generateQuizzes();
+    if (button.id === "generateFullPaperBtn") await generateFullPaper();
+    if (button.id === "loadPaperBtn") await loadPaper(Number($("#quizPaperSelect").value));
     if (button.id === "restartQuizSessionBtn" || button.dataset.retrySession) {
       resetQuizSession();
       renderQuizzes();
@@ -1419,6 +1507,7 @@ document.addEventListener("click", async event => {
     }
     if (button.dataset.quizNav !== undefined) {
       state.quizSession.activeIndex = Number(button.dataset.quizNav);
+      syncPaperSourceForQuestion();
       renderQuizzes();
       document.querySelector(`[data-quiz-card]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
@@ -1523,7 +1612,7 @@ document.addEventListener("dblclick", event => {
 $("#globalStyle").addEventListener("change", async event => {
   state.style = event.target.value;
   localStorage.setItem("lc-v2-style", state.style);
-  await Promise.all([loadArticles(), loadFeeds(), loadExamTypes(), loadToday()]);
+  await Promise.all([loadArticles(), loadFeeds(), loadExamTypes(), loadExamLibrary(), loadToday()]);
   await loadQuizzes();
   renderArticles();
   renderDashboard();
@@ -1533,6 +1622,19 @@ $("#globalStyle").addEventListener("change", async event => {
 $("#quizPracticeType").addEventListener("change", async () => {
   await loadQuizzes();
   renderQuizzes();
+});
+
+$("#quizScope").addEventListener("change", event => {
+  updateQuizScopeControls();
+  if (event.target.value !== "full-paper") {
+    state.selectedPaper = null;
+    state.quizSession.activeIndex = 0;
+  }
+  renderQuizzes();
+});
+
+$("#quizPaperSelect").addEventListener("change", async event => {
+  if (event.target.value) await loadPaper(Number(event.target.value));
 });
 
 $("#quizSessionMode").addEventListener("change", event => {
@@ -1611,7 +1713,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 
 async function boot() {
   await loadHealth();
-  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadExamTypes(), loadArticleTopics(), loadArticleContentTypes(), loadBridgeConfig(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleContentTypes(), loadBridgeConfig(), searchLexicon("", { open: false, history: false })]);
   if (!state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);
     state.selectedArticle = data.article;

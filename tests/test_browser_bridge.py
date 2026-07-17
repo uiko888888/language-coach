@@ -250,6 +250,44 @@ class BrowserBridgeTests(unittest.TestCase):
             ).fetchone()[0]
         self.assertEqual(linked, 3)
 
+    def test_exam_resources_expose_rights_and_user_import_is_labeled(self):
+        resources, _ = self.request("/api/exam-resources?exam=IELTS")
+        self.assertTrue(resources["resources"])
+        self.assertTrue(all(item["rights_status"] == "link_only" for item in resources["resources"]))
+        imported, _ = self.request(
+            "/api/exam-resources",
+            "POST",
+            {
+                "title": "My licensed IELTS paper",
+                "exam": "IELTS",
+                "year": 2022,
+                "provider": "Personal archive",
+                "description": "User supplied for private practice",
+            },
+        )
+        self.assertEqual(imported["resource"]["resource_type"], "user_import")
+        self.assertEqual(imported["resource"]["rights_status"], "user_provided")
+
+    def test_ielts_full_mock_paper_has_three_sections_and_forty_questions(self):
+        paragraph = (
+            "Researchers examine how public policy changes communities and how evidence shapes practical decisions. "
+            "The study compares local responses, records measurable outcomes, and identifies limits that future work must address."
+        )
+        body = "\n\n".join(f"{paragraph} Paragraph {index} adds a different example about education, health, and technology." for index in range(1, 6))
+        for index in range(3):
+            self.request(
+                "/api/articles",
+                "POST",
+                {"title": f"Full paper passage {index + 1}", "body": body, "source": "manual"},
+            )
+        generated, _ = self.request("/api/exam-papers/generate", "POST", {"exam": "IELTS"})
+        paper = generated["paper"]
+        self.assertEqual(paper["paper_type"], "full_mock")
+        self.assertEqual(paper["source_class"], "system_simulation")
+        self.assertEqual(paper["question_count"], 40)
+        self.assertEqual([len(section["quizzes"]) for section in paper["sections"]], [13, 13, 14])
+        self.assertTrue(all(quiz["validation"]["valid"] for section in paper["sections"] for quiz in section["quizzes"]))
+
     def test_article_one_click_translation_uses_aligned_cached_paragraphs(self):
         body = "First paragraph explains the evidence.\n\nSecond paragraph states the conclusion."
         created, _ = self.request(
