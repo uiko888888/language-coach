@@ -114,6 +114,16 @@ class ProfileUiContractTests(unittest.TestCase):
         self.assertIn("机器翻译不冒充出版词典释义", self.js)
         self.assertIn("item.contexts = (item.contexts || []).map", self.js)
 
+    def test_content_center_uses_hubs_without_expanding_sidebar_sources(self):
+        self.assertIn('id="articleHubFilter"', self.html)
+        self.assertIn('api("/api/content-hubs")', self.js)
+        self.assertIn('catch (_error)', self.js)
+        self.assertIn('<option value="subscribed">我的订阅</option>', self.js)
+        self.assertIn("data-subscribe-category", self.js)
+        self.assertIn("source.transcript_available", self.js)
+        self.assertNotIn('data-view="Reuters"', self.html)
+        self.assertNotIn('data-view="The Economist"', self.html)
+
 
 if __name__ == "__main__":
     unittest.main()

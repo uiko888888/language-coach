@@ -154,6 +154,40 @@ CONTENT_TYPE_LABELS = {
     "culture": "文化内容",
 }
 
+CONTENT_HUBS = {
+    "news": "新闻",
+    "opinion": "观点",
+    "research": "研究",
+    "science": "科学与自然",
+    "culture-life": "文化与生活",
+    "media": "影视与听力",
+    "books": "小说与图书",
+}
+
+SOURCE_HUB_OVERRIDES = {
+    "The Conversation": "research", "The Conversation Politics": "research", "JSTOR Daily": "research",
+    "Guardian Science": "science", "Guardian Environment": "science", "MIT Technology Review": "science",
+    "ScienceDaily": "science", "Aeon": "opinion", "Knowledge at Wharton": "opinion",
+    "The Economist Business": "opinion", "Guardian Opinion": "opinion",
+    "NPR": "news", "NPR World": "news", "BBC World": "news", "BBC Business": "news",
+    "Guardian World": "news", "UN News": "news", "private EPUB": "books",
+}
+
+CATEGORY_HUBS = {
+    "每日新闻": "news", "深度评论": "opinion", "学术研究": "research", "科学与自然": "science",
+    "文化与社区": "culture-life", "校园与生活": "culture-life", "博客与通讯": "culture-life",
+    "听力与演讲": "media", "影视与流媒体": "media", "小说与图书": "books",
+}
+
+
+def content_hub_for(source: str, content_type: str = "") -> str:
+    if source in SOURCE_HUB_OVERRIDES:
+        return SOURCE_HUB_OVERRIDES[source]
+    return {
+        "report": "news", "institution": "news", "opinion": "opinion", "research": "research",
+        "culture": "culture-life", "explainer": "research",
+    }.get(content_type, "culture-life")
+
 
 def normalize_article_text(title: str, body: str) -> str:
     text = re.sub(r"\s+", " ", body or "").strip()
@@ -468,12 +502,25 @@ SOURCE_CLASSIFICATION = {
 }
 
 SOURCE_CATALOG_EXTRAS = {
+    "Reuters": {"category": "每日新闻", "homepage": "https://www.reuters.com/", "access_mode": "摘要与原站", "rights_mode": "保存标题、摘要、元数据和原站链接", "formats": ["文章", "视频"], "cadence": "实时"},
+    "Associated Press": {"category": "每日新闻", "homepage": "https://apnews.com/", "access_mode": "摘要与原站", "rights_mode": "保存标题、摘要、元数据和原站链接", "formats": ["文章", "视频"], "cadence": "实时"},
+    "Financial Times": {"category": "每日新闻", "homepage": "https://www.ft.com/", "access_mode": "摘要与原站", "rights_mode": "仅元数据、摘要和用户授权摘录", "formats": ["文章", "播客"], "cadence": "每日"},
+    "Bloomberg": {"category": "每日新闻", "homepage": "https://www.bloomberg.com/", "access_mode": "摘要与原站", "rights_mode": "仅元数据、摘要和用户授权摘录", "formats": ["文章", "视频", "播客"], "cadence": "实时"},
+    "The Wall Street Journal": {"category": "每日新闻", "homepage": "https://www.wsj.com/", "access_mode": "摘要与原站", "rights_mode": "仅元数据、摘要和用户授权摘录", "formats": ["文章", "播客"], "cadence": "每日"},
     "The New York Times": {"category": "每日新闻", "homepage": "https://www.nytimes.com/", "access_mode": "摘要与原站", "rights_mode": "仅元数据、摘要和用户授权摘录", "formats": ["文章", "播客"], "cadence": "每日"},
     "The New Yorker": {"category": "深度评论", "homepage": "https://www.newyorker.com/", "access_mode": "摘要与原站", "rights_mode": "仅元数据、摘要和用户授权摘录", "formats": ["文章", "播客"], "cadence": "每周"},
     "The Economist": {"category": "深度评论", "homepage": "https://www.economist.com/", "access_mode": "摘要与原站", "rights_mode": "仅元数据、摘要和用户授权摘录", "formats": ["文章", "播客"], "cadence": "每日"},
+    "The Atlantic": {"category": "深度评论", "homepage": "https://www.theatlantic.com/", "access_mode": "摘要与原站", "rights_mode": "仅元数据、摘要和用户授权摘录", "formats": ["文章", "播客"], "cadence": "每日"},
+    "Foreign Affairs": {"category": "深度评论", "homepage": "https://www.foreignaffairs.com/", "access_mode": "摘要与原站", "rights_mode": "仅元数据、摘要和用户授权摘录", "formats": ["文章", "播客"], "cadence": "每周"},
     "National Geographic": {"category": "科学与自然", "homepage": "https://www.nationalgeographic.com/", "access_mode": "摘要与原站", "rights_mode": "仅元数据、摘要和用户授权摘录", "formats": ["文章", "视频"], "cadence": "每周"},
+    "Nature News": {"category": "科学与自然", "homepage": "https://www.nature.com/news", "access_mode": "摘要与原站", "rights_mode": "保存元数据、摘要和合法链接", "formats": ["文章", "研究资讯"], "cadence": "每日"},
+    "Science": {"category": "科学与自然", "homepage": "https://www.science.org/news", "access_mode": "摘要与原站", "rights_mode": "保存元数据、摘要和合法链接", "formats": ["文章", "研究资讯"], "cadence": "每日"},
+    "NASA": {"category": "科学与自然", "homepage": "https://www.nasa.gov/", "access_mode": "开放页面与 API", "rights_mode": "按美国政府作品和页面标注逐项处理", "formats": ["文章", "图片", "视频"], "cadence": "每日"},
+    "NOAA": {"category": "科学与自然", "homepage": "https://www.noaa.gov/", "access_mode": "开放页面与 API", "rights_mode": "按美国政府作品和页面标注逐项处理", "formats": ["文章", "数据", "视频"], "cadence": "每日"},
     "VOA Learning English": {"category": "听力与演讲", "homepage": "https://learningenglish.voanews.com/", "access_mode": "公开页面", "rights_mode": "保存链接、公开 transcript 和短语境", "formats": ["文章", "音频", "视频"], "cadence": "每日"},
     "TED": {"category": "听力与演讲", "homepage": "https://www.ted.com/", "access_mode": "公开页面", "rights_mode": "保存链接、公开 transcript 和短语境", "formats": ["视频", "字幕", "演讲稿"], "cadence": "每周"},
+    "BBC World Service": {"category": "听力与演讲", "homepage": "https://www.bbc.co.uk/worldserviceradio", "access_mode": "公开页面与播客源", "rights_mode": "保存链接、节目元数据和公开 transcript", "formats": ["音频", "播客", "讲稿"], "cadence": "每日"},
+    "NPR Podcasts": {"category": "听力与演讲", "homepage": "https://www.npr.org/podcasts/", "access_mode": "公开页面与播客源", "rights_mode": "保存链接、节目元数据和公开 transcript", "formats": ["音频", "播客", "讲稿"], "cadence": "每日"},
     "Amazon Books": {"category": "小说与图书", "homepage": "https://www.amazon.com/books-used-books-textbooks/", "access_mode": "书籍发现", "rights_mode": "仅书籍元数据、简介和原站链接", "formats": ["图书元数据"], "cadence": "按需"},
     "HBO Max": {"category": "影视与流媒体", "homepage": "https://www.max.com/", "access_mode": "用户订阅与本地字幕", "rights_mode": "不抓取视频；仅用户合法字幕、时间点和短语境", "formats": ["视频", "字幕"], "cadence": "按需"},
     "Apple TV+": {"category": "影视与流媒体", "homepage": "https://tv.apple.com/", "access_mode": "用户订阅与本地字幕", "rights_mode": "不抓取视频；仅用户合法字幕、时间点和短语境", "formats": ["视频", "字幕"], "cadence": "按需"},
@@ -483,6 +530,11 @@ SOURCE_CATALOG_EXTRAS = {
     "Google Scholar": {"category": "学术研究", "homepage": "https://scholar.google.com/", "access_mode": "检索与提醒", "rights_mode": "保存论文元数据、摘要、DOI 和合法链接", "formats": ["论文元数据", "摘要"], "cadence": "按提醒"},
     "arXiv": {"category": "学术研究", "homepage": "https://arxiv.org/", "access_mode": "开放元数据", "rights_mode": "按论文许可证处理全文", "formats": ["论文", "摘要"], "cadence": "每日"},
     "PubMed": {"category": "学术研究", "homepage": "https://pubmed.ncbi.nlm.nih.gov/", "access_mode": "开放元数据", "rights_mode": "保存元数据和摘要；全文按许可处理", "formats": ["论文元数据", "摘要"], "cadence": "每日"},
+    "SSRN": {"category": "学术研究", "homepage": "https://www.ssrn.com/", "access_mode": "开放元数据", "rights_mode": "保存论文元数据、摘要和合法链接", "formats": ["论文元数据", "摘要"], "cadence": "每日"},
+    "Project MUSE": {"category": "学术研究", "homepage": "https://muse.jhu.edu/", "access_mode": "检索与机构访问", "rights_mode": "保存元数据、摘要、DOI 和机构访问链接", "formats": ["论文元数据", "摘要"], "cadence": "按提醒"},
+    "Open Library": {"category": "小说与图书", "homepage": "https://openlibrary.org/", "access_mode": "开放元数据 API", "rights_mode": "保存书籍元数据；正文按借阅与版权状态处理", "formats": ["图书元数据"], "cadence": "按需"},
+    "University public lectures": {"category": "校园与生活", "homepage": "", "access_mode": "学校公开页面与用户订阅", "rights_mode": "保存通知、公开讲座链接和用户自有材料", "formats": ["校园通知", "讲座", "视频"], "cadence": "按学校"},
+    "Local life services": {"category": "校园与生活", "homepage": "", "access_mode": "用户选择的本地服务", "rights_mode": "保存公开通知、实用信息和原始链接", "formats": ["天气", "交通", "活动", "招聘"], "cadence": "每日"},
     "Substack": {"category": "博客与通讯", "homepage": "https://substack.com/", "access_mode": "用户订阅", "rights_mode": "按作者订阅权限保存摘要、链接和短语境", "formats": ["博客", "通讯", "播客"], "cadence": "按订阅"},
 }
 
@@ -493,22 +545,33 @@ def source_catalog() -> list[dict]:
     for name, feed in feed_by_name.items():
         profile = SOURCE_PROFILES.get(name, {"topics": ["综合"]})
         source_kind, default_content_type = SOURCE_CLASSIFICATION.get(name, ("其他来源", "explainer"))
+        hub = content_hub_for(name, default_content_type)
         items.append({
             "name": name,
-            "category": profile["topics"][0] if profile.get("topics") else "综合",
+            "category": CONTENT_HUBS[hub],
+            "hub": hub,
+            "hub_label": CONTENT_HUBS[hub],
             "homepage": feed["url"],
             "access_mode": "RSS 自动更新",
             "rights_mode": "保存合法摘要、源站链接和 feed 提供的完整内容",
             "formats": ["文章"],
             "cadence": "每日",
+            "difficulty": feed.get("level_hint", "B2-C1"),
+            "transcript_available": False,
             "source_kind": source_kind,
             "default_content_type": default_content_type,
             "automatic": True,
         })
     for name, metadata in SOURCE_CATALOG_EXTRAS.items():
+        hub = CATEGORY_HUBS.get(metadata["category"], "culture-life")
         items.append({
             "name": name,
             **metadata,
+            "category": CONTENT_HUBS[hub],
+            "hub": hub,
+            "hub_label": CONTENT_HUBS[hub],
+            "difficulty": metadata.get("difficulty", "B2-C1" if hub in {"news", "media", "culture-life"} else "C1"),
+            "transcript_available": any(value in metadata["formats"] for value in ("字幕", "演讲稿", "讲稿")),
             "source_kind": "外部内容平台",
             "default_content_type": "culture" if metadata["category"] in {"影视与流媒体", "小说与图书"} else "explainer",
             "automatic": False,
@@ -3452,6 +3515,7 @@ def source_profile(source: str, exam: str = "") -> dict:
     else:
         fit = 35
     source_kind, default_content_type = SOURCE_CLASSIFICATION.get(source, ("其他来源", "explainer"))
+    content_hub = content_hub_for(source, default_content_type)
     return {
         "source_tier": profile["tier"],
         "source_topics": profile["topics"],
@@ -3460,6 +3524,8 @@ def source_profile(source: str, exam: str = "") -> dict:
         "source_kind": source_kind,
         "default_content_type": default_content_type,
         "default_content_type_label": CONTENT_TYPE_LABELS.get(default_content_type, "学术解释"),
+        "content_hub": content_hub,
+        "content_hub_label": CONTENT_HUBS[content_hub],
     }
 
 
@@ -3522,6 +3588,8 @@ def enrich_article(article: dict, exam: str = "") -> dict:
     item.update(recommendation_profile(item))
     item["content_type"] = infer_content_type(item)
     item["content_type_label"] = CONTENT_TYPE_LABELS[item["content_type"]]
+    item["content_hub"] = content_hub_for(item["source"], item["content_type"])
+    item["content_hub_label"] = CONTENT_HUBS[item["content_hub"]]
     item["content_status"] = item.get("content_status") or ("full" if item["source"] in {"seed", "manual"} else "summary")
     item["content_word_count"] = len(words(item.get("body", "")))
     original_paragraphs = [value for value in re.split(r"\n\s*\n", item.get("body", "")) if value.strip()]
@@ -3550,6 +3618,11 @@ def list_articles(query: dict[str, list[str]]) -> list[dict]:
         items = rows_to_dicts(conn.execute(sql, params).fetchall())
     exam = query.get("exam", [""])[0]
     items = [enrich_article(item, exam) for item in items]
+    active = [item for item in subscription_payload() if item["active"]]
+    source_subscriptions = {item["target_value"] for item in active if item["target_type"] == "source"}
+    category_subscriptions = {item["target_value"] for item in active if item["target_type"] == "category"}
+    for item in items:
+        item["subscribed"] = item["source"] in source_subscriptions or item["content_hub_label"] in category_subscriptions
     ranked = sorted(items, key=lambda item: (-item["recommendation_score"], item["id"]))
     daily_ids = {item["id"]: index + 1 for index, item in enumerate(ranked[:3])}
     for item in ranked:
@@ -3563,6 +3636,11 @@ def list_articles(query: dict[str, list[str]]) -> list[dict]:
     content_type = query.get("content_type", [""])[0]
     if content_type:
         ranked = [item for item in ranked if item["content_type"] == content_type]
+    hub = query.get("hub", [""])[0]
+    if hub == "subscribed":
+        ranked = [item for item in ranked if item["subscribed"]]
+    elif hub:
+        ranked = [item for item in ranked if item["content_hub"] == hub]
     return ranked
 
 
@@ -3584,6 +3662,10 @@ def source_catalog_payload() -> list[dict]:
         {
             **item,
             "content_type_label": CONTENT_TYPE_LABELS.get(item["default_content_type"], "学术解释"),
+            "access_method": item["access_mode"],
+            "rights_status": item["rights_mode"],
+            "update_frequency": item["cadence"],
+            "content_formats": item["formats"],
             "subscribed": ("source", item["name"]) in active or ("category", item["category"]) in active,
         }
         for item in source_catalog()
@@ -3602,15 +3684,12 @@ def today_content(exam: str = "", mode: str = "exam") -> dict:
     profile = learner_profile_summary(settings)
     plan = daily_plan_snapshot(settings)
     articles = list_articles({"exam": [exam]})
-    catalog = {item["name"]: item for item in source_catalog()}
     active = [item for item in subscription_payload() if item["active"]]
-    source_subscriptions = {item["target_value"] for item in active if item["target_type"] == "source"}
-    category_subscriptions = {item["target_value"] for item in active if item["target_type"] == "category"}
 
     enriched = []
     for article in articles:
-        category = catalog.get(article["source"], {}).get("category", article.get("source_topics", ["综合"])[0])
-        subscribed = article["source"] in source_subscriptions or category in category_subscriptions
+        category = article["content_hub_label"]
+        subscribed = article["subscribed"]
         study_minutes = estimated_study_minutes(article)
         interest_bonus = (
             (24 if subscribed else 0)
@@ -5046,6 +5125,11 @@ class App(BaseHTTPRequestHandler):
                 return json_response(
                     self,
                     {"types": [{"id": key, "label": label} for key, label in CONTENT_TYPE_LABELS.items()]},
+                )
+            if path == "/api/content-hubs":
+                return json_response(
+                    self,
+                    {"hubs": [{"id": key, "label": label} for key, label in CONTENT_HUBS.items()]},
                 )
             if path == "/api/source-catalog":
                 return json_response(self, {"sources": source_catalog_payload()})

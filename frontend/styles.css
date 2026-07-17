@@ -797,6 +797,8 @@ label {
   justify-content: space-between;
   gap: 12px;
 }
+.source-category-subscriptions { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 0 14px; border-bottom: 1px solid var(--line); }
+.source-category-subscriptions button { min-height: 30px; padding: 3px 9px; font-size: 12px; }
 
 .source-pool-head { margin-bottom: 8px; }
 .source-pool-head h2 { margin: 3px 0 0; }

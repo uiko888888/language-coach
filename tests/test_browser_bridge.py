@@ -218,6 +218,18 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertIn("lanes", today)
         self.assertGreaterEqual(today["subscription_count"], 1)
 
+    def test_content_hub_api_exposes_simple_product_categories(self):
+        payload, _ = self.request("/api/content-hubs")
+        self.assertEqual([item["label"] for item in payload["hubs"]], [
+            "新闻", "观点", "研究", "科学与自然", "文化与生活", "影视与听力", "小说与图书",
+        ])
+        catalog, _ = self.request("/api/source-catalog")
+        reuters = next(item for item in catalog["sources"] if item["name"] == "Reuters")
+        self.assertFalse(reuters["automatic"])
+        self.assertEqual(reuters["hub"], "news")
+        self.assertEqual(reuters["access_method"], "摘要与原站")
+        self.assertIn("rights_status", reuters)
+
     def test_today_api_accepts_learning_mode(self):
         today, _ = self.request("/api/today?exam=IELTS&mode=interest")
         self.assertEqual(today["mode"], "interest")

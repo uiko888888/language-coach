@@ -459,6 +459,50 @@ class LearningFlowTests(unittest.TestCase):
         self.assertIn("不抓取视频", catalog["HBO Max"]["rights_mode"])
         self.assertEqual(catalog["Project Gutenberg"]["access_mode"], "开放全文")
 
+    def test_source_registry_covers_graduate_information_channels(self):
+        catalog = {item["name"]: item for item in server.source_catalog()}
+        expected = {
+            "Reuters", "Associated Press", "Financial Times", "Bloomberg", "The Atlantic",
+            "Foreign Affairs", "Nature News", "Science", "NASA", "NOAA", "TED", "NPR Podcasts",
+            "Google Scholar", "arXiv", "PubMed", "SSRN", "Project MUSE", "Open Library",
+            "University public lectures", "Local life services",
+        }
+        self.assertTrue(expected.issubset(catalog))
+        self.assertEqual(set(server.CONTENT_HUBS.values()), {
+            "新闻", "观点", "研究", "科学与自然", "文化与生活", "影视与听力", "小说与图书",
+        })
+        for item in catalog.values():
+            self.assertIn(item["hub"], server.CONTENT_HUBS)
+            self.assertTrue(item["access_mode"])
+            self.assertTrue(item["rights_mode"])
+            self.assertTrue(item["formats"])
+            self.assertTrue(item["cadence"])
+            self.assertTrue(item["difficulty"])
+            self.assertIn("transcript_available", item)
+
+    def test_article_hub_and_subscription_filters_are_real(self):
+        now = server.utc_now()
+        with server.db() as conn:
+            conn.execute(
+                """INSERT INTO articles
+                   (title, language, level, topic, source, source_url, content_status, content_type, body, created_at, updated_at)
+                   VALUES ('A world policy briefing', 'en', 'B2', 'policy', 'BBC World', '', 'full', 'report', ?, ?, ?)""",
+                ("The report explains a policy change and its effects on communities.", now, now),
+            )
+        news = server.list_articles({"hub": ["news"]})
+        self.assertTrue(news)
+        self.assertTrue(all(item["content_hub"] == "news" for item in news))
+        with server.db() as conn:
+            conn.execute(
+                """INSERT INTO subscriptions (target_type, target_value, active, created_at, updated_at)
+                   VALUES ('category', '新闻', 1, ?, ?)
+                   ON CONFLICT(target_type, target_value) DO UPDATE SET active = 1, updated_at = excluded.updated_at""",
+                (now, now),
+            )
+        subscribed = server.list_articles({"hub": ["subscribed"]})
+        self.assertTrue(subscribed)
+        self.assertTrue(all(item["subscribed"] for item in subscribed))
+
     def test_subscriptions_shape_unique_today_content(self):
         now = server.utc_now()
         fixtures = [

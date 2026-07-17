@@ -9,6 +9,28 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.17] - 2026-07-18
+
+### Added
+
+- Added seven content hubs plus a personal subscription filter to the article pool.
+- Added source-level access method, rights status, update frequency, formats, difficulty and transcript availability metadata.
+- Added category subscriptions alongside individual-source subscriptions.
+- Added metadata-only registry entries for major news, commentary, science, research, media, book, campus and local-life channels.
+- Added source-homepage actions without treating registration as permission to copy content.
+
+### Changed
+
+- Normalized source categories into product-facing content hubs instead of mixing media topics with navigation categories.
+- Article payloads now include content-hub labels and subscription state.
+- Filtering by a content hub or “我的订阅” now runs against backend data rather than only hiding frontend rows.
+
+### Known limits
+
+- Registry-only sources do not update automatically until a legal RSS/API, public transcript or user-authorized import adapter exists.
+- Today’s five-part graduate information mix is not yet enforced because media, campus and local-life items still lack enough imported content.
+- DOI/Zotero, SRT/VTT and podcast transcript imports remain future adapters.
+
 ## [0.8.0-alpha.16] - 2026-07-18
 
 ### Added

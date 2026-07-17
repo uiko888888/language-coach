@@ -48,6 +48,8 @@ const state = {
   showTranslation: false,
   articleTopics: [],
   articleTopic: "",
+  articleHubs: [],
+  articleHub: "",
   articleContentTypes: [],
   articleContentType: "",
   recommendedOnly: false,
@@ -608,7 +610,7 @@ function renderArticles() {
         <span class="master-number">${String(index + 1).padStart(2, "0")}</span>
         <span class="master-copy">
           <strong>${escapeHtml(article.title)}</strong>
-          <small>${article.recommended_today ? `推荐 ${article.daily_rank} · ` : ""}${escapeHtml(article.content_type_label || "学术解释")} · ${escapeHtml(article.source || "manual")} · ${escapeHtml(article.level)}${article.published_at ? ` · ${formatDateTime(article.published_at)}` : ""}</small>
+          <small>${article.recommended_today ? `推荐 ${article.daily_rank} · ` : ""}${escapeHtml(article.content_hub_label || "文化与生活")} · ${escapeHtml(article.content_type_label || "学术解释")} · ${escapeHtml(article.source || "manual")} · ${escapeHtml(article.level)}${article.published_at ? ` · ${formatDateTime(article.published_at)}` : ""}</small>
           ${article.recommended_today ? `<em>${escapeHtml((article.recommendation_reasons || []).join(" · "))}</em>` : ""}
         </span>
       </button>
@@ -619,6 +621,7 @@ function renderArticles() {
           <div class="badge-row">
             ${badge(selected.level, "teal")}
             ${badge(selected.source || "manual")}
+            ${badge(selected.content_hub_label || "文化与生活", "teal")}
             ${badge(selected.content_type_label || "学术解释", selected.content_type === "opinion" ? "amber" : "teal")}
             ${selected.source_kind ? badge(selected.source_kind) : ""}
             ${badge(selected.content_status === "full" ? `完整正文 · ${selected.content_word_count}词` : `RSS摘要 · ${selected.content_word_count}词`, selected.content_status === "full" ? "teal" : "amber")}
@@ -645,17 +648,26 @@ function renderArticles() {
     `;
   }
 
+  const visibleSources = state.sourceCatalog.filter(source => {
+    if (!state.articleHub) return true;
+    if (state.articleHub === "subscribed") return source.subscribed;
+    return source.hub === state.articleHub;
+  });
+  const categorySubscriptions = new Set(state.subscriptions.filter(item => item.target_type === "category" && item.active).map(item => item.target_value));
   $("#feedList").innerHTML = `
     <div class="source-pool-head">
       <div><span class="muted">Exam-aligned sources</span><h2>${state.style} 来源池</h2></div>
       ${badge("仅保存摘要与链接", "teal")}
     </div>
-    ${state.sourceCatalog.map(source => `
+    <div class="source-category-subscriptions">
+      ${state.articleHubs.map(hub => `<button data-subscribe-category="${escapeHtml(hub.label)}" data-subscribe-active="${categorySubscriptions.has(hub.label) ? "false" : "true"}">${categorySubscriptions.has(hub.label) ? "已订阅" : "订阅"} ${escapeHtml(hub.label)}</button>`).join("")}
+    </div>
+    ${visibleSources.map(source => `
       <div class="source-row">
-        <div><strong>${escapeHtml(source.name)}</strong><p>${escapeHtml(source.category)} · ${escapeHtml(source.formats.join(" / "))} · ${escapeHtml(source.rights_mode)}</p></div>
-        <div class="badge-row">${badge(source.automatic ? "自动更新" : source.access_mode, source.automatic ? "teal" : "")}${badge(source.cadence, "amber")}<button data-subscribe-source="${escapeHtml(source.name)}" data-subscribe-active="${source.subscribed ? "false" : "true"}">${source.subscribed ? "取消订阅" : "订阅"}</button></div>
+        <div><strong>${escapeHtml(source.name)}</strong><p>${escapeHtml(source.hub_label || source.category)} · ${escapeHtml(source.formats.join(" / "))} · ${escapeHtml(source.rights_mode)}</p></div>
+        <div class="badge-row">${badge(source.automatic ? "自动更新" : source.access_mode, source.automatic ? "teal" : "")}${badge(source.cadence, "amber")}${badge(source.difficulty || "B2-C1")}${source.transcript_available ? badge("字幕/讲稿") : ""}${source.homepage ? `<a class="button-link" href="${escapeHtml(source.homepage)}" target="_blank" rel="noreferrer">来源</a>` : ""}<button data-subscribe-source="${escapeHtml(source.name)}" data-subscribe-active="${source.subscribed ? "false" : "true"}">${source.subscribed ? "取消订阅" : "订阅"}</button></div>
       </div>
-    `).join("")}
+    `).join("") || `<div class="empty-state">当前分类还没有已注册来源。</div>`}
   `;
 }
 
@@ -1599,9 +1611,24 @@ async function loadArticles(q = "") {
   if (q) params.set("q", q);
   if (state.articleTopic) params.set("topic", state.articleTopic);
   if (state.articleContentType) params.set("content_type", state.articleContentType);
+  if (state.articleHub) params.set("hub", state.articleHub);
   if (state.recommendedOnly) params.set("recommended", "1");
   const data = await api(`/api/articles?${params.toString()}`);
   state.articles = data.articles || [];
+}
+
+async function loadArticleHubs() {
+  try {
+    const data = await api("/api/content-hubs");
+    state.articleHubs = data.hubs || [];
+  } catch (_error) {
+    state.articleHubs = [
+      ["news", "新闻"], ["opinion", "观点"], ["research", "研究"], ["science", "科学与自然"],
+      ["culture-life", "文化与生活"], ["media", "影视与听力"], ["books", "小说与图书"],
+    ].map(([id, label]) => ({ id, label }));
+  }
+  $("#articleHubFilter").innerHTML = `<option value="">全部内容</option>${state.articleHubs.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join("")}<option value="subscribed">我的订阅</option>`;
+  $("#articleHubFilter").value = state.articleHub;
 }
 
 async function loadArticleTopics() {
@@ -1761,15 +1788,19 @@ async function startModeFocus() {
   else await startDailyPlan();
 }
 
-async function setSourceSubscription(name, active) {
+async function setSubscription(targetType, targetValue, active) {
   await api("/api/subscriptions", {
     method: "POST",
-    body: JSON.stringify({ target_type: "source", target_value: name, active }),
+    body: JSON.stringify({ target_type: targetType, target_value: targetValue, active }),
   });
-  await Promise.all([loadSourceCatalog(), loadSubscriptions(), loadToday()]);
+  await Promise.all([loadSourceCatalog(), loadSubscriptions(), loadToday(), loadArticles($("#articleSearch").value.trim())]);
   renderDashboard();
   renderArticles();
-  toast(active ? `已订阅 ${name}` : `已取消订阅 ${name}`);
+  toast(active ? `已订阅 ${targetValue}` : `已取消订阅 ${targetValue}`);
+}
+
+async function setSourceSubscription(name, active) {
+  await setSubscription("source", name, active);
 }
 
 async function loadQuizzes() {
@@ -2288,6 +2319,7 @@ document.addEventListener("click", async event => {
     }
     if (button.id === "refreshFeedsBtn") await refreshFeeds();
     if (button.dataset.subscribeSource) await setSourceSubscription(button.dataset.subscribeSource, button.dataset.subscribeActive === "true");
+    if (button.dataset.subscribeCategory) await setSubscription("category", button.dataset.subscribeCategory, button.dataset.subscribeActive === "true");
     if (button.id === "saveArticleBtn") await saveArticle();
     if (button.id === "importEpubBtn") await importEpub();
     if (button.id === "openEpubChapterBtn") await openEpubChapter();
@@ -2489,6 +2521,12 @@ $("#articleTopicFilter").addEventListener("change", async event => {
   renderAll();
 });
 
+$("#articleHubFilter").addEventListener("change", async event => {
+  state.articleHub = event.target.value;
+  await loadArticles($("#articleSearch").value.trim());
+  renderArticles();
+});
+
 $("#articleContentTypeFilter").addEventListener("change", async event => {
   state.articleContentType = event.target.value;
   await loadArticles($("#articleSearch").value.trim());
@@ -2529,7 +2567,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 
 async function boot() {
   await loadHealth();
-  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleContentTypes(), loadBridgeConfig(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadBridgeConfig(), searchLexicon("", { open: false, history: false })]);
   if (!state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);
     state.selectedArticle = data.article;
