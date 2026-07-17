@@ -211,6 +211,13 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertTrue(next_set["quizzes"])
         self.assertLessEqual(len(next_set["quizzes"]), 5)
         self.assertIn(attempt["error_type"], next_set["focus"])
+        focused, _ = self.request(
+            "/api/practice/next-set",
+            "POST",
+            {"style": "IELTS", "limit": 5, "question_type": "tfng", "error_type": attempt["error_type"]},
+        )
+        self.assertEqual(focused["filters"], {"question_type": "tfng", "error_type": attempt["error_type"]})
+        self.assertTrue(all(item["question_type"] == "tfng" for item in focused["quizzes"]))
 
     def test_mock_session_scores_unanswered_items_and_persists_diagnosis(self):
         created, _ = self.request(

@@ -3748,20 +3748,30 @@ class App(BaseHTTPRequestHandler):
                 )
             if path == "/api/practice/next-set":
                 style = str(payload.get("style") or "IELTS").strip()
+                focus_type = str(payload.get("question_type") or "").strip()
+                focus_error = str(payload.get("error_type") or "").strip()
                 limit = max(3, min(10, int(payload.get("limit") or 10)))
                 with db() as conn:
+                    filters = ["m.solved = 0", "q.style = ?"]
+                    filter_params: list[object] = [style]
+                    if focus_type:
+                        filters.append("q.question_type = ?")
+                        filter_params.append(focus_type)
+                    if focus_error:
+                        filters.append("m.error_type = ?")
+                        filter_params.append(focus_error)
                     weak_rows = conn.execute(
-                        """
+                        f"""
                         SELECT m.error_type, m.evidence AS mistake_evidence,
                                q.*, a.body AS article_body
                         FROM mistakes m
                         JOIN quizzes q ON q.id = m.quiz_id
                         JOIN articles a ON a.id = q.article_id
-                        WHERE m.solved = 0 AND q.style = ?
+                        WHERE {' AND '.join(filters)}
                         ORDER BY m.created_at DESC
                         LIMIT 12
                         """,
-                        (style,),
+                        filter_params,
                     ).fetchall()
                     saved: list[dict] = []
                     focus: list[str] = []
@@ -3782,14 +3792,16 @@ class App(BaseHTTPRequestHandler):
                             break
                     if len(saved) < limit:
                         existing = conn.execute(
-                            """
+                            f"""
                             SELECT q.* FROM quizzes q
-                            WHERE q.style = ? AND NOT EXISTS (
+                            WHERE q.style = ?
+                              {"AND q.question_type = ?" if focus_type else ""}
+                              AND NOT EXISTS (
                               SELECT 1 FROM attempts a WHERE a.quiz_id = q.id
                             )
                             ORDER BY q.created_at DESC, q.id DESC LIMIT ?
                             """,
-                            (style, limit - len(saved)),
+                            tuple([style] + ([focus_type] if focus_type else []) + [limit - len(saved)]),
                         ).fetchall()
                         saved.extend(quiz_payload(row) for row in existing)
                 return json_response(
@@ -3798,6 +3810,7 @@ class App(BaseHTTPRequestHandler):
                         "quizzes": saved[:limit],
                         "focus": focus,
                         "reason": "优先依据未解决错题的题型和错因生成；不足部分使用当前考试未作答题。",
+                        "filters": {"question_type": focus_type, "error_type": focus_error},
                     },
                     201,
                 )

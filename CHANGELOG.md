@@ -8,6 +8,21 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.8.0-alpha.6] - 2026-07-17
+
+### Added
+
+- Added local draft persistence for incomplete practice sessions, including answers, confidence, flags, active question, mode, and elapsed time.
+- Added direct result actions to continue training by a specific mistake type and question type.
+- Added backend filters for the weakness-driven next-set endpoint so remedial training does not silently mix unrelated question types.
+- Made English evidence sentences in explanations clickable for immediate word or phrase lookup.
+- Added API test coverage for focused next-set generation.
+
+### Changed
+
+- Refreshing the page can restore the same article and question set instead of discarding an unfinished session.
+- This release is committed and tagged locally only; GitHub push is intentionally deferred until explicitly requested.
+
 ## [0.8.0-alpha.5] - 2026-07-17
 
 ### Added

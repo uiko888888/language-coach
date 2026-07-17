@@ -34,6 +34,7 @@ const state = {
   recommendedOnly: false,
   bridge: null,
   browserClips: [],
+  quizDraftRestored: false,
   selectedArticle: null,
   selectedPoolArticleId: null,
   selectedMistakeId: null,
@@ -133,6 +134,59 @@ function resetQuizSession({ preserveSettings = true } = {}) {
     submitted: false,
     result: null,
   };
+}
+
+function quizDraftPayload() {
+  if (!state.quizzes.length || state.quizSession.submitted) return null;
+  return {
+    style: state.style,
+    articleId: state.selectedArticle?.id || null,
+    quizIds: state.quizzes.map(quiz => quiz.id),
+    mode: state.quizSession.mode,
+    display: state.quizSession.display,
+    activeIndex: state.quizSession.activeIndex,
+    answers: state.quizSession.answers,
+    confidence: state.quizSession.confidence,
+    flagged: state.quizSession.flagged,
+    feedback: state.answerFeedback,
+    elapsedSeconds: quizElapsedSeconds(),
+    savedAt: Date.now(),
+  };
+}
+
+function persistQuizDraft() {
+  const draft = quizDraftPayload();
+  if (draft) localStorage.setItem("lc-v2-quiz-draft", JSON.stringify(draft));
+}
+
+function clearQuizDraft() {
+  localStorage.removeItem("lc-v2-quiz-draft");
+  state.quizDraftRestored = false;
+}
+
+function restoreQuizDraft() {
+  try {
+    const draft = JSON.parse(localStorage.getItem("lc-v2-quiz-draft") || "null");
+    const currentIds = state.quizzes.map(quiz => quiz.id);
+    if (!draft || draft.style !== state.style
+      || Number(draft.articleId || 0) !== Number(state.selectedArticle?.id || 0)
+      || JSON.stringify(draft.quizIds || []) !== JSON.stringify(currentIds)) return false;
+    state.quizSession.mode = draft.mode === "mock" ? "mock" : "practice";
+    state.quizSession.display = draft.display === "all" ? "all" : "single";
+    state.quizSession.activeIndex = Number(draft.activeIndex) || 0;
+    state.quizSession.answers = draft.answers || {};
+    state.quizSession.confidence = draft.confidence || {};
+    state.quizSession.flagged = draft.flagged || {};
+    state.answerFeedback = draft.feedback || {};
+    state.showAnswers = Object.keys(state.answerFeedback).length > 0;
+    state.quizSession.elapsedSeconds = Math.max(0, Number(draft.elapsedSeconds) || 0);
+    state.quizSession.startedAt = Date.now();
+    state.quizDraftRestored = true;
+    return true;
+  } catch (_error) {
+    clearQuizDraft();
+    return false;
+  }
 }
 
 function setView(name, { pushHistory = true } = {}) {
@@ -683,7 +737,7 @@ function explanationHtml(explanation, compact = false, correct = false, replayAr
       ${!compact ? `
         <div class="evidence-box">
           <span>原文证据</span>
-          <p>${escapeHtml(explanation.evidence || "暂无证据句")}</p>
+          <p class="quiz-evidence-text">${searchableEnglish(explanation.evidence || "暂无证据句")}</p>
           <small>${escapeHtml(explanation.evidence_guide || "")}</small>
           ${explanation.evidence && replayArticleId ? `<button data-replay-evidence="${replayArticleId}" data-replay-text="${escapeHtml(explanation.evidence)}">回到原文并高亮</button>` : ""}
         </div>
@@ -736,6 +790,7 @@ function quizResultHtml(result) {
     </div>
     <div class="toolbar result-actions">
       ${Object.keys(errors).length ? `<button data-view-jump="mistakes">查看错题解析</button>` : ""}
+      ${Object.entries(errors).filter(([error]) => error !== "未作答").map(([error]) => `<button data-next-set-error="${escapeHtml(error)}" data-next-set-type="${escapeHtml(state.quizzes[0]?.question_type || "")}">继续练：${escapeHtml(error)}</button>`).join("")}
       <button data-next-set="true">下一组 10 题</button>
       <button data-retry-session="true">再练一次</button>
     </div>
@@ -829,6 +884,11 @@ function renderQuizzes() {
     </div>
   `;
   }).join("") || `<div class="item muted">暂无题目</div>`;
+  if (state.quizDraftRestored) {
+    state.quizDraftRestored = false;
+    toast("已恢复上次未完成训练");
+  }
+  persistQuizDraft();
 }
 
 function renderCards() {
@@ -1165,6 +1225,7 @@ async function loadQuizzes() {
   const data = await api(`/api/quizzes?${params.toString()}`);
   state.quizzes = data.quizzes || [];
   resetQuizSession();
+  restoreQuizDraft();
 }
 
 async function openArticle(id) {
@@ -1213,6 +1274,7 @@ async function generateQuizzes(id = state.selectedArticle?.id, { open = true } =
     body: JSON.stringify({ mode, style: state.style, question_type: questionType }),
   });
   state.quizzes = data.quizzes || [];
+  clearQuizDraft();
   resetQuizSession();
   if (open) setView("quiz");
   renderAll();
@@ -1539,10 +1601,10 @@ async function generateSimilar(mistakeId) {
   toast(`已生成 ${state.similarByMistake[mistakeId].length} 道同类题`);
 }
 
-async function generateNextSet() {
+async function generateNextSet({ questionType = "", errorType = "" } = {}) {
   const data = await api("/api/practice/next-set", {
     method: "POST",
-    body: JSON.stringify({ style: state.style, limit: 10 }),
+    body: JSON.stringify({ style: state.style, limit: 10, question_type: questionType, error_type: errorType }),
   });
   if (!(data.quizzes || []).length) return toast("当前还没有足够的题目或错题生成下一组");
   state.quizzes = data.quizzes;
@@ -1551,7 +1613,7 @@ async function generateNextSet() {
   setView("quiz");
   renderQuizzes();
   renderQuizSource();
-  toast(data.focus?.length ? `下一组聚焦：${data.focus.slice(0, 2).join("、")}` : "已载入下一组训练");
+  toast(errorType ? `已载入专项巩固：${errorType}` : data.focus?.length ? `下一组聚焦：${data.focus.slice(0, 2).join("、")}` : "已载入下一组训练");
 }
 
 document.addEventListener("click", async event => {
@@ -1605,6 +1667,7 @@ document.addEventListener("click", async event => {
     if (button.id === "generatePracticeBtn") await generateQuizzes();
     if (button.id === "generateFullPaperBtn") await generateFullPaper();
     if (button.id === "nextSetBtn" || button.dataset.nextSet) await generateNextSet();
+    if (button.dataset.nextSetError) await generateNextSet({ questionType: button.dataset.nextSetType || "", errorType: button.dataset.nextSetError });
     if (button.id === "loadPaperBtn") await loadPaper(Number($("#quizPaperSelect").value));
     if (button.id === "restartQuizSessionBtn" || button.dataset.retrySession) {
       resetQuizSession();

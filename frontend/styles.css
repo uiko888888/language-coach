@@ -638,6 +638,7 @@ label {
 }
 .evidence-box button,
 .evidence-replay-compact { margin-top: 9px; }
+.quiz-evidence-text .reader-word { cursor: pointer; }
 .evidence-replay-target { padding: 8px 10px; border-left: 4px solid #d18a27; background: #fff7e8; scroll-margin-top: 24px; }
 
 .answer-choice strong {
