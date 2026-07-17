@@ -8,6 +8,29 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.8.0-alpha.7] - 2026-07-17
+
+### Added
+
+- Added editable 5 / 15 / 30 / 60 minute daily plans with reading, practice, mistake review, and vocabulary task combinations.
+- Added persistent short-term and long-term goals with optional target dates.
+- Added an explicit profile-recommendation switch and a generic fallback when personalization is disabled.
+- Added goal and plan context to the Today API and goal-aware recommendation reasons.
+- Added direct routing from “start today” to the first user-selected task.
+- Added `PROJECT_PLAN.md` as the authoritative version objective, scope, non-goal, acceptance, and release ledger.
+- Added integration coverage for settings persistence and Today API goal context.
+
+### Changed
+
+- Product documentation now separates application recommendations from future system/browser push notifications.
+- Removed the obsolete initial-letter exercise claim from the product definition.
+
+### Known limits
+
+- The daily plan selects time and task categories but does not yet track per-task completion or custom question/card counts.
+- Goals influence recommendation context and exam selection; semantic goal matching and dynamic ability modeling remain pending.
+- System notifications, browser notifications, and cross-device push are not implemented.
+
 ## [0.8.0-alpha.6] - 2026-07-17
 
 ### Added

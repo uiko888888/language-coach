@@ -108,6 +108,53 @@
         </div>
         <button class="primary" id="modePrimaryAction">开始今日训练</button>
       </section>
+      <section class="band daily-plan-band">
+        <div class="band-head">
+          <div>
+            <span class="eyebrow">Personal plan</span>
+            <h2>今日学习组合</h2>
+          </div>
+          <strong id="dailyPlanSummary">15 分钟</strong>
+        </div>
+        <div class="daily-plan-tasks" id="dailyPlanTasks"></div>
+        <div class="goal-summary" id="goalSummary"></div>
+        <details class="plan-settings">
+          <summary>调整计划与目标</summary>
+          <div class="plan-form-grid">
+            <label>每日时间
+              <select id="dailyMinutes">
+                <option value="5">5 分钟</option>
+                <option value="15">15 分钟</option>
+                <option value="30">30 分钟</option>
+                <option value="60">60 分钟</option>
+              </select>
+            </label>
+            <fieldset class="plan-task-fieldset">
+              <legend>学习内容</legend>
+              <label><input type="checkbox" data-daily-task="reading" /> 阅读</label>
+              <label><input type="checkbox" data-daily-task="practice" /> 做题</label>
+              <label><input type="checkbox" data-daily-task="review" /> 错题复盘</label>
+              <label><input type="checkbox" data-daily-task="vocabulary" /> 词块复习</label>
+            </fieldset>
+            <label>近期目标
+              <input id="shortGoal" maxlength="160" placeholder="例如：两周内稳定完成 IELTS 判断题" />
+            </label>
+            <label>目标日期
+              <input id="shortGoalDate" type="date" />
+            </label>
+            <label>长期目标
+              <input id="longGoal" maxlength="160" placeholder="例如：IELTS 阅读达到 7.0" />
+            </label>
+            <label>计划日期
+              <input id="longGoalDate" type="date" />
+            </label>
+          </div>
+          <div class="toolbar plan-actions">
+            <label class="filter-toggle"><input id="recommendationsEnabled" type="checkbox" /> 接收画像推荐</label>
+            <button class="primary" id="saveLearnerSettingsBtn">保存计划</button>
+          </div>
+        </details>
+      </section>
       <div class="metric-grid">
         <div class="metric"><span>文章</span><strong id="statArticles">0</strong></div>
         <div class="metric"><span>生词</span><strong id="statCards">0</strong></div>

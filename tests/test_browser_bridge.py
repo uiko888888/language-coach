@@ -182,6 +182,36 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(today["mode"], "interest")
         self.assertTrue(any(lane["label"] == "15 分钟沉浸" for lane in today["lanes"]))
 
+    def test_learner_settings_shape_daily_plan_and_goal_context(self):
+        saved, _ = self.request(
+            "/api/learner-settings",
+            "POST",
+            {
+                "daily_minutes": 30,
+                "daily_tasks": ["reading", "practice", "vocabulary"],
+                "short_goal": "Improve IELTS matching information",
+                "short_goal_date": "2026-08-01",
+                "long_goal": "IELTS reading 7.0",
+                "long_goal_date": "2026-10-01",
+                "recommendations_enabled": True,
+            },
+        )
+        self.assertEqual(saved["settings"]["daily_minutes"], 30)
+        loaded, _ = self.request("/api/learner-settings")
+        self.assertEqual(loaded["settings"], saved["settings"])
+        today, _ = self.request("/api/today?exam=IELTS&mode=exam")
+        self.assertEqual(today["plan"]["minutes"], 30)
+        self.assertEqual(today["goals"]["short"], "Improve IELTS matching information")
+        self.assertTrue(all("对应当前目标" in lane["reason"] for lane in today["lanes"]))
+        disabled, _ = self.request(
+            "/api/learner-settings",
+            "POST",
+            {**saved["settings"], "recommendations_enabled": False},
+        )
+        self.assertFalse(disabled["settings"]["recommendations_enabled"])
+        generic, _ = self.request("/api/today?exam=IELTS&mode=exam")
+        self.assertTrue(all(lane["reason"] == "通用内容安排" for lane in generic["lanes"]))
+
     def test_ielts_generation_and_wrong_answer_record_skill_and_error(self):
         created, _ = self.request(
             "/api/articles",

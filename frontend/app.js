@@ -21,6 +21,15 @@ const state = {
   selectedLexicalItem: null,
   lexiconFilter: "all",
   progress: { xp: 0, level: 1, level_xp: 0, streak: 0 },
+  learnerSettings: {
+    daily_minutes: 15,
+    daily_tasks: ["reading", "practice", "review"],
+    short_goal: "",
+    short_goal_date: "",
+    long_goal: "",
+    long_goal_date: "",
+    recommendations_enabled: true,
+  },
   examTypes: [],
   examResources: [],
   examPapers: [],
@@ -268,8 +277,35 @@ function renderStats() {
   $("#progressXp").textContent = `${state.progress.level_xp || 0}/100 XP · ${state.progress.streak || 0} 天`;
 }
 
+const dailyTaskLabels = {
+  reading: "阅读",
+  practice: "考试练习",
+  review: "错题复盘",
+  vocabulary: "词块复习",
+};
+
+function renderLearnerSettings() {
+  const settings = state.learnerSettings;
+  $("#dailyMinutes").value = String(settings.daily_minutes || 15);
+  document.querySelectorAll("[data-daily-task]").forEach(input => {
+    input.checked = (settings.daily_tasks || []).includes(input.dataset.dailyTask);
+  });
+  $("#shortGoal").value = settings.short_goal || "";
+  $("#shortGoalDate").value = settings.short_goal_date || "";
+  $("#longGoal").value = settings.long_goal || "";
+  $("#longGoalDate").value = settings.long_goal_date || "";
+  $("#recommendationsEnabled").checked = settings.recommendations_enabled !== false;
+  $("#dailyPlanSummary").textContent = `${settings.daily_minutes || 15} 分钟`;
+  $("#dailyPlanTasks").innerHTML = (settings.daily_tasks || []).map(task => `<span class="daily-plan-task">${escapeHtml(dailyTaskLabels[task] || task)}</span>`).join("");
+  const goals = [];
+  if (settings.short_goal) goals.push(`<span><strong>近期：</strong>${escapeHtml(settings.short_goal)}${settings.short_goal_date ? ` · ${escapeHtml(settings.short_goal_date)}` : ""}</span>`);
+  if (settings.long_goal) goals.push(`<span><strong>长期：</strong>${escapeHtml(settings.long_goal)}${settings.long_goal_date ? ` · ${escapeHtml(settings.long_goal_date)}` : ""}</span>`);
+  $("#goalSummary").innerHTML = goals.join("") || `<span>尚未设置近期或长期目标</span>`;
+}
+
 function renderDashboard() {
   const interest = state.learningMode === "interest";
+  const activeGoal = state.learnerSettings.short_goal || state.learnerSettings.long_goal || "";
   document.querySelectorAll("[data-learning-mode]").forEach(button => {
     button.classList.toggle("active", button.dataset.learningMode === state.learningMode);
     button.setAttribute("aria-pressed", String(button.dataset.learningMode === state.learningMode));
@@ -277,8 +313,8 @@ function renderDashboard() {
   $("#modeEyebrow").textContent = interest ? "Interest mode" : `${state.style} exam mode`;
   $("#modeHeading").textContent = interest ? "从喜欢的内容进入英语" : `今天为 ${state.style} 目标训练`;
   $("#modeDescription").textContent = interest
-    ? "优先推荐订阅、新闻与文化内容；阅读后仍可提取生词、词块并生成适度练习。"
-    : "优先匹配考试难度、证据定位与同义替换；原文仍保留兴趣主题，不把训练做成孤立题库。";
+    ? `优先推荐订阅、新闻与文化内容；今日计划 ${state.learnerSettings.daily_minutes} 分钟。${activeGoal ? ` 当前目标：${activeGoal}` : ""}`
+    : `优先匹配考试难度、证据定位与同义替换；今日计划 ${state.learnerSettings.daily_minutes} 分钟。${activeGoal ? ` 当前目标：${activeGoal}` : ""}`;
   $("#modePrimaryAction").textContent = interest ? "开始轻松阅读" : "开始今日训练";
   $("#globalStyle").title = interest ? "兴趣素材生成题目时参照的考试难度" : "当前备考目标";
 
@@ -1017,6 +1053,34 @@ async function loadProgress() {
   state.progress = data.progress;
 }
 
+async function loadLearnerSettings() {
+  const data = await api("/api/learner-settings");
+  state.learnerSettings = data.settings;
+  renderLearnerSettings();
+}
+
+async function saveLearnerSettings() {
+  const dailyTasks = [...document.querySelectorAll("[data-daily-task]:checked")].map(input => input.dataset.dailyTask);
+  if (!dailyTasks.length) return toast("每天至少选择一项学习内容");
+  const data = await api("/api/learner-settings", {
+    method: "POST",
+    body: JSON.stringify({
+      daily_minutes: Number($("#dailyMinutes").value),
+      daily_tasks: dailyTasks,
+      short_goal: $("#shortGoal").value.trim(),
+      short_goal_date: $("#shortGoalDate").value,
+      long_goal: $("#longGoal").value.trim(),
+      long_goal_date: $("#longGoalDate").value,
+      recommendations_enabled: $("#recommendationsEnabled").checked,
+    }),
+  });
+  state.learnerSettings = data.settings;
+  await loadToday();
+  renderLearnerSettings();
+  renderDashboard();
+  toast("学习计划和目标已保存");
+}
+
 async function loadExamTypes() {
   const data = await api(`/api/exam-types?style=${encodeURIComponent(state.style)}`);
   state.examTypes = data.types || [];
@@ -1203,6 +1267,31 @@ async function setLearningMode(mode) {
   await loadToday();
   renderDashboard();
   toast(mode === "interest" ? "已切换到兴趣模式" : `已切换到 ${state.style} 备考模式`);
+}
+
+async function startDailyPlan() {
+  const firstTask = state.learnerSettings.daily_tasks?.[0] || "reading";
+  if (firstTask === "review") {
+    setView("mistakes");
+    renderMistakes();
+    return;
+  }
+  if (firstTask === "vocabulary") {
+    setView("cards");
+    renderCards();
+    return;
+  }
+  if (firstTask === "practice") {
+    if (!state.quizzes.length) await loadQuizzes();
+    if (!state.quizzes.length && state.selectedArticle) await generateQuizzes(state.selectedArticle.id, { open: false });
+    setView("quiz");
+    renderQuizzes();
+    renderQuizSource();
+    return;
+  }
+  const first = state.today.lanes?.[0]?.article;
+  if (first) await openArticle(first.id);
+  else setView("articles");
 }
 
 async function setSourceSubscription(name, active) {
@@ -1637,9 +1726,9 @@ document.addEventListener("click", async event => {
       renderQuizSource();
     }
     if (button.id === "refreshAllBtn") await boot();
+    if (button.id === "saveLearnerSettingsBtn") await saveLearnerSettings();
     if (button.id === "modePrimaryAction") {
-      const first = state.today.lanes?.[0]?.article;
-      if (first) await openArticle(first.id);
+      await startDailyPlan();
     }
     if (button.id === "toggleTranslationBtn" || button.id === "quizTranslationBtn" || button.dataset.toggleTranslation) {
       state.showTranslation = !state.showTranslation;
@@ -1898,7 +1987,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 
 async function boot() {
   await loadHealth();
-  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleContentTypes(), loadBridgeConfig(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleContentTypes(), loadBridgeConfig(), searchLexicon("", { open: false, history: false })]);
   if (!state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);
     state.selectedArticle = data.article;

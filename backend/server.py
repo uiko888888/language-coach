@@ -2068,6 +2068,59 @@ def generate_similar_items(text: str, original: dict, count: int = 3) -> list[di
 
 CEFR_ORDER = {"A1": 1, "A2": 2, "B1": 3, "B2": 4, "C1": 5, "C2": 6}
 
+LEARNER_SETTINGS_KEY = "learner_profile"
+DAILY_PLAN_MINUTES = {5, 15, 30, 60}
+DAILY_PLAN_TASKS = {"reading", "practice", "review", "vocabulary"}
+DEFAULT_LEARNER_SETTINGS = {
+    "daily_minutes": 15,
+    "daily_tasks": ["reading", "practice", "review"],
+    "short_goal": "",
+    "short_goal_date": "",
+    "long_goal": "",
+    "long_goal_date": "",
+    "recommendations_enabled": True,
+}
+
+
+def learner_settings() -> dict:
+    with db() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (LEARNER_SETTINGS_KEY,)).fetchone()
+    if not row:
+        return dict(DEFAULT_LEARNER_SETTINGS)
+    try:
+        saved = json.loads(row["value"])
+    except (TypeError, ValueError):
+        saved = {}
+    settings = {**DEFAULT_LEARNER_SETTINGS, **(saved if isinstance(saved, dict) else {})}
+    settings["daily_minutes"] = settings["daily_minutes"] if settings["daily_minutes"] in DAILY_PLAN_MINUTES else 15
+    settings["daily_tasks"] = [task for task in settings["daily_tasks"] if task in DAILY_PLAN_TASKS] or ["reading"]
+    settings["recommendations_enabled"] = bool(settings["recommendations_enabled"])
+    return settings
+
+
+def update_learner_settings(payload: dict) -> dict:
+    minutes = int(payload.get("daily_minutes") or 15)
+    if minutes not in DAILY_PLAN_MINUTES:
+        raise ValueError("daily_minutes must be one of 5, 15, 30, or 60")
+    tasks = [str(task) for task in (payload.get("daily_tasks") or []) if str(task) in DAILY_PLAN_TASKS]
+    if not tasks:
+        raise ValueError("Select at least one daily learning task")
+    settings = {
+        "daily_minutes": minutes,
+        "daily_tasks": list(dict.fromkeys(tasks)),
+        "short_goal": str(payload.get("short_goal") or "").strip()[:160],
+        "short_goal_date": str(payload.get("short_goal_date") or "").strip()[:20],
+        "long_goal": str(payload.get("long_goal") or "").strip()[:160],
+        "long_goal_date": str(payload.get("long_goal_date") or "").strip()[:20],
+        "recommendations_enabled": bool(payload.get("recommendations_enabled", True)),
+    }
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (LEARNER_SETTINGS_KEY, json.dumps(settings, ensure_ascii=False)),
+        )
+    return settings
+
 
 def current_learner_level() -> str:
     with db() as conn:
@@ -2297,6 +2350,7 @@ def estimated_study_minutes(article: dict) -> int:
 
 def today_content(exam: str = "", mode: str = "exam") -> dict:
     mode = mode if mode in {"interest", "exam"} else "exam"
+    settings = learner_settings()
     articles = list_articles({"exam": [exam]})
     catalog = {item["name"]: item for item in source_catalog()}
     active = [item for item in subscription_payload() if item["active"]]
@@ -2320,7 +2374,7 @@ def today_content(exam: str = "", mode: str = "exam") -> dict:
             "catalog_category": category,
             "subscribed": subscribed,
             "study_minutes": study_minutes,
-            "today_score": article["recommendation_score"] + (interest_bonus if mode == "interest" else exam_bonus),
+            "today_score": article["recommendation_score"] + ((interest_bonus if mode == "interest" else exam_bonus) if settings["recommendations_enabled"] else 0),
         })
     enriched.sort(key=lambda item: (-item["today_score"], item["id"]))
 
@@ -2366,13 +2420,30 @@ def today_content(exam: str = "", mode: str = "exam") -> dict:
     for lane_id, label, item, base_reason in lane_specs:
         if not item:
             continue
-        reason = "来自你的订阅" if item["subscribed"] else base_reason
+        if not settings["recommendations_enabled"]:
+            reason = "通用内容安排"
+        else:
+            reason = "来自你的订阅" if item["subscribed"] else base_reason
+            active_goal = settings["short_goal"] or settings["long_goal"]
+            if active_goal:
+                reason = f"{reason} · 对应当前目标"
         lanes.append({"id": lane_id, "label": label, "reason": reason, "article": item})
     return {
         "date": datetime.now(timezone.utc).date().isoformat(),
         "exam": exam or "general",
         "mode": mode,
         "subscription_count": len(active),
+        "plan": {
+            "minutes": settings["daily_minutes"],
+            "tasks": settings["daily_tasks"],
+            "recommendations_enabled": settings["recommendations_enabled"],
+        },
+        "goals": {
+            "short": settings["short_goal"],
+            "short_date": settings["short_goal_date"],
+            "long": settings["long_goal"],
+            "long_date": settings["long_goal_date"],
+        },
         "lanes": lanes,
     }
 
@@ -3132,6 +3203,8 @@ class App(BaseHTTPRequestHandler):
             if path == "/api/progress":
                 with db() as conn:
                     return json_response(self, {"progress": progress_payload(conn)})
+            if path == "/api/learner-settings":
+                return json_response(self, {"settings": learner_settings()})
             if path == "/api/browser/status":
                 return json_response(self, {"ok": True, "translation": translation_status()})
             if path == "/api/browser/token":
@@ -3290,6 +3363,12 @@ class App(BaseHTTPRequestHandler):
         path = parsed.path
         try:
             payload = read_json(self)
+            if path == "/api/learner-settings":
+                try:
+                    settings = update_learner_settings(payload)
+                except (TypeError, ValueError) as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, {"settings": settings})
             if path == "/api/browser/translate":
                 if not self.browser_authorized():
                     return json_response(self, {"error": "Invalid browser bridge token"}, 401)

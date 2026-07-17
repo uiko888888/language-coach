@@ -317,6 +317,22 @@ label {
 .mode-brief p { max-width: 76ch; margin: 0; color: var(--muted); line-height: 1.6; }
 .mode-brief > button { flex: 0 0 auto; }
 
+.daily-plan-band { margin-bottom: 14px; }
+.daily-plan-band .band-head { align-items: center; }
+.daily-plan-band .band-head strong { color: var(--teal-dark); font-size: 18px; }
+.daily-plan-tasks { display: flex; flex-wrap: wrap; gap: 8px; }
+.daily-plan-task { padding: 7px 10px; border-left: 3px solid var(--teal); background: var(--surface-2); font-size: 13px; }
+.goal-summary { display: grid; gap: 5px; margin-top: 12px; color: var(--muted); font-size: 13px; }
+.plan-settings { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.plan-settings summary { cursor: pointer; color: var(--teal-dark); font-weight: 700; }
+.plan-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
+.plan-form-grid label { display: grid; gap: 6px; }
+.plan-task-fieldset { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 14px 0 0; border: 1px solid var(--line); border-radius: 8px; }
+.plan-task-fieldset legend { padding: 0 5px; color: var(--muted); font-size: 13px; }
+.plan-task-fieldset label { display: flex; align-items: center; gap: 5px; margin: 0; }
+.plan-task-fieldset input { min-height: auto; }
+.plan-actions { justify-content: flex-end; margin-top: 12px; }
+
 .progress-chip {
   display: grid;
   min-width: 112px;
@@ -958,6 +974,7 @@ label {
 
   .metric-grid,
   .split,
+  .plan-form-grid,
   .reader-layout,
   .quiz-workspace,
   .answer-compare,
