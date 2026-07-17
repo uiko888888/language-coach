@@ -66,6 +66,28 @@ class ProfileUiContractTests(unittest.TestCase):
         self.assertIn('if (!state.learnerProfile?.completed) openProfileDialog();', self.js)
         self.assertIn('const QUICK_START_SEEN_KEY = "lc-v2-quick-start-seen";', self.js)
 
+    def test_user_center_exposes_user_controlled_settings(self):
+        self.assertIn('data-view="profile"', self.html)
+        self.assertIn('id="view-profile"', self.html)
+        for element_id in (
+            "userProfileStatus", "userProfileSummary", "userDomainList",
+            "userCalibrationSummary", "userPreferenceSummary", "userPlanSummary",
+            "userRecommendationStatus",
+        ):
+            self.assertIn(f'id="{element_id}"', self.html)
+        self.assertIn("data-open-profile-dialog", self.html)
+        self.assertIn("data-edit-plan", self.html)
+        self.assertIn("function renderUserCenter()", self.js)
+        self.assertIn('document.body.append(dialog)', self.js)
+        self.assertIn('profile: ["用户中心"', self.js)
+
+    def test_user_center_preserves_desktop_sidebar_and_responsive_content(self):
+        self.assertIn(".user-center-layout", self.css)
+        self.assertIn("grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.85fr)", self.css)
+        responsive = self.css.split("@media (max-width: 980px)", 1)[1]
+        self.assertIn(".user-center-layout", responsive)
+        self.assertIn(".user-domain-list", responsive)
+
     def test_practice_controls_use_exam_specific_taxonomy(self):
         for element_id in ("quizSessionMode", "quizScope", "quizPracticeType"):
             self.assertIn(f'id="{element_id}"', self.html)

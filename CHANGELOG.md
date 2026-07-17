@@ -9,6 +9,25 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.15] - 2026-07-18
+
+### Added
+
+- Added a dedicated user center in the fixed left navigation.
+- Added profile baseline, domain abilities, calibration status, goals, weaknesses, interests, content preferences and plan summaries.
+- Added direct actions for editing the learner profile, switching learning mode and opening the single daily-plan editor.
+- Added UI contracts for user-owned settings and the desktop-first user-center layout.
+
+### Changed
+
+- Profile dialogs are moved to the document top layer when opened so they remain available from every view.
+- Clarified the reader subtitle after removing the obsolete initial-letter exercise path.
+
+### Known limits
+
+- The current local-first build has one local learner profile and no account authentication or cross-device sync.
+- Data export, backup and restore remain scheduled for the beta hardening phase.
+
 ## [0.8.0-alpha.14] - 2026-07-18
 
 ### Added

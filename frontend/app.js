@@ -83,12 +83,13 @@ const state = {
 const titles = {
   dashboard: ["今日训练", "文章、词汇、题目和错题都走本地数据库。"],
   articles: ["文章池", "每日来源、个人导入和分级文章会进入这里。"],
-  reader: ["阅读台", "一篇文章可以拆成阅读、选词填空、首字母和证据定位。"],
+  reader: ["阅读台", "一篇文章可以进入精读、查词、翻译和对应考试训练。"],
   quiz: ["题目", "先做题，再看证据和解析，错题会自动收集。"],
   cards: ["生词本", "主动添加或从文章里点词添加，后面可做词块复习。"],
   mistakes: ["错题", "保存你的错误答案、正确答案和原文证据。"],
   history: ["训练记录", "查看单次训练详情、能力趋势和下一步建议。"],
   lexicon: ["词汇中心", "从单词、中文、词形或词源进入同一张词汇网络。"],
+  profile: ["用户中心", "自主维护学习画像、目标、偏好和计划。"],
 };
 
 const sampleImport = `A useful study plan should connect vocabulary with context. If a learner only memorizes isolated words, she may recognize them in reading but still hesitate when using them in speaking or writing. A better routine is to read a short article, mark repeated phrases, listen to the same passage, and then turn the most important sentences into questions.
@@ -120,6 +121,7 @@ const QUICK_START_SEEN_KEY = "lc-v2-quick-start-seen";
 
 function openProfileDialog() {
   const dialog = $("#profileEditor");
+  if (dialog && dialog.parentElement !== document.body) document.body.append(dialog);
   if (!dialog?.open) dialog?.showModal();
 }
 
@@ -403,6 +405,42 @@ function renderLearnerProfile() {
   document.querySelectorAll("[data-profile-content]").forEach(input => { input.checked = (settings.interest_content_types || []).includes(input.dataset.profileContent); });
   if (!state.profileSource || !profile.completed) state.profileSource = settings.profile_source === "self_assessment" ? "self_assessment" : settings.profile_source === "quick_test" ? "quick_test" : "score";
   setProfileSource(state.profileSource);
+  renderUserCenter();
+}
+
+function renderUserCenter() {
+  const settings = state.learnerSettings || {};
+  const profile = state.learnerProfile || {};
+  const target = profile.target_exam ? `${profile.target_exam}${profile.target_score != null ? ` ${profile.target_score}` : ""}${profile.target_date ? ` · ${profile.target_date}` : ""}` : "未设置";
+  const weak = (profile.weak_areas || []).map(value => profileWeakLabels[value] || value);
+  const sourceLabels = { score: "已有成绩", quick_test: "快速基线", self_assessment: "自评" };
+  const domainLabels = { reading: "阅读", listening: "听力", vocabulary: "词汇", writing: "写作", speaking: "口语" };
+  const domains = Object.entries(profile.domains || {});
+  $("#userProfileStatus").textContent = profile.completed ? `${profile.cefr} · ${profileConfidenceLabels[profile.confidence] || "待校准"}` : "待建立";
+  $("#userProfileSummary").innerHTML = `
+    <div><span>当前基线</span><strong>${escapeHtml(profile.cefr || "B1")}</strong><small>${escapeHtml(sourceLabels[settings.profile_source] || profile.evidence || "默认起点")}</small></div>
+    <div><span>目标</span><strong>${escapeHtml(target)}</strong><small>${escapeHtml(settings.target_date || "未设置目标日期")}</small></div>
+    <div><span>推荐难度</span><strong>${escapeHtml((profile.recommended_levels || ["B1", "B2"]).join(" / "))}</strong><small>依据画像与有效训练证据</small></div>
+  `;
+  $("#userDomainList").innerHTML = domains.length
+    ? domains.map(([domain, value]) => `<div><span>${escapeHtml(domainLabels[domain] || domain)}</span><strong>${escapeHtml(value.cefr || "--")}</strong><small>${escapeHtml(value.evidence_count ? `${value.evidence_count} 条证据` : "等待训练证据")}</small></div>`).join("")
+    : `<div class="muted">完成画像并积累训练后显示分项能力。</div>`;
+  $("#userCalibrationSummary").innerHTML = $("#calibrationSummary").innerHTML;
+  const interests = profile.interest_topics || settings.interest_topics || [];
+  const contentTypeLabels = Object.fromEntries((state.articleContentTypes || []).map(item => [item.id, item.label]));
+  const contentTypes = (settings.interest_content_types || []).map(value => contentTypeLabels[value] || value);
+  $("#userPreferenceSummary").innerHTML = `
+    <div><span>薄弱项</span><strong>${escapeHtml(weak.join("、") || "等待训练校准")}</strong></div>
+    <div><span>兴趣主题</span><strong>${escapeHtml(interests.join("、") || "未设置")}</strong></div>
+    <div><span>内容偏好</span><strong>${escapeHtml(contentTypes.join("、") || "未设置")}</strong></div>
+  `;
+  const tasks = (settings.daily_tasks || []).map(task => dailyTaskLabels[task] || task).join("、") || "未设置";
+  $("#userPlanSummary").innerHTML = `
+    <div><span>每日计划</span><strong>${escapeHtml(`${settings.daily_minutes || 15} 分钟 · ${tasks}`)}</strong></div>
+    <div><span>近期目标</span><strong>${escapeHtml(settings.short_goal || "未设置")}</strong></div>
+    <div><span>长期目标</span><strong>${escapeHtml(settings.long_goal || "未设置")}</strong></div>
+  `;
+  $("#userRecommendationStatus").textContent = settings.recommendations_enabled === false ? "已关闭" : "已开启";
 }
 
 function learnerProfilePayload() {
@@ -2154,7 +2192,7 @@ document.addEventListener("click", async event => {
   const button = event.target.closest("button");
   if (!button) return;
   try {
-    if (button.id === "openProfileDialogBtn") openProfileDialog();
+    if (button.id === "openProfileDialogBtn" || button.dataset.openProfileDialog !== undefined) openProfileDialog();
     if (button.id === "closeProfileDialogBtn" || button.id === "cancelProfileDialogBtn") closeProfileDialog();
     if (button.id === "openAssistantBtn") openAssistant();
     if (button.id === "closeAssistantBtn") closeAssistant();
@@ -2179,6 +2217,12 @@ document.addEventListener("click", async event => {
     }
     if (button.dataset.lexiconFilter) renderLexicon();
     if (button.dataset.viewJump) setView(button.dataset.viewJump);
+    if (button.dataset.editPlan !== undefined) {
+      setView("dashboard");
+      const settings = $(".plan-settings");
+      settings.open = true;
+      settings.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
     if (button.dataset.view === "quiz") {
       if (!state.quizzes.length) await loadQuizzes();
       if (!state.quizzes.length && state.selectedArticle) await generateQuizzes(state.selectedArticle.id, { open: false });

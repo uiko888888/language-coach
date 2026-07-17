@@ -28,6 +28,8 @@
       <button class="nav-item" data-view="quiz">练习中心</button>
       <button class="nav-item" data-view="mistakes">错题本</button>
       <button class="nav-item" data-view="history">训练记录</button>
+      <span class="nav-group">个人</span>
+      <button class="nav-item" data-view="profile">用户中心</button>
       <button class="nav-item" id="openAssistantBtn">学习助手</button>
     </nav>
     <div class="server-pill" id="serverStatus">连接中</div>
@@ -274,6 +276,44 @@
         </div>
         <div class="list compact" id="browserLearningQueue"></div>
       </section>
+    </section>
+
+    <section class="view" id="view-profile">
+      <div class="user-center-layout">
+        <section class="band user-profile-main">
+          <div class="band-head">
+            <div><span class="eyebrow">Learner profile</span><h2>个人学习画像</h2></div>
+            <div class="toolbar"><span class="profile-status" id="userProfileStatus">待建立</span><button class="primary" data-open-profile-dialog>修改画像</button></div>
+          </div>
+          <div class="profile-summary" id="userProfileSummary"></div>
+          <div class="user-domain-list" id="userDomainList"></div>
+          <div class="calibration-summary" id="userCalibrationSummary"></div>
+        </section>
+
+        <aside class="user-center-side">
+          <section class="band">
+            <div class="band-head"><div><span class="eyebrow">Preferences</span><h2>目标与偏好</h2></div><button data-open-profile-dialog>调整</button></div>
+            <div class="user-setting-list" id="userPreferenceSummary"></div>
+          </section>
+          <section class="band">
+            <div class="band-head"><div><span class="eyebrow">Learning mode</span><h2>当前学习方式</h2></div></div>
+            <div class="mode-switch user-mode-switch" role="group" aria-label="用户中心学习模式">
+              <button type="button" data-learning-mode="interest">兴趣模式</button>
+              <button type="button" data-learning-mode="exam">备考模式</button>
+            </div>
+            <div class="user-setting-list" id="userPlanSummary"></div>
+            <button data-edit-plan>调整计划与长期目标</button>
+          </section>
+          <section class="band">
+            <div class="band-head"><div><span class="eyebrow">Data</span><h2>数据与服务</h2></div></div>
+            <div class="user-setting-list">
+              <div><span>数据位置</span><strong>本机 SQLite</strong></div>
+              <div><span>画像更新</span><strong>用户设置 + 七天分项校准</strong></div>
+              <div><span>推荐权限</span><strong id="userRecommendationStatus">已开启</strong></div>
+            </div>
+          </section>
+        </aside>
+      </div>
     </section>
 
     <section class="view" id="view-articles">

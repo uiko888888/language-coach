@@ -376,6 +376,18 @@ label {
 .assistant-mode-grid h3 { margin: 4px 0 8px; }
 .assistant-mode-grid ol { min-height: 84px; margin: 0 0 14px; padding-left: 20px; color: var(--muted); line-height: 1.7; }
 .assistant-steps { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 14px; }
+.user-center-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.85fr); gap: 14px; align-items: start; }
+.user-center-side { display: grid; gap: 14px; }
+.user-domain-list { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 14px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.user-domain-list > div { display: grid; gap: 3px; min-width: 0; padding: 11px 10px; }
+.user-domain-list > div + div { border-left: 1px solid var(--line); }
+.user-domain-list span, .user-domain-list small, .user-setting-list span { color: var(--muted); font-size: 12px; }
+.user-domain-list strong { font-size: 17px; }
+.user-setting-list { display: grid; border-top: 1px solid var(--line); }
+.user-setting-list > div { display: grid; gap: 4px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.user-setting-list strong { overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }
+.user-mode-switch { width: 100%; margin-bottom: 12px; }
+.user-mode-switch button { flex: 1; }
 .daily-plan-band .band-head { align-items: center; }
 .daily-plan-band .band-head strong { color: var(--teal-dark); font-size: 18px; }
 .daily-plan-tasks { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -1107,6 +1119,11 @@ label {
   .ability-trend-list {
     grid-template-columns: 1fr;
   }
+
+  .user-center-layout,
+  .user-domain-list { grid-template-columns: 1fr; }
+
+  .user-domain-list > div + div { border-left: 0; border-top: 1px solid var(--line); }
 
   .profile-summary > div + div { border-left: 0; border-top: 1px solid var(--line); }
 
