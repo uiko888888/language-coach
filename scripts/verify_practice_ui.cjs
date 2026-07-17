@@ -23,6 +23,18 @@ async function run() {
   const columns = await page.locator(".quiz-workspace").evaluate(element => getComputedStyle(element).gridTemplateColumns);
   if (columns.split(" ").length < 2) failures.push(`desktop layout is not split: ${columns}`);
 
+  await page.selectOption("#globalStyle", "KAOYAN");
+  await page.waitForFunction(() => document.querySelector("#toast")?.textContent.includes("KAOYAN 来源"));
+  await page.waitForFunction(() => document.querySelectorAll("#quizPracticeType option").length >= 5);
+  await page.waitForFunction(() => document.querySelector("#examResourceList")?.textContent.includes("CHSI"));
+  if ((await page.locator("#quizPracticeType option").count()) < 5) failures.push("KAOYAN specialties are missing");
+  if (!(await page.locator('#quizScope option[value="full-paper"]').isDisabled())) failures.push("KAOYAN full-paper option should be disabled");
+  if (!(await page.locator("#examResourceList").textContent()).includes("CHSI")) failures.push("KAOYAN official resource is missing");
+  await page.selectOption("#globalStyle", "IELTS");
+  await page.waitForFunction(() => document.querySelector("#toast")?.textContent.includes("IELTS 来源"));
+  await page.waitForFunction(() => document.querySelector('#quizPracticeType option[value="tfng"]'));
+  await page.waitForFunction(() => document.querySelector("#examResourceList")?.textContent.includes("British Council"));
+
   await page.selectOption("#quizScope", "full-paper");
   if (!(await page.locator("#generateFullPaperBtn").isVisible())) failures.push("full-paper action is not visible");
   if ((await page.locator("#examResourceList li").count()) < 1) failures.push("official exam resource catalog is empty");

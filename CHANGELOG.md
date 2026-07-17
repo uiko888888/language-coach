@@ -8,6 +8,27 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.8.0-alpha.4] - 2026-07-17
+
+### Added
+
+- Added independent postgraduate entrance English generators for detail/inference, main idea/attitude, complex sentence meaning, and cloze logic.
+- Added KAOYAN-specific skill, difficulty, generation-source, validation, and structured mistake labels.
+- Added mixed single-passage KAOYAN generation and same-specialty remedial generation.
+- Added the CHSI postgraduate admissions portal to the traceable exam-resource catalog.
+- Added tests covering every KAOYAN template, mixed generation, error classification, and official-resource visibility.
+
+### Changed
+
+- KAOYAN no longer uses the shared generic question generator for its four current specialties.
+- Full-paper generation is disabled in the interface for exams that do not yet have a real full-paper engine.
+
+### Known limits
+
+- English I and English II are not separated yet.
+- New question types, translation, writing, and complete past-paper structure remain pending.
+- Current KAOYAN questions are validated rule simulations, not official past papers.
+
 ## [0.8.0-alpha.3] - 2026-07-17
 
 ### Added

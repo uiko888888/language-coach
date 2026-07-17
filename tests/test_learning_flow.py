@@ -101,6 +101,30 @@ class LearningFlowTests(unittest.TestCase):
         self.assertEqual(server.source_profile("The Conversation", "KAOYAN")["exam_fit"], 100)
         self.assertIn("CET6", server.source_profile("manual")["source_exams"])
 
+    def test_kaoyan_templates_are_independent_validated_and_mixed(self):
+        for question_type in ("detail-inference", "main-attitude", "sentence-meaning", "cloze-logic"):
+            items = server.generate_quiz_items(server.SAMPLE_ARTICLE, "reading", "KAOYAN", question_type)
+            self.assertTrue(items, question_type)
+            self.assertTrue(all(item["question_type"] == question_type for item in items))
+            self.assertTrue(all(item["generation_source"] == "kaoyan-rule-v1" for item in items))
+            self.assertTrue(all(item["validation"]["valid"] for item in items))
+            self.assertTrue(all(item["skill"] and item["difficulty"] for item in items))
+        mixed = server.generate_quiz_items(server.SAMPLE_ARTICLE, "reading", "KAOYAN", "mixed")
+        self.assertEqual({item["question_type"] for item in mixed}, set(server.KAOYAN_TASK_META))
+
+    def test_kaoyan_error_types_are_specific(self):
+        expected = {
+            "detail-inference": "证据范围扩大或推断过度",
+            "main-attitude": "主旨、观点转述与作者态度混淆",
+            "sentence-meaning": "长难句主干或逻辑关系判断错误",
+            "cloze-logic": "词义、搭配或篇章逻辑错误",
+        }
+        for question_type, error_type in expected.items():
+            self.assertEqual(
+                server.classify_answer_error({"question_type": question_type, "answer": "A"}, "B"),
+                error_type,
+            )
+
     def test_progress_awards_points_and_level(self):
         with server.db() as conn:
             progress = server.award_progress(conn, 110, correct=True)

@@ -887,6 +887,7 @@ function renderExamTypes() {
     if (state.examTypes.some(item => item.id === practicePrevious)) practiceSelect.value = practicePrevious;
     else if (state.examTypes[0]) practiceSelect.value = state.examTypes[0].id;
   }
+  updateQuizScopeControls();
 }
 
 async function loadHealth() {
@@ -930,7 +931,11 @@ function renderExamLibrary() {
 }
 
 function updateQuizScopeControls() {
-  const scope = $("#quizScope")?.value || "specialty";
+  const scopeSelect = $("#quizScope");
+  const fullPaperOption = scopeSelect?.querySelector('option[value="full-paper"]');
+  if (fullPaperOption) fullPaperOption.disabled = state.style !== "IELTS";
+  if (state.style !== "IELTS" && scopeSelect?.value === "full-paper") scopeSelect.value = "specialty";
+  const scope = scopeSelect?.value || "specialty";
   const isFull = scope === "full-paper";
   $("#quizPracticeType").hidden = isFull;
   $("#quizPracticeMode").hidden = isFull;
@@ -1612,10 +1617,10 @@ document.addEventListener("dblclick", event => {
 $("#globalStyle").addEventListener("change", async event => {
   state.style = event.target.value;
   localStorage.setItem("lc-v2-style", state.style);
+  state.selectedPaper = null;
   await Promise.all([loadArticles(), loadFeeds(), loadExamTypes(), loadExamLibrary(), loadToday()]);
   await loadQuizzes();
-  renderArticles();
-  renderDashboard();
+  renderAll();
   toast(`文章池已切换为 ${state.style} 来源`);
 });
 

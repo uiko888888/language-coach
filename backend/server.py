@@ -115,6 +115,13 @@ OFFICIAL_EXAM_RESOURCES = [
         "access_mode": "external_link", "rights_status": "link_only",
         "description": "全国大学英语四、六级考试官方网站；仅建立官方入口。",
     },
+    {
+        "title": "National postgraduate entrance examination portal",
+        "exam": "KAOYAN", "provider": "CHSI / 研招网", "resource_type": "official_portal",
+        "source_url": "https://yz.chsi.com.cn/",
+        "access_mode": "external_link", "rights_status": "link_only",
+        "description": "全国硕士研究生招生考试官方信息入口；应用不复制来源不明的历年试题。",
+    },
 ]
 
 ARTICLE_THEMES = {
@@ -1645,9 +1652,127 @@ def exam_paper_detail(conn: sqlite3.Connection, paper_id: int) -> dict | None:
     return {**dict(paper), "sections": sections}
 
 
+KAOYAN_TASK_META = {
+    "detail-inference": {"skill": "细节定位、范围控制与合理推断", "difficulty": "C1"},
+    "main-attitude": {"skill": "主旨、篇章功能与作者态度", "difficulty": "C1"},
+    "sentence-meaning": {"skill": "长难句主干、逻辑与语义保真", "difficulty": "C1"},
+    "cloze-logic": {"skill": "完形语境、搭配与篇章逻辑", "difficulty": "B2-C1"},
+}
+
+
+def kaoyan_detail_items(text: str) -> list[dict]:
+    ranked = sorted(sentences(text), key=score_sentence, reverse=True)[:3]
+    return [
+        {
+            "type": "reading",
+            "question_type": "detail-inference",
+            "prompt": "According to the text, which of the following can be inferred?",
+            "answer": paraphrase(evidence),
+            "options": with_options(paraphrase(evidence), [
+                "The evidence supports an absolute conclusion without qualification.",
+                "The author accepts a position that the text merely reports.",
+                "Background knowledge alone is sufficient to establish the claim.",
+            ]),
+            "evidence": evidence,
+            "note": "考研英语 / 阅读 Part A / 细节与推断",
+            **KAOYAN_TASK_META["detail-inference"],
+        }
+        for evidence in ranked
+    ]
+
+
+def kaoyan_main_attitude_items(text: str) -> list[dict]:
+    lower = text.casefold()
+    if any(marker in lower for marker in ("however", "although", "but ", "yet ")):
+        answer = "The author offers a qualified assessment rather than an absolute judgment."
+    elif any(marker in lower for marker in ("should", "must", "need to", "ought to")):
+        answer = "The author argues for a measured change supported by the evidence."
+    else:
+        answer = "The author examines the issue in an analytical and generally cautious manner."
+    evidence = sorted(sentences(text), key=score_sentence, reverse=True)[0] if sentences(text) else text
+    return [{
+        "type": "main-idea",
+        "question_type": "main-attitude",
+        "prompt": "Which of the following best describes the author's main purpose and attitude?",
+        "answer": answer,
+        "options": with_options(answer, [
+            "To reject the subject entirely in an emotional and hostile tone.",
+            "To list an isolated example without advancing a broader point.",
+            "To endorse every view mentioned in the text without reservation.",
+        ]),
+        "evidence": evidence,
+        "note": "考研英语 / 阅读 Part A / 主旨与作者态度",
+        **KAOYAN_TASK_META["main-attitude"],
+    }]
+
+
+def kaoyan_sentence_meaning_items(text: str) -> list[dict]:
+    candidates = sorted(sentences(text), key=lambda value: (len(value.split()), score_sentence(value)), reverse=True)[:2]
+    return [
+        {
+            "type": "paraphrase",
+            "question_type": "sentence-meaning",
+            "prompt": f"What does the following sentence most probably mean?\n{evidence}",
+            "answer": paraphrase(evidence),
+            "options": with_options(paraphrase(evidence), [
+                "The sentence removes its original condition and makes an unlimited claim.",
+                "The sentence reverses the contrast or causal direction in the original.",
+                "The sentence adds an evaluation that the author does not express.",
+            ]),
+            "evidence": evidence,
+            "note": "考研英语 / 长难句语义 / 逻辑保真",
+            **KAOYAN_TASK_META["sentence-meaning"],
+        }
+        for evidence in candidates
+    ]
+
+
+def kaoyan_cloze_items(text: str) -> list[dict]:
+    items = []
+    for keyword in article_keywords(text)[:6]:
+        evidence = sentence_for(text, keyword)
+        prompt = re.sub(rf"\b{re.escape(keyword)}\b", "_____", evidence, count=1, flags=re.I)
+        if prompt == evidence:
+            continue
+        distractors = [word for word in article_keywords(text) if word != keyword]
+        items.append({
+            "type": "cloze",
+            "question_type": "cloze-logic",
+            "prompt": f"Choose the best word for the blank in context.\n{prompt}",
+            "answer": keyword,
+            "options": with_options(keyword, distractors[:3] or ["however", "therefore", "otherwise"]),
+            "evidence": evidence,
+            "note": "考研英语 / 完形填空 / 语境与篇章逻辑",
+            **KAOYAN_TASK_META["cloze-logic"],
+        })
+    return items
+
+
+def kaoyan_quiz_items(text: str, question_type: str) -> list[dict]:
+    builders = {
+        "detail-inference": kaoyan_detail_items,
+        "main-attitude": kaoyan_main_attitude_items,
+        "sentence-meaning": kaoyan_sentence_meaning_items,
+        "cloze-logic": kaoyan_cloze_items,
+    }
+    if question_type in {"mixed", "passage"}:
+        items = [item for builder in builders.values() for item in builder(text)]
+    else:
+        items = builders.get(question_type or "detail-inference", kaoyan_detail_items)(text)
+    validated = []
+    for item in items:
+        item["validation"] = validate_quiz_item(item, text, "KAOYAN", item["question_type"])
+        item["generation_source"] = "kaoyan-rule-v1"
+        if item["validation"]["valid"]:
+            validated.append(item)
+    return validated
+
+
 def generate_quiz_items(text: str, mode: str, style: str, question_type: str = "") -> list[dict]:
     if style == "IELTS":
         return ielts_quiz_items(text, question_type or "tfng")
+    if style == "KAOYAN":
+        return kaoyan_quiz_items(text, question_type or "detail-inference")
     profile = style_profile(style)
     configured = next((item for item in EXAM_QUESTION_TYPES.get(style, EXAM_QUESTION_TYPES["general"]) if item[0] == question_type), None)
     if configured:
@@ -1841,6 +1966,14 @@ def classify_answer_error(quiz: sqlite3.Row | dict, selected: str) -> str:
         return "段落定位或同义替换错误"
     if question_type == "gap-fill":
         return "词性、拼写或字数限制错误"
+    if question_type == "detail-inference":
+        return "证据范围扩大或推断过度"
+    if question_type == "main-attitude":
+        return "主旨、观点转述与作者态度混淆"
+    if question_type == "sentence-meaning":
+        return "长难句主干或逻辑关系判断错误"
+    if question_type == "cloze-logic":
+        return "词义、搭配或篇章逻辑错误"
     return "语义或逻辑关系错误"
 
 
@@ -1850,6 +1983,10 @@ def generate_similar_items(text: str, original: dict, count: int = 3) -> list[di
     question_type = original.get("question_type") or quiz_type
     if style == "IELTS" and question_type in IELTS_TASK_META:
         candidates = ielts_quiz_items(text, question_type)
+        distinct = [item for item in candidates if item.get("evidence") != original.get("evidence")]
+        return (distinct or candidates)[:count]
+    if style == "KAOYAN" and question_type in KAOYAN_TASK_META:
+        candidates = kaoyan_quiz_items(text, question_type)
         distinct = [item for item in candidates if item.get("evidence") != original.get("evidence")]
         return (distinct or candidates)[:count]
     original_answer = str(original.get("answer") or "").lower()

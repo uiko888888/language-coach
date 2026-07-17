@@ -267,6 +267,8 @@ class BrowserBridgeTests(unittest.TestCase):
         )
         self.assertEqual(imported["resource"]["resource_type"], "user_import")
         self.assertEqual(imported["resource"]["rights_status"], "user_provided")
+        kaoyan, _ = self.request("/api/exam-resources?exam=KAOYAN")
+        self.assertTrue(any(item["provider"] == "CHSI / 研招网" for item in kaoyan["resources"]))
 
     def test_ielts_full_mock_paper_has_three_sections_and_forty_questions(self):
         paragraph = (

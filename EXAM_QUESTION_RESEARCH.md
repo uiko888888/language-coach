@@ -82,3 +82,8 @@ The current rule generator is the baseline. A future model pipeline should gener
 - CET-4/CET-6 reuse paragraph matching and gap validation, then add word-bank morphology and cross-section distractor rules.
 - Postgraduate entrance English reuses evidence and logic labels, then adds author-attitude, ordering/coherence, long-sentence translation, and discourse-cloze validators.
 - Every future exam generator remains isolated at the template layer while sharing persistence, attempts, mistakes, ability diagnosis, and validator reporting.
+## KAOYAN implementation boundary
+
+The current KAOYAN baseline has independent templates for detail/inference, main idea/attitude, complex-sentence meaning, and cloze logic. Each generated item stores its skill, difficulty, evidence, validation report, and `kaoyan-rule-v1` source.
+
+This is not yet a complete National Postgraduate Entrance Examination paper. English I/II separation, Reading Part B variants, translation, writing, official score structure, and licensed/private past-paper import remain separate milestones. The CHSI portal is stored as a link-only official resource; protected paper text is not redistributed.
