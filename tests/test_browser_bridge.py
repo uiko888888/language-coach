@@ -198,14 +198,19 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertTrue(quiz["skill"])
         self.assertTrue(quiz["validation"]["valid"])
         attempt, _ = self.request(
-            "/api/attempts", "POST", {"quiz_id": quiz["id"], "answer": "NOT GIVEN"}
+            "/api/attempts", "POST", {"quiz_id": quiz["id"], "answer": "NOT GIVEN", "confidence": 3}
         )
         self.assertFalse(attempt["correct"])
+        self.assertEqual(attempt["confidence"], 3)
         self.assertEqual(attempt["error_type"], "一致与未提及混淆")
         mistakes, _ = self.request("/api/mistakes")
         saved = next(item for item in mistakes["mistakes"] if item["quiz_id"] == quiz["id"])
         self.assertEqual(saved["skill"], quiz["skill"])
         self.assertEqual(saved["error_type"], attempt["error_type"])
+        next_set, _ = self.request("/api/practice/next-set", "POST", {"style": "IELTS", "limit": 5})
+        self.assertTrue(next_set["quizzes"])
+        self.assertLessEqual(len(next_set["quizzes"]), 5)
+        self.assertIn(attempt["error_type"], next_set["focus"])
 
     def test_mock_session_scores_unanswered_items_and_persists_diagnosis(self):
         created, _ = self.request(
@@ -226,9 +231,9 @@ class BrowserBridgeTests(unittest.TestCase):
                 "session_mode": "mock",
                 "elapsed_seconds": 95,
                 "answers": [
-                    {"quiz_id": quizzes[0]["id"], "answer": quizzes[0]["answer"]},
-                    {"quiz_id": quizzes[1]["id"], "answer": ""},
-                    {"quiz_id": quizzes[2]["id"], "answer": "TRUE" if quizzes[2]["answer"] != "TRUE" else "FALSE"},
+                    {"quiz_id": quizzes[0]["id"], "answer": quizzes[0]["answer"], "confidence": 3},
+                    {"quiz_id": quizzes[1]["id"], "answer": "", "confidence": 1},
+                    {"quiz_id": quizzes[2]["id"], "answer": "TRUE" if quizzes[2]["answer"] != "TRUE" else "FALSE", "confidence": 2},
                 ],
             },
         )
@@ -240,6 +245,8 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(session["elapsed_seconds"], 95)
         self.assertEqual(session["score"], 33)
         self.assertEqual(session["error_summary"]["未作答"], 1)
+        self.assertEqual(session["confidence_summary"]["确定"], {"total": 1, "correct": 1})
+        self.assertEqual(submitted["results"][0]["confidence"], 3)
         self.assertEqual(len(submitted["results"]), 3)
         self.assertTrue(all("explanation" in result for result in submitted["results"]))
         history, _ = self.request("/api/practice-sessions")

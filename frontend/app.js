@@ -25,6 +25,7 @@ const state = {
   examResources: [],
   examPapers: [],
   selectedPaper: null,
+  evidenceReplay: "",
   showTranslation: false,
   articleTopics: [],
   articleTopic: "",
@@ -32,6 +33,7 @@ const state = {
   articleContentType: "",
   recommendedOnly: false,
   bridge: null,
+  browserClips: [],
   selectedArticle: null,
   selectedPoolArticleId: null,
   selectedMistakeId: null,
@@ -44,6 +46,7 @@ const state = {
     display: localStorage.getItem("lc-v2-quiz-display") || "single",
     activeIndex: 0,
     answers: {},
+    confidence: {},
     flagged: {},
     startedAt: Date.now(),
     elapsedSeconds: 0,
@@ -102,6 +105,11 @@ function formatDuration(totalSeconds) {
     : `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
 }
 
+function normalizeConfidenceValue(value) {
+  const score = Number(value);
+  return [1, 2, 3].includes(score) ? score : null;
+}
+
 function quizElapsedSeconds() {
   const session = state.quizSession;
   if (session.submitted) return session.elapsedSeconds;
@@ -118,6 +126,7 @@ function resetQuizSession({ preserveSettings = true } = {}) {
     display,
     activeIndex: 0,
     answers: {},
+    confidence: {},
     flagged: {},
     startedAt: Date.now(),
     elapsedSeconds: 0,
@@ -181,6 +190,21 @@ function bilingualParagraphs(text, translation = "", showTranslation = false, cl
   `).join("");
 }
 
+function evidenceBilingualParagraphs(text, translation = "", showTranslation = false, evidence = "") {
+  const originals = String(text || "").split(/\n\s*\n/).map(value => value.trim()).filter(Boolean);
+  const translations = String(translation || "").split(/\n\s*\n/).map(value => value.trim()).filter(Boolean);
+  const needle = String(evidence || "").trim().toLowerCase();
+  return originals.map((paragraph, index) => {
+    const target = needle && (paragraph.toLowerCase().includes(needle) || needle.includes(paragraph.toLowerCase().slice(0, 80)));
+    return `
+      <section class="bilingual-pair ${target ? "evidence-replay-target" : ""}" ${target ? "id=\"readerEvidenceTarget\"" : ""}>
+        <p class="article-paragraph">${searchableEnglish(paragraph)}</p>
+        ${showTranslation ? `<p class="paragraph-translation ${translations[index] ? "" : "missing"}">${translations[index] ? escapeHtml(translations[index]) : "本段暂无译文"}</p>` : ""}
+      </section>
+    `;
+  }).join("");
+}
+
 function renderStats() {
   $("#statArticles").textContent = state.articles.length;
   $("#statCards").textContent = state.cards.length;
@@ -224,6 +248,17 @@ function renderDashboard() {
       <p>正确答案：${escapeHtml(item.answer || "")}</p>
     </div>
   `).join("") || `<div class="item muted">暂无错题</div>`;
+  $("#browserLearningQueue").innerHTML = state.browserClips.slice(0, 6).map(clip => `
+    <div class="item">
+      <div class="badge-row">${badge(clip.kind === "article" ? "网页正文" : clip.kind === "word" ? "划词" : "网页摘录", "teal")}${clip.page_title ? badge(clip.page_title) : ""}</div>
+      <h3>${escapeHtml(excerpt(clip.source_text, 100))}</h3>
+      ${clip.context && clip.context !== clip.source_text ? `<p>${escapeHtml(excerpt(clip.context, 130))}</p>` : ""}
+      <div class="toolbar">
+        ${clip.article_id ? `<button data-open-article="${clip.article_id}">进入文章</button><button data-quiz-article="${clip.article_id}">生成练习</button>` : `<button data-search-query="${escapeHtml(excerpt(clip.source_text, 70))}" data-open-lexicon="true">继续查词</button>`}
+        ${clip.page_url ? `<a class="button-link" href="${escapeHtml(clip.page_url)}" target="_blank" rel="noreferrer">返回网页</a>` : ""}
+      </div>
+    </div>
+  `).join("") || `<div class="item muted">插件保存的划词、段落和正文会出现在这里。</div>`;
 }
 
 function renderArticles() {
@@ -305,7 +340,9 @@ function renderReader() {
   $("#readerTitle").textContent = article.title;
   $("#readerMeta").innerHTML = `${badge(article.level, "teal")}${badge(article.content_type_label || "学术解释", article.content_type === "opinion" ? "amber" : "teal")}${badge(article.content_status === "full" ? `完整正文 · ${article.content_word_count}词` : `RSS摘要 · ${article.content_word_count}词`, article.content_status === "full" ? "teal" : "amber")}${(article.theme_tags || []).map(theme => badge(theme, "amber")).join("")}${badge(article.source || "manual")}`;
   $("#readerContentNotice").innerHTML = article.content_status !== "full" ? `<div class="content-notice compact"><div><strong>当前为 RSS 摘要</strong><span>完整内容请打开原文，或在文章池补充正文。</span></div>${article.source_url ? `<a href="${escapeHtml(article.source_url)}" target="_blank" rel="noreferrer">打开原文</a>` : ""}</div>` : "";
-  $("#readerBody").innerHTML = bilingualParagraphs(article.body, article.translation_zh, state.showTranslation);
+  $("#readerBody").innerHTML = state.evidenceReplay
+    ? evidenceBilingualParagraphs(article.body, article.translation_zh, state.showTranslation, state.evidenceReplay)
+    : bilingualParagraphs(article.body, article.translation_zh, state.showTranslation);
   $("#articleTranslationInput").value = article.translation_zh || "";
   const translationPanel = $("#translationPanel");
   translationPanel.hidden = true;
@@ -318,7 +355,9 @@ function renderReader() {
 function renderQuizSource() {
   const article = state.selectedArticle;
   $("#quizSourceTitle").textContent = article?.title || "原文";
-  $("#quizSourceText").innerHTML = article ? bilingualParagraphs(article.body, article.translation_zh, state.showTranslation) : `<p class="muted">先从文章池选择文章。</p>`;
+  $("#quizSourceText").innerHTML = article ? (state.evidenceReplay
+    ? evidenceBilingualParagraphs(article.body, article.translation_zh, state.showTranslation, state.evidenceReplay)
+    : bilingualParagraphs(article.body, article.translation_zh, state.showTranslation)) : `<p class="muted">先从文章池选择文章。</p>`;
   const translation = $("#quizTranslationPanel");
   translation.hidden = true;
   translation.innerHTML = "";
@@ -616,7 +655,7 @@ function fallbackMistakeExplanation(item) {
   };
 }
 
-function explanationHtml(explanation, compact = false, correct = false) {
+function explanationHtml(explanation, compact = false, correct = false, replayArticleId = null) {
   if (!explanation) return "";
   const steps = explanation.steps || [];
   return `
@@ -640,11 +679,13 @@ function explanationHtml(explanation, compact = false, correct = false) {
           <p>${escapeHtml(explanation.why_correct || "")}</p>
         </section>
       </div>
+      ${compact && explanation.evidence && replayArticleId ? `<button class="evidence-replay-compact" data-replay-evidence="${replayArticleId}" data-replay-text="${escapeHtml(explanation.evidence)}">回到原文证据</button>` : ""}
       ${!compact ? `
         <div class="evidence-box">
           <span>原文证据</span>
           <p>${escapeHtml(explanation.evidence || "暂无证据句")}</p>
           <small>${escapeHtml(explanation.evidence_guide || "")}</small>
+          ${explanation.evidence && replayArticleId ? `<button data-replay-evidence="${replayArticleId}" data-replay-text="${escapeHtml(explanation.evidence)}">回到原文并高亮</button>` : ""}
         </div>
         <div class="method-block">
           <strong>下次这样做</strong>
@@ -664,6 +705,7 @@ function quizResultHtml(result) {
   const answered = session.answered_count ?? Object.values(state.quizSession.answers).filter(Boolean).length;
   const skills = session.skill_summary || {};
   const errors = session.error_summary || {};
+  const confidence = session.confidence_summary || {};
   return `
     <div class="result-overview">
       <div><span>正确率</span><strong>${session.score ?? Math.round(correct / Math.max(1, total) * 100)}%</strong></div>
@@ -684,9 +726,17 @@ function quizResultHtml(result) {
           <div class="diagnosis-row"><span>${escapeHtml(error)}</span><strong>${count} 题</strong></div>
         `).join("") || `<p class="muted">本轮没有记录到错因。</p>`}
       </div>
+      <div>
+        <h3>信心校准</h3>
+        ${Object.entries(confidence).map(([label, stats]) => `
+          <div class="diagnosis-row"><span>${escapeHtml(label)}</span><strong>${stats.correct}/${stats.total}</strong></div>
+        `).join("") || `<p class="muted">作答时选择信心后，这里会区分“会做”和“蒙对”。</p>`}
+        ${confidence.确定 && confidence.确定.total > confidence.确定.correct ? `<p class="calibration-note">有 ${confidence.确定.total - confidence.确定.correct} 道“确定但答错”，优先复盘。</p>` : ""}
+      </div>
     </div>
     <div class="toolbar result-actions">
       ${Object.keys(errors).length ? `<button data-view-jump="mistakes">查看错题解析</button>` : ""}
+      <button data-next-set="true">下一组 10 题</button>
       <button data-retry-session="true">再练一次</button>
     </div>
   `;
@@ -730,6 +780,7 @@ function renderQuizzes() {
   $("#quizList").innerHTML = visible.map(({ quiz, index }) => {
     const feedback = state.answerFeedback[quiz.id];
     const selected = session.answers[quiz.id] || feedback?.userAnswer || "";
+    const confidence = session.confidence[quiz.id] || feedback?.confidence || 0;
     const locked = Boolean(feedback || session.submitted);
     return `
     <div class="item quiz-item" data-quiz-card="${quiz.id}">
@@ -744,6 +795,10 @@ function renderQuizzes() {
         <button class="flag-button ${session.flagged[quiz.id] ? "active" : ""}" data-flag-quiz="${quiz.id}" aria-pressed="${Boolean(session.flagged[quiz.id])}">${session.flagged[quiz.id] ? "已标记" : "标记"}</button>
       </div>
       <h3>${index + 1}. ${searchableEnglish(quiz.prompt)}</h3>
+      <div class="confidence-picker" aria-label="答题信心">
+        <span>答题信心</span>
+        ${[[1, "猜测"], [2, "犹豫"], [3, "确定"]].map(([value, label]) => `<button class="confidence-button ${Number(confidence) === value ? "active" : ""}" data-confidence-quiz="${quiz.id}" data-confidence="${value}" ${locked ? "disabled" : ""}>${label}</button>`).join("")}
+      </div>
       ${(quiz.options || []).length ? `
         <div class="options">
           ${quiz.options.map(option => {
@@ -763,7 +818,7 @@ function renderQuizzes() {
           <strong>Evidence:</strong> ${escapeHtml(quiz.evidence || "")}
         </div>
       ` : ""}
-      ${feedback ? explanationHtml(feedback.explanation, true, feedback.correct) : ""}
+      ${feedback ? explanationHtml(feedback.explanation, true, feedback.correct, quiz.article_id) : ""}
       ${session.display === "single" ? `
         <div class="quiz-step-actions">
           <button data-quiz-nav="${Math.max(0, index - 1)}" ${index === 0 ? "disabled" : ""}>上一题</button>
@@ -849,7 +904,7 @@ function renderMistakes() {
       <div class="answer-choice wrong-choice"><span>你的答案</span><strong>${escapeHtml(selected.user_answer || "未作答")}</strong></div>
       <div class="answer-choice correct-choice"><span>正确答案</span><strong>${escapeHtml(selected.answer)}</strong></div>
     </div>
-    ${explanationHtml(explanation)}
+    ${explanationHtml(explanation, false, false, selected.article_id)}
     <div class="toolbar mistake-actions">
       <button class="primary" data-generate-similar="${selected.id}">${similar.length ? "换一组同类题" : "生成 3 道同类题"}</button>
       <button data-solve-mistake="${selected.id}">${selected.solved ? "重新标记待学" : "这题我学会了"}</button>
@@ -1024,6 +1079,12 @@ async function loadBridgeConfig() {
   const data = await api("/api/browser/token");
   state.bridge = data;
   $("#bridgeToken").value = data.token || "";
+  try {
+    const clips = await api("/api/browser/clips", { headers: { "X-Language-Coach-Token": data.token } });
+    state.browserClips = clips.clips || [];
+  } catch (_error) {
+    state.browserClips = [];
+  }
   if (data.translation?.provider_id === "deepl" && data.translation.configured) {
     try {
       const verified = await api("/api/browser/translation-verify", {
@@ -1109,10 +1170,28 @@ async function loadQuizzes() {
 async function openArticle(id) {
   const data = await api(`/api/articles/${id}?exam=${encodeURIComponent(state.style)}`);
   state.selectedArticle = data.article;
+  state.evidenceReplay = "";
   state.analysis = data.analysis;
   await loadQuizzes();
   setView("reader");
   renderAll();
+}
+
+async function replayEvidence(articleId, evidence) {
+  if (!articleId || !evidence) return toast("这道题没有可定位的原文证据");
+  if (Number(state.selectedArticle?.id) !== Number(articleId)) {
+    const data = await api(`/api/articles/${articleId}?exam=${encodeURIComponent(state.style)}`);
+    state.selectedArticle = data.article;
+    state.analysis = data.analysis;
+  }
+  state.evidenceReplay = evidence;
+  setView("reader");
+  renderReader();
+  setTimeout(() => {
+    const target = $("#readerEvidenceTarget");
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (!target) toast("已打开原文，当前证据需要手动定位");
+  }, 50);
 }
 
 async function analyzeArticle() {
@@ -1140,11 +1219,12 @@ async function generateQuizzes(id = state.selectedArticle?.id, { open = true } =
   toast("题目已生成");
 }
 
-async function submitAnswer(quizId, answer, button = null) {
+async function submitAnswer(quizId, answer, button = null, confidence = state.quizSession.confidence[quizId] || null) {
   state.quizSession.answers[quizId] = String(answer || "").trim();
+  state.quizSession.confidence[quizId] = normalizeConfidenceValue(confidence);
   const data = await api("/api/attempts", {
     method: "POST",
-    body: JSON.stringify({ quiz_id: quizId, answer }),
+    body: JSON.stringify({ quiz_id: quizId, answer, confidence: normalizeConfidenceValue(confidence) }),
   });
   const similarQuizzes = Object.values(state.similarByMistake).flat();
   const quiz = state.quizzes.find(item => item.id === quizId) || similarQuizzes.find(item => item.id === quizId) || {};
@@ -1171,7 +1251,8 @@ async function selectQuizAnswer(quizId, answer) {
   if (state.quizSession.submitted || state.answerFeedback[quizId]) return;
   state.quizSession.answers[quizId] = answer;
   if (state.quizSession.mode === "practice") {
-    await submitAnswer(quizId, answer);
+    if (!state.quizSession.confidence[quizId]) return renderQuizzes();
+    await submitAnswer(quizId, answer, null, state.quizSession.confidence[quizId]);
   } else {
     renderQuizzes();
   }
@@ -1183,6 +1264,7 @@ function localPracticeResult() {
     .filter(item => item.feedback);
   const skillSummary = {};
   const errorSummary = {};
+  const confidenceSummary = {};
   results.forEach(({ quiz, feedback }) => {
     const skill = feedback.skill || quiz.skill || "阅读理解";
     const stats = skillSummary[skill] || { total: 0, correct: 0 };
@@ -1190,6 +1272,14 @@ function localPracticeResult() {
     stats.correct += feedback.correct ? 1 : 0;
     skillSummary[skill] = stats;
     if (feedback.error_type) errorSummary[feedback.error_type] = (errorSummary[feedback.error_type] || 0) + 1;
+    const confidence = normalizeConfidenceValue(feedback.confidence || state.quizSession.confidence[quiz.id]);
+    if (confidence) {
+      const label = { 1: "猜测", 2: "犹豫", 3: "确定" }[confidence];
+      const confidenceStats = confidenceSummary[label] || { total: 0, correct: 0 };
+      confidenceStats.total += 1;
+      confidenceStats.correct += feedback.correct ? 1 : 0;
+      confidenceSummary[label] = confidenceStats;
+    }
   });
   const unanswered = state.quizzes.length - results.length;
   if (unanswered) errorSummary.未作答 = unanswered;
@@ -1202,6 +1292,7 @@ function localPracticeResult() {
     score: Math.round(correctCount / Math.max(1, state.quizzes.length) * 100),
     skill_summary: skillSummary,
     error_summary: errorSummary,
+    confidence_summary: confidenceSummary,
   };
 }
 
@@ -1219,7 +1310,7 @@ async function finishQuizSession() {
       body: JSON.stringify({
         session_mode: "mock",
         elapsed_seconds: elapsedSeconds,
-        answers: state.quizzes.map(quiz => ({ quiz_id: quiz.id, answer: session.answers[quiz.id] || "" })),
+         answers: state.quizzes.map(quiz => ({ quiz_id: quiz.id, answer: session.answers[quiz.id] || "", confidence: session.confidence[quiz.id] || null })),
       }),
     });
     (data.results || []).forEach(result => {
@@ -1448,6 +1539,21 @@ async function generateSimilar(mistakeId) {
   toast(`已生成 ${state.similarByMistake[mistakeId].length} 道同类题`);
 }
 
+async function generateNextSet() {
+  const data = await api("/api/practice/next-set", {
+    method: "POST",
+    body: JSON.stringify({ style: state.style, limit: 10 }),
+  });
+  if (!(data.quizzes || []).length) return toast("当前还没有足够的题目或错题生成下一组");
+  state.quizzes = data.quizzes;
+  state.selectedPaper = null;
+  resetQuizSession();
+  setView("quiz");
+  renderQuizzes();
+  renderQuizSource();
+  toast(data.focus?.length ? `下一组聚焦：${data.focus.slice(0, 2).join("、")}` : "已载入下一组训练");
+}
+
 document.addEventListener("click", async event => {
   const button = event.target.closest("button");
   if (!button) return;
@@ -1498,6 +1604,7 @@ document.addEventListener("click", async event => {
     }
     if (button.id === "generatePracticeBtn") await generateQuizzes();
     if (button.id === "generateFullPaperBtn") await generateFullPaper();
+    if (button.id === "nextSetBtn" || button.dataset.nextSet) await generateNextSet();
     if (button.id === "loadPaperBtn") await loadPaper(Number($("#quizPaperSelect").value));
     if (button.id === "restartQuizSessionBtn" || button.dataset.retrySession) {
       resetQuizSession();
@@ -1539,6 +1646,7 @@ document.addEventListener("click", async event => {
       renderAll();
     }
     if (button.dataset.openArticle) await openArticle(button.dataset.openArticle);
+    if (button.dataset.replayEvidence) await replayEvidence(Number(button.dataset.replayEvidence), button.dataset.replayText || "");
     if (button.dataset.selectArticle) {
       state.selectedPoolArticleId = Number(button.dataset.selectArticle);
       renderArticles();
@@ -1577,6 +1685,11 @@ document.addEventListener("click", async event => {
       const context = articleBody.toLowerCase().includes(button.dataset.saveLookup.toLowerCase()) ? sentenceFor(articleBody, button.dataset.saveLookup) : "";
       await saveCard(button.dataset.saveLookup, context);
     }
+    if (button.dataset.confidenceQuiz) {
+      state.quizSession.confidence[Number(button.dataset.confidenceQuiz)] = normalizeConfidenceValue(button.dataset.confidence);
+      renderQuizzes();
+      return;
+    }
     if (button.dataset.answerQuiz) {
       await submitAnswer(Number(button.dataset.answerQuiz), button.dataset.answer, button);
     }
@@ -1585,7 +1698,11 @@ document.addEventListener("click", async event => {
     }
     if (button.dataset.submitTyped) {
       const input = document.querySelector(`[data-typed-quiz="${button.dataset.submitTyped}"]`);
-      await submitAnswer(Number(button.dataset.submitTyped), input.value.trim(), button);
+      if (state.quizSession.mode === "practice" && !state.quizSession.confidence[Number(button.dataset.submitTyped)]) {
+        toast("先选择答题信心，再提交答案");
+      } else {
+        await submitAnswer(Number(button.dataset.submitTyped), input.value.trim(), button);
+      }
     }
     if (button.dataset.selectMistake) {
       state.selectedMistakeId = Number(button.dataset.selectMistake);

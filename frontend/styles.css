@@ -558,6 +558,10 @@ label {
 .quiz-item-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .flag-button { min-height: 30px; padding: 5px 9px; flex: 0 0 auto; }
 .flag-button.active { border-color: #d18a27; background: #fff4df; color: #7b4c0d; }
+.confidence-picker { display: flex; align-items: center; gap: 5px; margin-top: 10px; color: var(--muted); font-size: 12px; }
+.confidence-picker span { margin-right: 3px; }
+.confidence-button { min-height: 28px; padding: 4px 9px; }
+.confidence-button.active { border-color: var(--teal); background: #e4f2ed; color: var(--teal-dark); }
 
 .options {
   display: grid;
@@ -593,6 +597,7 @@ label {
 .result-diagnosis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 14px; }
 .result-diagnosis h3 { margin: 0 0 8px; font-size: 14px; }
 .diagnosis-row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.calibration-note { margin: 8px 0 0; color: #8a4a18; font-size: 12px; }
 .result-actions { margin-top: 12px; }
 
 .answer-row {
@@ -631,6 +636,9 @@ label {
   color: var(--muted);
   font-size: 12px;
 }
+.evidence-box button,
+.evidence-replay-compact { margin-top: 9px; }
+.evidence-replay-target { padding: 8px 10px; border-left: 4px solid #d18a27; background: #fff7e8; scroll-margin-top: 24px; }
 
 .answer-choice strong {
   display: block;

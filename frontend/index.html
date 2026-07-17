@@ -124,9 +124,16 @@
       <section class="band">
         <div class="band-head">
           <h2>待复盘错题</h2>
-          <button data-view-jump="mistakes">打开错题</button>
+          <div class="toolbar"><button id="nextSetBtn">下一组 10 题</button><button data-view-jump="mistakes">打开错题</button></div>
         </div>
         <div class="list compact" id="recentMistakes"></div>
+      </section>
+      <section class="band">
+        <div class="band-head">
+          <h2>插件采集</h2>
+          <span class="muted">从网页继续学习</span>
+        </div>
+        <div class="list compact" id="browserLearningQueue"></div>
       </section>
     </section>
 

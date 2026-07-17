@@ -46,6 +46,7 @@ async function run() {
   if (!(await firstOption.evaluate(element => element.classList.contains("selected")))) {
     failures.push("mock answer was not retained as selected");
   }
+  await page.locator("[data-confidence-quiz]").first().click();
   if (await page.locator(".answer-explanation").count()) {
     failures.push("mock mode exposed an explanation before submission");
   }
@@ -60,10 +61,15 @@ async function run() {
   const resultHidden = await page.locator("#quizSessionResult").getAttribute("hidden");
   if (resultHidden !== null) failures.push(`session result stayed hidden after submit: ${submitBody}`);
   const resultText = await page.locator("#quizSessionResult").innerText();
-  if (!resultText.includes("正确率") || !resultText.includes("需要复盘")) {
+  if (!resultText.includes("正确率") || !resultText.includes("需要复盘") || !resultText.includes("信心校准")) {
     failures.push("session result is missing score or diagnosis");
   }
   await page.screenshot({ path: path.resolve("artifacts/practice-session-desktop.png"), fullPage: true });
+  const replay = page.locator("[data-replay-evidence]").first();
+  if (await replay.count()) {
+    await replay.click();
+    if (!(await page.locator("#view-reader").evaluate(element => element.classList.contains("active")))) failures.push("evidence replay did not open the reader");
+  }
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload({ waitUntil: "networkidle" });

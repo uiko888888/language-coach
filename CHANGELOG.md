@@ -8,6 +8,27 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.8.0-alpha.5] - 2026-07-17
+
+### Added
+
+- Added per-question confidence calibration with guessing, uncertain, and certain levels, plus confidence accuracy in session results.
+- Added evidence replay from immediate explanations and the mistake center back to the matching source paragraph in the reader.
+- Added a weakness-driven “next 10 questions” endpoint and interface action that prioritizes unresolved mistake types and fills the set with unanswered exam questions.
+- Added a dashboard learning queue for browser-extension captures with direct routes to the imported article, generated practice, dictionary lookup, and source webpage.
+- Added database migrations and integration coverage for confidence persistence, session summaries, and adaptive next-set generation.
+
+### Changed
+
+- Practice mode now requires confidence selection before immediate answer submission so calibration data is intentional rather than inferred.
+- The post-session diagnosis now separates correct answers from confident misconceptions and provides a direct continuation path.
+
+### Known limits
+
+- Evidence replay uses exact or paragraph-level text matching; NOT GIVEN explanations without a literal source sentence may still require manual location.
+- The next set is rule-based and uses unresolved mistakes plus available unanswered questions; it is not yet a probabilistic knowledge-tracing model.
+- Plugin captures are surfaced in the main app, but background sync, deduplication, and cross-device queues are not implemented.
+
 ## [0.8.0-alpha.4] - 2026-07-17
 
 ### Added

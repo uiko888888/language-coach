@@ -647,6 +647,7 @@ def init_db() -> None:
               quiz_id INTEGER NOT NULL,
               session_id INTEGER,
               user_answer TEXT NOT NULL,
+              confidence INTEGER,
               correct INTEGER NOT NULL,
               error_type TEXT NOT NULL DEFAULT '',
               created_at TEXT NOT NULL,
@@ -666,6 +667,7 @@ def init_db() -> None:
               score INTEGER NOT NULL DEFAULT 0,
               skill_summary_json TEXT NOT NULL DEFAULT '{}',
               error_summary_json TEXT NOT NULL DEFAULT '{}',
+              confidence_summary_json TEXT NOT NULL DEFAULT '{}',
               completed_at TEXT NOT NULL,
               FOREIGN KEY (article_id) REFERENCES articles(id)
             );
@@ -894,6 +896,11 @@ def init_db() -> None:
             conn.execute("ALTER TABLE attempts ADD COLUMN error_type TEXT NOT NULL DEFAULT ''")
         if "session_id" not in attempt_columns:
             conn.execute("ALTER TABLE attempts ADD COLUMN session_id INTEGER")
+        if "confidence" not in attempt_columns:
+            conn.execute("ALTER TABLE attempts ADD COLUMN confidence INTEGER")
+        session_columns = {row[1] for row in conn.execute("PRAGMA table_info(practice_sessions)")}
+        if "confidence_summary_json" not in session_columns:
+            conn.execute("ALTER TABLE practice_sessions ADD COLUMN confidence_summary_json TEXT NOT NULL DEFAULT '{}'")
         card_columns = {row[1] for row in conn.execute("PRAGMA table_info(cards)")}
         if "kind" not in card_columns:
             conn.execute("ALTER TABLE cards ADD COLUMN kind TEXT NOT NULL DEFAULT 'word'")
@@ -2787,14 +2794,24 @@ def award_progress(conn: sqlite3.Connection, points: int, correct: bool = False,
     return progress_payload(conn)
 
 
+def normalize_confidence(value: object) -> int | None:
+    try:
+        score = int(value) if value is not None and str(value).strip() else None
+    except (TypeError, ValueError):
+        return None
+    return score if score in {1, 2, 3} else None
+
+
 def record_quiz_attempt(
     conn: sqlite3.Connection,
     quiz: sqlite3.Row | dict,
     answer: str,
     session_id: int | None = None,
+    confidence: object = None,
 ) -> dict:
     quiz_data = dict(quiz)
     selected = str(answer or "").strip()
+    confidence_score = normalize_confidence(confidence)
     correct = selected.casefold() == str(quiz_data.get("answer") or "").strip().casefold()
     error_type = "" if correct else classify_answer_error(quiz_data, selected)
     explanation = explain_mistake(quiz_data, selected)
@@ -2803,9 +2820,9 @@ def record_quiz_attempt(
     ).fetchone()[0] == 0
     now = utc_now()
     conn.execute(
-        """INSERT INTO attempts (quiz_id, session_id, user_answer, correct, error_type, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (quiz_data["id"], session_id, selected, 1 if correct else 0, error_type, now),
+        """INSERT INTO attempts (quiz_id, session_id, user_answer, confidence, correct, error_type, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (quiz_data["id"], session_id, selected, confidence_score, 1 if correct else 0, error_type, now),
     )
     if not correct:
         conn.execute(
@@ -2826,6 +2843,7 @@ def record_quiz_attempt(
         "quiz_id": quiz_data["id"],
         "correct": correct,
         "user_answer": selected,
+        "confidence": confidence_score,
         "answer": quiz_data["answer"],
         "evidence": quiz_data.get("evidence") or "",
         "explanation": explanation,
@@ -2840,6 +2858,7 @@ def practice_session_payload(row: sqlite3.Row | dict) -> dict:
     item = dict(row)
     item["skill_summary"] = json.loads(item.pop("skill_summary_json", "{}") or "{}")
     item["error_summary"] = json.loads(item.pop("error_summary_json", "{}") or "{}")
+    item["confidence_summary"] = json.loads(item.pop("confidence_summary_json", "{}") or "{}")
     return item
 
 
@@ -3638,7 +3657,7 @@ class App(BaseHTTPRequestHandler):
                     quiz = conn.execute("SELECT * FROM quizzes WHERE id = ?", (quiz_id,)).fetchone()
                     if not quiz:
                         return json_response(self, {"error": "Quiz not found"}, 404)
-                    result = record_quiz_attempt(conn, quiz, answer)
+                    result = record_quiz_attempt(conn, quiz, answer, confidence=payload.get("confidence"))
                 return json_response(self, result)
             if path == "/api/practice-sessions":
                 raw_answers = payload.get("answers") or []
@@ -3646,14 +3665,14 @@ class App(BaseHTTPRequestHandler):
                     return json_response(self, {"error": "At least one quiz answer is required"}, 400)
                 if len(raw_answers) > 50:
                     return json_response(self, {"error": "A practice session supports at most 50 questions"}, 400)
-                normalized: list[tuple[int, str]] = []
+                normalized: list[tuple[int, str, int | None]] = []
                 seen: set[int] = set()
                 for item in raw_answers:
                     quiz_id = int(item.get("quiz_id") or 0)
                     if not quiz_id or quiz_id in seen:
                         return json_response(self, {"error": "Quiz answers must use unique valid ids"}, 400)
                     seen.add(quiz_id)
-                    normalized.append((quiz_id, str(item.get("answer") or "").strip()))
+                    normalized.append((quiz_id, str(item.get("answer") or "").strip(), normalize_confidence(item.get("confidence"))))
                 placeholders = ",".join("?" for _ in normalized)
                 with db() as conn:
                     rows = conn.execute(
@@ -3662,7 +3681,7 @@ class App(BaseHTTPRequestHandler):
                     by_id = {row["id"]: row for row in rows}
                     if len(by_id) != len(normalized):
                         return json_response(self, {"error": "One or more quizzes were not found"}, 404)
-                    quizzes = [by_id[quiz_id] for quiz_id, _ in normalized]
+                    quizzes = [by_id[quiz_id] for quiz_id, _, _ in normalized]
                     article_ids = {row["article_id"] for row in quizzes}
                     styles = {row["style"] for row in quizzes}
                     question_types = {row["question_type"] for row in quizzes}
@@ -3683,11 +3702,13 @@ class App(BaseHTTPRequestHandler):
                     )
                     session_id = cursor.lastrowid
                     results = [
-                        record_quiz_attempt(conn, by_id[quiz_id], answer, session_id)
-                        for quiz_id, answer in normalized
+                        record_quiz_attempt(conn, by_id[quiz_id], answer, session_id, confidence)
+                        for quiz_id, answer, confidence in normalized
                     ]
                     skill_summary: dict[str, dict[str, int]] = {}
                     error_summary: dict[str, int] = {}
+                    confidence_summary: dict[str, dict[str, int]] = {}
+                    confidence_labels = {1: "猜测", 2: "犹豫", 3: "确定"}
                     for result in results:
                         skill = result["skill"]
                         stats = skill_summary.setdefault(skill, {"total": 0, "correct": 0})
@@ -3695,27 +3716,89 @@ class App(BaseHTTPRequestHandler):
                         stats["correct"] += 1 if result["correct"] else 0
                         if result["error_type"]:
                             error_summary[result["error_type"]] = error_summary.get(result["error_type"], 0) + 1
+                        confidence = result.get("confidence")
+                        if confidence in confidence_labels:
+                            label = confidence_labels[confidence]
+                            stats = confidence_summary.setdefault(label, {"total": 0, "correct": 0})
+                            stats["total"] += 1
+                            stats["correct"] += 1 if result["correct"] else 0
                     correct_count = sum(1 for result in results if result["correct"])
-                    answered_count = sum(1 for _, answer in normalized if answer)
+                    answered_count = sum(1 for _, answer, _ in normalized if answer)
                     elapsed_seconds = max(0, min(21600, int(payload.get("elapsed_seconds") or 0)))
                     score = round(correct_count / len(results) * 100)
                     conn.execute(
                         """
                         UPDATE practice_sessions
                         SET answered_count = ?, correct_count = ?, elapsed_seconds = ?, score = ?,
-                            skill_summary_json = ?, error_summary_json = ?
+                            skill_summary_json = ?, error_summary_json = ?, confidence_summary_json = ?
                         WHERE id = ?
                         """,
                         (
                             answered_count, correct_count, elapsed_seconds, score,
                             json.dumps(skill_summary, ensure_ascii=False),
-                            json.dumps(error_summary, ensure_ascii=False), session_id,
+                            json.dumps(error_summary, ensure_ascii=False),
+                            json.dumps(confidence_summary, ensure_ascii=False), session_id,
                         ),
                     )
                     session = conn.execute("SELECT * FROM practice_sessions WHERE id = ?", (session_id,)).fetchone()
                 return json_response(
                     self,
                     {"session": practice_session_payload(session), "results": results, "progress": results[-1]["progress"]},
+                    201,
+                )
+            if path == "/api/practice/next-set":
+                style = str(payload.get("style") or "IELTS").strip()
+                limit = max(3, min(10, int(payload.get("limit") or 10)))
+                with db() as conn:
+                    weak_rows = conn.execute(
+                        """
+                        SELECT m.error_type, m.evidence AS mistake_evidence,
+                               q.*, a.body AS article_body
+                        FROM mistakes m
+                        JOIN quizzes q ON q.id = m.quiz_id
+                        JOIN articles a ON a.id = q.article_id
+                        WHERE m.solved = 0 AND q.style = ?
+                        ORDER BY m.created_at DESC
+                        LIMIT 12
+                        """,
+                        (style,),
+                    ).fetchall()
+                    saved: list[dict] = []
+                    focus: list[str] = []
+                    now = utc_now()
+                    used_prompts: set[str] = set()
+                    for row in weak_rows:
+                        original = dict(row)
+                        if original.get("error_type") and original["error_type"] not in focus:
+                            focus.append(original["error_type"])
+                        for item in generate_similar_items(original["article_body"], original, 3):
+                            if item["prompt"] in used_prompts:
+                                continue
+                            used_prompts.add(item["prompt"])
+                            saved.append(save_quiz_item(conn, original["article_id"], style, "weakness-next", item, now))
+                            if len(saved) >= limit:
+                                break
+                        if len(saved) >= limit:
+                            break
+                    if len(saved) < limit:
+                        existing = conn.execute(
+                            """
+                            SELECT q.* FROM quizzes q
+                            WHERE q.style = ? AND NOT EXISTS (
+                              SELECT 1 FROM attempts a WHERE a.quiz_id = q.id
+                            )
+                            ORDER BY q.created_at DESC, q.id DESC LIMIT ?
+                            """,
+                            (style, limit - len(saved)),
+                        ).fetchall()
+                        saved.extend(quiz_payload(row) for row in existing)
+                return json_response(
+                    self,
+                    {
+                        "quizzes": saved[:limit],
+                        "focus": focus,
+                        "reason": "优先依据未解决错题的题型和错因生成；不足部分使用当前考试未作答题。",
+                    },
                     201,
                 )
             match = re.fullmatch(r"/api/mistakes/(\d+)/similar", path)
