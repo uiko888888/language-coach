@@ -1,6 +1,6 @@
 {
   "name": "@language-coach/browser-extension",
-  "version": "0.8.0-alpha.11.1",
+  "version": "0.8.0-alpha.11.2",
   "private": true,
   "type": "module",
   "scripts": {

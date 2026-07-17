@@ -880,6 +880,27 @@ label {
   border-top: 1px solid var(--line);
 }
 
+.epub-import-panel {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.epub-import-panel h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.epub-import-panel .toolbar input {
+  flex: 1 1 360px;
+  min-width: 220px;
+}
+
+.epub-import-panel .toolbar select {
+  min-width: 220px;
+  max-width: 100%;
+}
+
 .source-drawer summary,
 .import-drawer summary {
   cursor: pointer;

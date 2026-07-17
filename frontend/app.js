@@ -10,6 +10,8 @@ const api = async (path, options = {}) => {
 
 const state = {
   articles: [],
+  books: [],
+  selectedBook: null,
   cards: [],
   quizzes: [],
   mistakes: [],
@@ -1207,6 +1209,62 @@ async function loadExamTypes() {
   renderExamTypes();
 }
 
+function renderBookLibrary() {
+  const bookSelect = $("#epubBookSelect");
+  const chapterSelect = $("#epubChapterSelect");
+  if (!bookSelect || !chapterSelect) return;
+  bookSelect.innerHTML = `<option value="">选择已导入书籍</option>${state.books.map(book => `<option value="${book.id}">${escapeHtml(book.title)} · ${book.chapter_count} 章</option>`).join("")}`;
+  if (state.selectedBook && state.books.some(book => book.id === state.selectedBook.id)) {
+    bookSelect.value = String(state.selectedBook.id);
+  }
+  chapterSelect.innerHTML = state.selectedBook?.chapters?.length
+    ? state.selectedBook.chapters.map(chapter => `<option value="${chapter.id}">${chapter.position}. ${escapeHtml(chapter.title)} · ${chapter.word_count} 词${chapter.article_id ? " · 已进入阅读台" : ""}</option>`).join("")
+    : `<option value="">先选择一本书</option>`;
+  $("#epubBookSummary").textContent = state.selectedBook
+    ? `${state.selectedBook.author || "作者未标注"} · ${state.selectedBook.language || "语言未标注"} · ${state.selectedBook.chapter_count} 个正文单元 · 私人本地素材`
+    : state.books.length ? `已导入 ${state.books.length} 本私人书籍` : "尚未导入 EPUB";
+}
+
+async function loadBooks() {
+  const data = await api("/api/books");
+  state.books = data.books || [];
+  if (state.selectedBook && !state.books.some(book => book.id === state.selectedBook.id)) state.selectedBook = null;
+  renderBookLibrary();
+}
+
+async function loadBook(id) {
+  if (!id) {
+    state.selectedBook = null;
+    return renderBookLibrary();
+  }
+  const data = await api(`/api/books/${id}`);
+  state.selectedBook = data.book;
+  renderBookLibrary();
+}
+
+async function importEpub() {
+  const path = $("#epubPath").value.trim();
+  if (!path) return toast("先填写本地 EPUB 路径");
+  toast("正在读取 EPUB 目录与章节");
+  const data = await api("/api/import/epub", { method: "POST", body: JSON.stringify({ path }) });
+  await loadBooks();
+  await loadBook(data.book.id);
+  toast(data.created ? `已导入 ${data.book.chapter_count} 个正文单元` : "这本书已经在私人书库中");
+}
+
+async function openEpubChapter() {
+  const chapterId = Number($("#epubChapterSelect").value);
+  if (!chapterId) return toast("先选择章节");
+  const data = await api(`/api/book-chapters/${chapterId}/article`, {
+    method: "POST",
+    body: JSON.stringify({ exam: state.style }),
+  });
+  await Promise.all([loadArticles(), loadBook(state.selectedBook.id)]);
+  state.selectedPoolArticleId = data.article.id;
+  await openArticle(data.article.id);
+  toast("章节已进入阅读台，可查词、翻译或生成练习");
+}
+
 async function loadExamLibrary() {
   const [resources, papers] = await Promise.all([
     api(`/api/exam-resources?exam=${encodeURIComponent(state.style)}`),
@@ -1930,6 +1988,8 @@ document.addEventListener("click", async event => {
     if (button.id === "refreshFeedsBtn") await refreshFeeds();
     if (button.dataset.subscribeSource) await setSourceSubscription(button.dataset.subscribeSource, button.dataset.subscribeActive === "true");
     if (button.id === "saveArticleBtn") await saveArticle();
+    if (button.id === "importEpubBtn") await importEpub();
+    if (button.id === "openEpubChapterBtn") await openEpubChapter();
     if (button.id === "analyzeBtn") await analyzeArticle();
     if (button.id === "generateQuizBtn") await generateQuizzes();
     if (button.id === "loadQuizzesBtn") {
@@ -2097,6 +2157,10 @@ $("#quizPaperSelect").addEventListener("change", async event => {
   if (event.target.value) await loadPaper(Number(event.target.value));
 });
 
+$("#epubBookSelect").addEventListener("change", async event => {
+  await loadBook(Number(event.target.value));
+});
+
 $("#quizSessionMode").addEventListener("change", event => {
   state.quizSession.mode = event.target.value === "mock" ? "mock" : "practice";
   localStorage.setItem("lc-v2-quiz-session-mode", state.quizSession.mode);
@@ -2173,7 +2237,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 
 async function boot() {
   await loadHealth();
-  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleContentTypes(), loadBridgeConfig(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadMistakes(), loadFeeds(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleContentTypes(), loadBridgeConfig(), searchLexicon("", { open: false, history: false })]);
   if (!state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);
     state.selectedArticle = data.article;

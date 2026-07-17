@@ -8,6 +8,28 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.8.0-alpha.11.2] - 2026-07-17
+
+### Added
+
+- Added a private local EPUB library with OPF metadata, manifest, spine, chapter, word-count, and file-fingerprint parsing.
+- Added safe ZIP limits for file size, entry count, expanded size, and individual entries without extracting files to disk.
+- Added book and chapter persistence, idempotent re-import, chapter-body deduplication, and private-material rights labels.
+- Added on-demand chapter materialization so only selected chapters enter the article reader and exercise workflow.
+- Added article-page controls for local EPUB paths, book selection, chapter selection, and opening a chapter in the reader.
+- Added synthetic EPUB tests for parsing, privacy-safe listing, idempotency, materialization, and invalid archive rejection.
+
+### Changed
+
+- EPUB files no longer need to be manually copied into the article textarea.
+- Book listings return the source filename and chapter metadata, not chapter bodies or the full local path.
+
+### Security and rights
+
+- Imported books are marked `private_user_material`; files and text remain in the ignored local SQLite database.
+- The application does not upload, redistribute, or commit imported book content.
+- Importing a local file does not establish distribution rights; users remain responsible for lawful access and use.
+
 ## [0.8.0-alpha.11.1] - 2026-07-17
 
 ### Added

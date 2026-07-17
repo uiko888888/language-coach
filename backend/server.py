@@ -4,6 +4,7 @@ import html
 import hashlib
 import json
 import mimetypes
+import posixpath
 import random
 import re
 import os
@@ -14,8 +15,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+import zipfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -524,6 +527,213 @@ def rows_to_dicts(rows: list[sqlite3.Row]) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+EPUB_MAX_FILE_BYTES = 100 * 1024 * 1024
+EPUB_MAX_ENTRY_BYTES = 10 * 1024 * 1024
+EPUB_MAX_TOTAL_BYTES = 150 * 1024 * 1024
+EPUB_MAX_ENTRIES = 5000
+EPUB_MAX_CHAPTERS = 1000
+
+
+class EpubTextParser(HTMLParser):
+    block_tags = {"p", "div", "li", "blockquote", "h1", "h2", "h3", "h4", "title"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.blocks: list[str] = []
+        self.headings: list[str] = []
+        self.current: list[str] = []
+        self.current_tag = ""
+        self.ignored_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        if tag in {"script", "style", "svg"}:
+            self.ignored_depth += 1
+        if not self.ignored_depth and tag in self.block_tags:
+            self.flush()
+            self.current_tag = tag
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in {"script", "style", "svg"} and self.ignored_depth:
+            self.ignored_depth -= 1
+            return
+        if not self.ignored_depth and tag in self.block_tags:
+            self.flush()
+
+    def handle_data(self, data: str) -> None:
+        if not self.ignored_depth:
+            self.current.append(data)
+
+    def flush(self) -> None:
+        value = re.sub(r"\s+", " ", " ".join(self.current)).strip()
+        if value:
+            self.blocks.append(value)
+            if self.current_tag in {"h1", "h2", "h3", "title"}:
+                self.headings.append(value)
+        self.current = []
+        self.current_tag = ""
+
+
+def xml_local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def epub_file_fingerprint(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def parse_epub(path_value: str) -> dict:
+    path = Path(path_value).expanduser().resolve()
+    if not path.is_file() or path.suffix.casefold() != ".epub":
+        raise ValueError("请选择存在的 EPUB 文件")
+    if path.stat().st_size > EPUB_MAX_FILE_BYTES:
+        raise ValueError("EPUB 文件超过 100 MB 安全上限")
+    fingerprint = epub_file_fingerprint(path)
+    try:
+        archive = zipfile.ZipFile(path)
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise ValueError("EPUB ZIP 结构无效") from exc
+    with archive:
+        entries = archive.infolist()
+        if len(entries) > EPUB_MAX_ENTRIES or sum(item.file_size for item in entries) > EPUB_MAX_TOTAL_BYTES:
+            raise ValueError("EPUB 解压规模超过安全上限")
+        if any(item.file_size > EPUB_MAX_ENTRY_BYTES for item in entries):
+            raise ValueError("EPUB 包含过大的单个内容文件")
+        names = {item.filename for item in entries}
+        opf_name = ""
+        if "META-INF/container.xml" in names:
+            container = ET.fromstring(archive.read("META-INF/container.xml"))
+            rootfile = next((node for node in container.iter() if xml_local_name(node.tag) == "rootfile"), None)
+            if rootfile is not None:
+                opf_name = rootfile.attrib.get("full-path", "")
+        if not opf_name:
+            opf_name = next((name for name in names if name.casefold().endswith(".opf")), "")
+        if not opf_name or opf_name not in names:
+            raise ValueError("EPUB 缺少 OPF package 文档")
+        package = ET.fromstring(archive.read(opf_name))
+        metadata_nodes = [node for node in package.iter() if xml_local_name(node.tag) in {"title", "creator", "language"}]
+        metadata = {}
+        for node in metadata_nodes:
+            key = xml_local_name(node.tag)
+            if key not in metadata and (node.text or "").strip():
+                metadata[key] = re.sub(r"\s+", " ", node.text or "").strip()
+        manifest = {
+            node.attrib.get("id", ""): node.attrib.get("href", "")
+            for node in package.iter()
+            if xml_local_name(node.tag) == "item" and node.attrib.get("id") and node.attrib.get("href")
+        }
+        spine = [
+            node.attrib.get("idref", "")
+            for node in package.iter()
+            if xml_local_name(node.tag) == "itemref" and node.attrib.get("idref")
+        ]
+        opf_dir = posixpath.dirname(opf_name)
+        chapters = []
+        seen_hashes = set()
+        for idref in spine:
+            href = urllib.parse.unquote(manifest.get(idref, "").split("#", 1)[0])
+            entry_name = posixpath.normpath(posixpath.join(opf_dir, href))
+            if not href or entry_name not in names or not entry_name.casefold().endswith((".html", ".htm", ".xhtml")):
+                continue
+            parser = EpubTextParser()
+            parser.feed(archive.read(entry_name).decode("utf-8", errors="replace"))
+            parser.flush()
+            blocks = [value for value in parser.blocks if len(value) > 1]
+            body = "\n\n".join(blocks)
+            word_count = len(re.findall(r"\b[A-Za-z][A-Za-z'-]*\b", body))
+            if word_count < 20:
+                continue
+            body_hash = hashlib.sha256(body.encode("utf-8")).hexdigest()
+            if body_hash in seen_hashes:
+                continue
+            seen_hashes.add(body_hash)
+            chapters.append({
+                "position": len(chapters) + 1,
+                "title": parser.headings[0][:180] if parser.headings else f"Chapter {len(chapters) + 1}",
+                "body": body,
+                "body_hash": body_hash,
+                "word_count": word_count,
+            })
+            if len(chapters) >= EPUB_MAX_CHAPTERS:
+                break
+    if not chapters:
+        raise ValueError("EPUB 中没有可读取的章节正文")
+    return {
+        "fingerprint": fingerprint,
+        "title": metadata.get("title") or path.stem,
+        "author": metadata.get("creator", ""),
+        "language": metadata.get("language", "en")[:16] or "en",
+        "source_path": str(path),
+        "chapters": chapters,
+    }
+
+
+def book_detail(conn: sqlite3.Connection, book_id: int, include_chapters: bool = True) -> dict | None:
+    row = conn.execute("SELECT * FROM books WHERE id = ?", (book_id,)).fetchone()
+    if not row:
+        return None
+    item = dict(row)
+    item["source_path"] = Path(item["source_path"]).name
+    if include_chapters:
+        item["chapters"] = rows_to_dicts(conn.execute(
+            """SELECT id, book_id, position, title, word_count, article_id
+               FROM book_chapters WHERE book_id = ? ORDER BY position""", (book_id,)
+        ).fetchall())
+    return item
+
+
+def import_epub(path_value: str) -> tuple[dict, bool]:
+    parsed = parse_epub(path_value)
+    now = utc_now()
+    with db() as conn:
+        existing = conn.execute("SELECT id FROM books WHERE fingerprint = ?", (parsed["fingerprint"],)).fetchone()
+        if existing:
+            return book_detail(conn, existing["id"]), False
+        cursor = conn.execute(
+            """INSERT INTO books
+               (fingerprint, title, author, language, source_path, rights_status, chapter_count, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, 'private_user_material', ?, ?, ?)""",
+            (parsed["fingerprint"], parsed["title"], parsed["author"], parsed["language"],
+             parsed["source_path"], len(parsed["chapters"]), now, now),
+        )
+        book_id = cursor.lastrowid
+        conn.executemany(
+            """INSERT INTO book_chapters
+               (book_id, position, title, body, body_hash, word_count, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            [(book_id, item["position"], item["title"], item["body"], item["body_hash"], item["word_count"], now, now)
+             for item in parsed["chapters"]],
+        )
+        return book_detail(conn, book_id), True
+
+
+def materialize_book_chapter(conn: sqlite3.Connection, chapter_id: int) -> dict | None:
+    row = conn.execute(
+        """SELECT c.*, b.title AS book_title, b.author, b.language, b.fingerprint
+           FROM book_chapters c JOIN books b ON b.id = c.book_id WHERE c.id = ?""", (chapter_id,)
+    ).fetchone()
+    if not row:
+        return None
+    if row["article_id"]:
+        return dict(conn.execute("SELECT * FROM articles WHERE id = ?", (row["article_id"],)).fetchone())
+    now = utc_now()
+    source_url = f"private-epub://{row['fingerprint']}/{row['position']}"
+    title = f"{row['book_title']} · {row['title']}"
+    cursor = conn.execute(
+        """INSERT INTO articles
+           (title, language, level, topic, source, source_url, content_status, content_type, body, created_at, updated_at)
+           VALUES (?, ?, ?, 'literature', 'private EPUB', ?, 'full', 'culture', ?, ?, ?)""",
+        (title, row["language"] or "en", estimate_level(row["body"]), source_url, row["body"], now, now),
+    )
+    conn.execute("UPDATE book_chapters SET article_id = ?, updated_at = ? WHERE id = ?", (cursor.lastrowid, now, chapter_id))
+    return dict(conn.execute("SELECT * FROM articles WHERE id = ?", (cursor.lastrowid,)).fetchone())
+
+
 def unique_cards_payload(conn: sqlite3.Connection) -> list[dict]:
     rows = rows_to_dicts(conn.execute("SELECT * FROM cards ORDER BY updated_at DESC, id DESC").fetchall())
     seen: set[str] = set()
@@ -607,6 +817,36 @@ def init_db() -> None:
               body TEXT NOT NULL,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS books (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              fingerprint TEXT NOT NULL UNIQUE,
+              title TEXT NOT NULL,
+              author TEXT NOT NULL DEFAULT '',
+              language TEXT NOT NULL DEFAULT 'en',
+              source_path TEXT NOT NULL,
+              rights_status TEXT NOT NULL DEFAULT 'private_user_material',
+              chapter_count INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS book_chapters (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              book_id INTEGER NOT NULL,
+              position INTEGER NOT NULL,
+              title TEXT NOT NULL,
+              body TEXT NOT NULL,
+              body_hash TEXT NOT NULL,
+              word_count INTEGER NOT NULL DEFAULT 0,
+              article_id INTEGER,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              UNIQUE(book_id, position),
+              UNIQUE(book_id, body_hash),
+              FOREIGN KEY(book_id) REFERENCES books(id),
+              FOREIGN KEY(article_id) REFERENCES articles(id)
             );
 
             CREATE TABLE IF NOT EXISTS cards (
@@ -3970,6 +4210,17 @@ class App(BaseHTTPRequestHandler):
                     return json_response(self, {"progress": progress_payload(conn)})
             if path == "/api/learner-settings":
                 return json_response(self, {"settings": learner_settings()})
+            if path == "/api/books":
+                with db() as conn:
+                    books = [book_detail(conn, row["id"], include_chapters=False) for row in conn.execute(
+                        "SELECT id FROM books ORDER BY updated_at DESC, id DESC"
+                    ).fetchall()]
+                return json_response(self, {"books": books})
+            match = re.fullmatch(r"/api/books/(\d+)", path)
+            if match:
+                with db() as conn:
+                    book = book_detail(conn, int(match.group(1)))
+                return json_response(self, {"book": book}) if book else json_response(self, {"error": "Book not found"}, 404)
             if path == "/api/daily-plan":
                 return json_response(self, {"plan": daily_plan_snapshot()})
             if path == "/api/browser/status":
@@ -4156,6 +4407,19 @@ class App(BaseHTTPRequestHandler):
                 except (TypeError, ValueError) as exc:
                     return json_response(self, {"error": str(exc)}, 400)
                 return json_response(self, {"settings": settings})
+            if path == "/api/import/epub":
+                try:
+                    book, created = import_epub(str(payload.get("path") or ""))
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, {"book": book, "created": created}, 201 if created else 200)
+            match = re.fullmatch(r"/api/book-chapters/(\d+)/article", path)
+            if match:
+                with db() as conn:
+                    article = materialize_book_chapter(conn, int(match.group(1)))
+                if not article:
+                    return json_response(self, {"error": "Book chapter not found"}, 404)
+                return json_response(self, {"article": enrich_article(article, str(payload.get("exam") or ""))}, 201)
             if path == "/api/daily-plan/progress":
                 task = str(payload.get("task") or "")
                 if task not in DAILY_PLAN_TASKS:

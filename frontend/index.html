@@ -234,6 +234,21 @@
               </select>
               <button class="primary" id="saveArticleBtn">存入文章库</button>
             </div>
+            <div class="epub-import-panel">
+              <h3>私人 EPUB 书库</h3>
+              <label>本地 EPUB 路径</label>
+              <div class="toolbar">
+                <input id="epubPath" placeholder="C:\Books\example.epub" />
+                <button id="importEpubBtn">导入书库</button>
+              </div>
+              <p class="muted">只保存在本机数据库，不上传书籍，也不进入 Git 仓库。</p>
+              <div class="toolbar">
+                <select id="epubBookSelect" aria-label="私人书籍"></select>
+                <select id="epubChapterSelect" aria-label="书籍章节"></select>
+                <button class="primary" id="openEpubChapterBtn">送入阅读台</button>
+              </div>
+              <div id="epubBookSummary" class="muted"></div>
+            </div>
           </details>
         </section>
       </div>
