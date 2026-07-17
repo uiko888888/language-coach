@@ -8,6 +8,27 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.8.0-alpha.11.4] - 2026-07-18
+
+### Added
+
+- Added a per-user Windows sign-in task installer that starts the backend after a 30-second delay.
+- Added task settings for missed-run recovery, single-instance execution, and three startup retries.
+- Added dedicated task status and uninstall scripts; uninstall leaves running Python processes untouched.
+- Added post-install backend health verification and configurable `LANGUAGE_COACH_PORT` / `LANGUAGE_COACH_PYTHON` support.
+- Added deployment guidance for a hosted Web/PWA primary product and an optional privacy-preserving local companion.
+- Added automated checks for task behavior, path portability, health verification, and uninstall scope.
+
+### Changed
+
+- The backend, PowerShell launcher, batch launcher, scheduler and documentation now share port `8765` by default while allowing explicit overrides.
+
+### Known limits
+
+- Windows cannot fetch while powered off, sleeping, or before the user signs in; a missed refresh is recovered after the next sign-in.
+- The Codex sandbox denied access to the Windows Scheduled Tasks API, so installation on this machine still needs one normal PowerShell invocation and status verification.
+- Public multi-user delivery still requires cloud deployment, accounts, a durable scheduler, permissions and operational monitoring.
+
 ## [0.8.0-alpha.11.3] - 2026-07-18
 
 ### Added

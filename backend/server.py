@@ -5383,7 +5383,13 @@ class App(BaseHTTPRequestHandler):
 
 def main() -> None:
     init_db()
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
+    port_value = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("LANGUAGE_COACH_PORT", "8765")
+    try:
+        port = int(port_value)
+    except ValueError as exc:
+        raise SystemExit(f"Invalid Language Coach port: {port_value}") from exc
+    if not 1 <= port <= 65535:
+        raise SystemExit(f"Language Coach port must be between 1 and 65535: {port}")
     server = ThreadingHTTPServer(("127.0.0.1", port), App)
     print(f"Language Coach v2 running at http://127.0.0.1:{port}")
     print(f"SQLite database: {DB_PATH}")

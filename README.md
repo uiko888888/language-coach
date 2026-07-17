@@ -119,6 +119,23 @@ language-coach/
 http://127.0.0.1:8765/
 ```
 
+### Windows 登录后自动更新
+
+本地版可安装当前用户登录任务。登录 30 秒后后端自动启动，随后执行启动新鲜度检查，并在运行期间每六小时检查公开来源：
+
+```powershell
+.\scripts\install_windows_autostart.ps1
+.\scripts\windows_autostart_status.ps1
+```
+
+卸载只删除 Language Coach 任务，不结束其他 Python 进程：
+
+```powershell
+.\scripts\uninstall_windows_autostart.ps1
+```
+
+电脑关机、休眠或尚未登录时不会更新；下次登录会补做新鲜度检查。公共产品的长期形态是托管 Web/PWA，公共内容由云端刷新，EPUB、私有字幕和本地词典由可选本地伴侣处理，详见 [`DEPLOYMENT.md`](DEPLOYMENT.md)。
+
 若要使用其他端口：
 
 ```powershell
