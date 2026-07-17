@@ -8,6 +8,28 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.8.0-alpha.11.1] - 2026-07-17
+
+### Added
+
+- Added a typed `Complete the Words` single-blank simulation for the 2026 TOEFL task family.
+- Added traceable target-word, visible-prefix, missing-letter, masked-context, full-answer, and no-option validation.
+- Added spelling, word-form, incomplete-answer, and contextual-meaning error diagnosis.
+- Added automatic wrong-word capture with the source sentence in the vocabulary notebook without duplicate cards.
+- Added persistent quiz metadata so generated tasks remain auditable after reload.
+- Added API and migration coverage for generation, persistence, typed grading, and review capture.
+
+### Changed
+
+- Article and remedial question creation now share the structured quiz persistence path.
+- TOEFL exposes ten training specialties; `Complete the Words` uses `toefl-2026-sim-v1` provenance.
+
+### Known limits
+
+- This is a one-blank training unit, not a reproduction of the official multi-blank screen or scoring model.
+- ETS pages were unreachable from the development environment during this release; exact current display and timing parameters require re-verification against an official public sample.
+- No ETS or commercial question text is bundled.
+
 ## [0.8.0-alpha.11] - 2026-07-17
 
 ### Added

@@ -64,15 +64,18 @@ class LearningFlowTests(unittest.TestCase):
             items = server.generate_quiz_items(server.SAMPLE_ARTICLE, "reading", "TOEFL", question_type)
             self.assertTrue(items, question_type)
             self.assertTrue(all(item["question_type"] == question_type for item in items))
-            self.assertTrue(all(item["generation_source"] == "toefl-rule-v2" for item in items))
+            expected_source = "toefl-2026-sim-v1" if question_type == "complete-words" else "toefl-rule-v2"
+            self.assertTrue(all(item["generation_source"] == expected_source for item in items))
             self.assertTrue(all(item["validation"]["valid"] for item in items))
-            self.assertTrue(all(len(item["options"]) == 4 for item in items))
+            expected_option_count = 0 if question_type == "complete-words" else 4
+            self.assertTrue(all(len(item["options"]) == expected_option_count for item in items))
             self.assertTrue(all(item["skill"] and item["difficulty"] for item in items))
         mixed = server.generate_quiz_items(server.SAMPLE_ARTICLE, "reading", "TOEFL", "mixed")
         self.assertEqual({item["question_type"] for item in mixed}, set(server.TOEFL_TASK_META))
 
     def test_toefl_error_types_are_specific(self):
         expected = {
+            "complete-words": "拼写或词形错误",
             "factual": "事实定位或限定范围错误",
             "negative-factual": "EXCEPT 方向或多项证据核对错误",
             "inference": "推断距离过远或证据范围扩大",
@@ -88,6 +91,26 @@ class LearningFlowTests(unittest.TestCase):
                 server.classify_answer_error({"question_type": question_type, "answer": "A"}, "B"),
                 error_type,
             )
+
+    def test_toefl_complete_words_masks_and_validates_a_traceable_word(self):
+        items = server.toefl_quiz_items(server.SAMPLE_ARTICLE, "complete-words")
+        self.assertTrue(items)
+        item = items[0]
+        self.assertEqual(item["generation_source"], "toefl-2026-sim-v1")
+        self.assertFalse(item["options"])
+        self.assertIn(item["target_word"], item["evidence"])
+        self.assertNotIn(item["target_word"], item["masked_text"])
+        self.assertIn("_" * item["missing_count"], item["masked_text"])
+        self.assertTrue(item["validation"]["valid"])
+        self.assertFalse(item["official_equivalence"])
+        with server.db() as conn:
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(quizzes)")}
+        self.assertIn("metadata_json", columns)
+
+        broken = {**item, "missing_count": item["missing_count"] + 1}
+        result = server.validate_quiz_item(broken, server.SAMPLE_ARTICLE, "TOEFL", "complete-words")
+        self.assertFalse(result["valid"])
+        self.assertIn("complete_word_mask", result["errors"])
 
     def test_toefl_advanced_templates_enforce_exam_specific_evidence_contracts(self):
         negative = server.toefl_negative_factual_items(server.SAMPLE_ARTICLE)[0]

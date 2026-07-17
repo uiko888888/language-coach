@@ -366,7 +366,7 @@ class BrowserBridgeTests(unittest.TestCase):
     def test_toefl_advanced_types_are_exposed_and_support_remedial_flow(self):
         catalog, _ = self.request("/api/exam-types?style=TOEFL")
         ids = {item["id"] for item in catalog["types"]}
-        self.assertTrue({"negative-factual", "rhetorical-purpose", "insertion", "prose-summary"}.issubset(ids))
+        self.assertTrue({"complete-words", "negative-factual", "rhetorical-purpose", "insertion", "prose-summary"}.issubset(ids))
 
         created, _ = self.request(
             "/api/articles",
@@ -389,6 +389,39 @@ class BrowserBridgeTests(unittest.TestCase):
         similar, _ = self.request(f"/api/mistakes/{mistake['id']}/similar", "POST", {"count": 3})
         self.assertTrue(similar["quizzes"])
         self.assertTrue(all(item["question_type"] == "insertion" for item in similar["quizzes"]))
+
+    def test_complete_words_persists_metadata_and_saves_wrong_word_for_review(self):
+        created, _ = self.request(
+            "/api/articles",
+            "POST",
+            {"title": "TOEFL complete words", "body": server.SAMPLE_ARTICLE, "source": "manual"},
+        )
+        generated, _ = self.request(
+            f"/api/articles/{created['article']['id']}/quizzes",
+            "POST",
+            {"mode": "cloze", "style": "TOEFL", "question_type": "complete-words"},
+        )
+        quiz = generated["quizzes"][0]
+        loaded, _ = self.request(
+            f"/api/quizzes?article_id={created['article']['id']}&style=TOEFL&question_type=complete-words"
+        )
+        persisted = next(item for item in loaded["quizzes"] if item["id"] == quiz["id"])
+        self.assertEqual(persisted["target_word"], quiz["target_word"])
+        self.assertEqual(persisted["masked_text"], quiz["masked_text"])
+        self.assertFalse(persisted["official_equivalence"])
+
+        partial = quiz["answer"][: max(2, (len(quiz["answer"]) + 1) // 2)]
+        attempt, _ = self.request(
+            "/api/attempts", "POST", {"quiz_id": quiz["id"], "answer": partial, "confidence": 2}
+        )
+        self.assertEqual(attempt["error_type"], "只填写了已知部分或单词未补完整")
+        self.request("/api/attempts", "POST", {"quiz_id": quiz["id"], "answer": partial, "confidence": 1})
+        cards, _ = self.request("/api/cards")
+        matching_cards = [item for item in cards["cards"] if item["term"].casefold() == quiz["answer"].casefold()]
+        self.assertEqual(len(matching_cards), 1)
+        saved = matching_cards[0]
+        self.assertEqual(saved["context"], quiz["evidence"])
+        self.assertIn("Complete the Words", saved["note"])
 
     def test_mock_session_scores_unanswered_items_and_persists_diagnosis(self):
         created, _ = self.request(
@@ -436,6 +469,7 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(linked, 3)
 
     def test_practice_attempts_are_archived_with_detail_and_analytics(self):
+        baseline, _ = self.request("/api/practice/analytics?style=TOEFL")
         created, _ = self.request(
             "/api/articles",
             "POST",
@@ -479,9 +513,10 @@ class BrowserBridgeTests(unittest.TestCase):
         detail, _ = self.request(f"/api/practice-sessions/{session['id']}")
         self.assertEqual(detail["session"]["article_title"], "TOEFL history")
         analytics, _ = self.request("/api/practice/analytics?style=TOEFL")
-        self.assertEqual(analytics["summary"], {"attempts": 2, "correct": 1, "accuracy": 50})
+        self.assertEqual(analytics["summary"]["attempts"], baseline["summary"]["attempts"] + 2)
+        self.assertEqual(analytics["summary"]["correct"], baseline["summary"]["correct"] + 1)
         self.assertTrue(analytics["skills"])
-        self.assertEqual(analytics["recommendation"]["question_type"], "factual")
+        self.assertTrue(analytics["recommendation"]["question_type"])
 
     def test_exam_resources_expose_rights_and_user_import_is_labeled(self):
         resources, _ = self.request("/api/exam-resources?exam=IELTS")

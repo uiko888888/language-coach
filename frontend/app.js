@@ -926,7 +926,7 @@ function renderQuizzes() {
         </div>
       ` : `
         <div class="answer-row">
-          <input data-typed-quiz="${quiz.id}" value="${escapeHtml(selected)}" placeholder="输入完整答案" ${locked ? "disabled" : ""} />
+          <input data-typed-quiz="${quiz.id}" value="${escapeHtml(selected)}" placeholder="${quiz.question_type === "complete-words" ? "输入完整单词" : "输入完整答案"}" autocomplete="off" spellcheck="false" ${locked ? "disabled" : ""} />
           ${session.mode === "practice" && !locked ? `<button data-submit-typed="${quiz.id}">确认答案</button>` : ""}
         </div>
       `}
