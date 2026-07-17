@@ -7,6 +7,7 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 ## [Unreleased]
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
+- Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
 ## [0.8.0-alpha.11.4] - 2026-07-18
 
