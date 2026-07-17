@@ -8,6 +8,27 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.8.0-alpha.11] - 2026-07-17
+
+### Added
+
+- Added independent TOEFL negative factual, rhetorical purpose, sentence insertion, and prose-summary foundations.
+- Added three-supported-one-absent validation for negative factual questions.
+- Added sentence-function validation for rhetorical purpose questions and paragraph reconstruction for insertion questions.
+- Added cross-paragraph idea coverage validation for prose summaries.
+- Added dedicated skills, coaching methods, error types, and same-type remedial generation for all four question types.
+- Added positive and negative test coverage for advanced TOEFL evidence contracts.
+
+### Changed
+
+- TOEFL now exposes nine independent reading specialties and uses `toefl-rule-v2` generation provenance.
+
+### Known limits
+
+- Prose summary is currently a four-option best-summary foundation; the official-style choose-three-from-six interaction is not implemented.
+- A complete TOEFL reading section, official timing/scoring, listening, speaking, and writing remain pending.
+- Generated questions are evidence-validated simulations and do not copy ETS questions.
+
 ## [0.8.0-alpha.10] - 2026-07-17
 
 ### Added

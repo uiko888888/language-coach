@@ -348,7 +348,7 @@ class BrowserBridgeTests(unittest.TestCase):
             {"mode": "reading", "style": "TOEFL", "question_type": "simplification"},
         )
         quiz = generated["quizzes"][0]
-        self.assertEqual(quiz["generation_source"], "toefl-rule-v1")
+        self.assertEqual(quiz["generation_source"], "toefl-rule-v2")
         wrong_answer = next(option for option in quiz["options"] if option != quiz["answer"])
         attempt, _ = self.request(
             "/api/attempts",
@@ -362,6 +362,33 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertTrue(similar["quizzes"])
         self.assertTrue(all(item["style"] == "TOEFL" for item in similar["quizzes"]))
         self.assertTrue(all(item["question_type"] == "simplification" for item in similar["quizzes"]))
+
+    def test_toefl_advanced_types_are_exposed_and_support_remedial_flow(self):
+        catalog, _ = self.request("/api/exam-types?style=TOEFL")
+        ids = {item["id"] for item in catalog["types"]}
+        self.assertTrue({"negative-factual", "rhetorical-purpose", "insertion", "prose-summary"}.issubset(ids))
+
+        created, _ = self.request(
+            "/api/articles",
+            "POST",
+            {"title": "TOEFL insertion flow", "body": server.SAMPLE_ARTICLE, "source": "manual"},
+        )
+        generated, _ = self.request(
+            f"/api/articles/{created['article']['id']}/quizzes",
+            "POST",
+            {"mode": "reading", "style": "TOEFL", "question_type": "insertion"},
+        )
+        quiz = generated["quizzes"][0]
+        wrong_answer = next(option for option in quiz["options"] if option != quiz["answer"])
+        attempt, _ = self.request(
+            "/api/attempts", "POST", {"quiz_id": quiz["id"], "answer": wrong_answer, "confidence": 2}
+        )
+        self.assertEqual(attempt["error_type"], "指代或篇章衔接判断错误")
+        mistakes, _ = self.request("/api/mistakes")
+        mistake = next(item for item in mistakes["mistakes"] if item["quiz_id"] == quiz["id"])
+        similar, _ = self.request(f"/api/mistakes/{mistake['id']}/similar", "POST", {"count": 3})
+        self.assertTrue(similar["quizzes"])
+        self.assertTrue(all(item["question_type"] == "insertion" for item in similar["quizzes"]))
 
     def test_mock_session_scores_unanswered_items_and_persists_diagnosis(self):
         created, _ = self.request(

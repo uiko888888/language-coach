@@ -64,7 +64,7 @@ class LearningFlowTests(unittest.TestCase):
             items = server.generate_quiz_items(server.SAMPLE_ARTICLE, "reading", "TOEFL", question_type)
             self.assertTrue(items, question_type)
             self.assertTrue(all(item["question_type"] == question_type for item in items))
-            self.assertTrue(all(item["generation_source"] == "toefl-rule-v1" for item in items))
+            self.assertTrue(all(item["generation_source"] == "toefl-rule-v2" for item in items))
             self.assertTrue(all(item["validation"]["valid"] for item in items))
             self.assertTrue(all(len(item["options"]) == 4 for item in items))
             self.assertTrue(all(item["skill"] and item["difficulty"] for item in items))
@@ -74,9 +74,13 @@ class LearningFlowTests(unittest.TestCase):
     def test_toefl_error_types_are_specific(self):
         expected = {
             "factual": "事实定位或限定范围错误",
+            "negative-factual": "EXCEPT 方向或多项证据核对错误",
             "inference": "推断距离过远或证据范围扩大",
+            "rhetorical-purpose": "句子内容与修辞功能混淆",
             "main-idea": "主旨与细节混淆",
             "simplification": "关键信息遗漏或逻辑关系改变",
+            "insertion": "指代或篇章衔接判断错误",
+            "prose-summary": "主旨覆盖不足或细节权重错误",
             "vocabulary": "语境词义判断错误",
         }
         for question_type, error_type in expected.items():
@@ -84,6 +88,26 @@ class LearningFlowTests(unittest.TestCase):
                 server.classify_answer_error({"question_type": question_type, "answer": "A"}, "B"),
                 error_type,
             )
+
+    def test_toefl_advanced_templates_enforce_exam_specific_evidence_contracts(self):
+        negative = server.toefl_negative_factual_items(server.SAMPLE_ARTICLE)[0]
+        self.assertEqual(len(negative["supported_options"]), 3)
+        self.assertTrue(all(value in negative["evidence"] for value in negative["supported_options"]))
+        self.assertNotIn(negative["answer"], negative["evidence"])
+
+        insertion = server.toefl_insertion_items(server.SAMPLE_ARTICLE)[0]
+        rebuilt = list(insertion["base_sentences"])
+        rebuilt.insert(insertion["insertion_position"], insertion["target_sentence"])
+        self.assertEqual(rebuilt, server.sentences(insertion["evidence"]))
+
+        summary = server.toefl_prose_summary_items(server.SAMPLE_ARTICLE)[0]
+        self.assertGreaterEqual(len(summary["covered_paragraphs"]), 2)
+        self.assertTrue(all(idea in summary["answer"] for idea in summary["key_ideas"]))
+
+        broken = {**insertion, "insertion_position": 0}
+        result = server.validate_quiz_item(broken, server.SAMPLE_ARTICLE, "TOEFL", "insertion")
+        self.assertFalse(result["valid"])
+        self.assertIn("insertion_reconstructs_paragraph", result["errors"])
 
     def test_validator_rejects_untraceable_evidence(self):
         item = {
