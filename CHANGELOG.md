@@ -8,6 +8,28 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.8.0-alpha.9] - 2026-07-17
+
+### Added
+
+- Added persistent session archiving for immediate-feedback practice without duplicating attempts or awarding points twice.
+- Added style-filtered practice history, single-session detail, and cross-session analytics APIs.
+- Added skill and question-type accuracy, recent-versus-previous trend, weakest-skill diagnosis, and next-question-type recommendation.
+- Added a Training History view with session list, score/time metadata, per-question answers and evidence, ability meters, and source replay.
+- Added direct continuation from history recommendations to focused remedial practice.
+- Added integration coverage for practice-session archiving, unanswered denominators, detail retrieval, and analytics.
+
+### Changed
+
+- Both practice and mock modes now appear in the same history model.
+- Immediate attempts expose their persistent attempt id so a completed practice can link existing records instead of submitting answers again.
+
+### Known limits
+
+- Trend compares the most recent five attempts with the previous five; it is a descriptive signal, not a calibrated ability score.
+- History does not yet restore a completed session into editable mode or provide date-range filters and export.
+- XP remains separate from performance trends and does not raise the displayed accuracy.
+
 ## [0.8.0-alpha.8] - 2026-07-17
 
 ### Added

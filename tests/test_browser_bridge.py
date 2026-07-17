@@ -321,6 +321,54 @@ class BrowserBridgeTests(unittest.TestCase):
             ).fetchone()[0]
         self.assertEqual(linked, 3)
 
+    def test_practice_attempts_are_archived_with_detail_and_analytics(self):
+        created, _ = self.request(
+            "/api/articles",
+            "POST",
+            {"title": "TOEFL history", "body": server.SAMPLE_ARTICLE, "source": "manual"},
+        )
+        generated, _ = self.request(
+            f"/api/articles/{created['article']['id']}/quizzes",
+            "POST",
+            {"mode": "reading", "style": "TOEFL", "question_type": "factual"},
+        )
+        first, second = generated["quizzes"][:2]
+        correct, _ = self.request(
+            "/api/attempts",
+            "POST",
+            {"quiz_id": first["id"], "answer": first["answer"], "confidence": 3},
+        )
+        wrong_answer = next(option for option in second["options"] if option != second["answer"])
+        wrong, _ = self.request(
+            "/api/attempts",
+            "POST",
+            {"quiz_id": second["id"], "answer": wrong_answer, "confidence": 2},
+        )
+        archived, _ = self.request(
+            "/api/practice-sessions/record",
+            "POST",
+            {
+                "attempt_ids": [correct["attempt_id"], wrong["attempt_id"]],
+                "question_count": 3,
+                "elapsed_seconds": 120,
+            },
+        )
+        session = archived["session"]
+        self.assertEqual(session["session_mode"], "practice")
+        self.assertEqual(session["question_count"], 3)
+        self.assertEqual(session["answered_count"], 2)
+        self.assertEqual(session["correct_count"], 1)
+        self.assertEqual(session["error_summary"]["未作答"], 1)
+        self.assertEqual(len(archived["attempts"]), 2)
+        listed, _ = self.request("/api/practice-sessions?style=TOEFL")
+        self.assertEqual(listed["sessions"][0]["id"], session["id"])
+        detail, _ = self.request(f"/api/practice-sessions/{session['id']}")
+        self.assertEqual(detail["session"]["article_title"], "TOEFL history")
+        analytics, _ = self.request("/api/practice/analytics?style=TOEFL")
+        self.assertEqual(analytics["summary"], {"attempts": 2, "correct": 1, "accuracy": 50})
+        self.assertTrue(analytics["skills"])
+        self.assertEqual(analytics["recommendation"]["question_type"], "factual")
+
     def test_exam_resources_expose_rights_and_user_import_is_labeled(self):
         resources, _ = self.request("/api/exam-resources?exam=IELTS")
         self.assertTrue(resources["resources"])

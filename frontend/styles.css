@@ -616,6 +616,19 @@ label {
 .calibration-note { margin: 8px 0 0; color: #8a4a18; font-size: 12px; }
 .result-actions { margin-top: 12px; }
 
+.history-recommendation { margin-top: 14px; padding: 10px 12px; border-left: 4px solid var(--amber); background: #fff7e8; }
+.ability-trend-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 18px; margin-top: 14px; }
+.ability-trend-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px 12px; align-items: center; padding-top: 9px; border-top: 1px solid var(--line); }
+.ability-trend-row small { color: var(--muted); }
+.ability-meter { grid-column: 1 / -1; height: 7px; overflow: hidden; border-radius: 4px; background: var(--surface-2); }
+.ability-meter span { display: block; height: 100%; background: var(--teal); }
+.trend-up { color: var(--green); }
+.trend-down { color: var(--red); }
+.history-workspace { margin-top: 14px; }
+.history-attempt { padding: 12px 0; border-top: 1px solid var(--line); }
+.history-attempt:first-of-type { border-top: 0; }
+.history-attempt p { line-height: 1.55; }
+
 .answer-row {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -978,7 +991,8 @@ label {
   .reader-layout,
   .quiz-workspace,
   .answer-compare,
-  .explanation-grid {
+  .explanation-grid,
+  .ability-trend-list {
     grid-template-columns: 1fr;
   }
 

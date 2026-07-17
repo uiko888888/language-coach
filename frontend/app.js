@@ -34,6 +34,9 @@ const state = {
   examResources: [],
   examPapers: [],
   selectedPaper: null,
+  practiceSessions: [],
+  practiceAnalytics: null,
+  selectedPracticeSession: null,
   evidenceReplay: "",
   showTranslation: false,
   articleTopics: [],
@@ -77,6 +80,7 @@ const titles = {
   quiz: ["题目", "先做题，再看证据和解析，错题会自动收集。"],
   cards: ["生词本", "主动添加或从文章里点词添加，后面可做词块复习。"],
   mistakes: ["错题", "保存你的错误答案、正确答案和原文证据。"],
+  history: ["训练记录", "查看单次训练详情、能力趋势和下一步建议。"],
   lexicon: ["词汇中心", "从单词、中文、词形或词源进入同一张词汇网络。"],
 };
 
@@ -1012,6 +1016,66 @@ function renderMistakes() {
   `;
 }
 
+function renderPracticeHistory() {
+  const analytics = state.practiceAnalytics || { summary: {}, skills: [], recommendation: {} };
+  const summary = analytics.summary || {};
+  $("#historyExamTitle").textContent = `${state.style} 训练趋势`;
+  $("#historyOverview").innerHTML = `
+    <div><span>累计作答</span><strong>${summary.attempts || 0}</strong></div>
+    <div><span>累计答对</span><strong>${summary.correct || 0}</strong></div>
+    <div><span>正确率</span><strong>${summary.accuracy || 0}%</strong></div>
+    <div><span>已记录训练</span><strong>${state.practiceSessions.length}</strong></div>
+  `;
+  const recommendation = analytics.recommendation || {};
+  $("#historyRecommendation").innerHTML = `<strong>下一步建议</strong><p>${escapeHtml(recommendation.reason || "完成一次训练后生成建议。")}</p>${recommendation.question_type ? `<button data-history-next-type="${escapeHtml(recommendation.question_type)}">练习 ${escapeHtml(recommendation.question_type)}</button>` : ""}`;
+  $("#abilityTrendList").innerHTML = (analytics.skills || []).map(item => {
+    const trend = item.trend;
+    const trendText = trend === null || trend === undefined ? "样本积累中" : trend > 0 ? `近期 +${trend}` : trend < 0 ? `近期 ${trend}` : "近期持平";
+    const trendClass = trend > 0 ? "trend-up" : trend < 0 ? "trend-down" : "";
+    return `
+      <div class="ability-trend-row">
+        <div><strong>${escapeHtml(item.label)}</strong><small> ${item.correct}/${item.total}</small></div>
+        <strong class="${trendClass}">${item.accuracy}% · ${trendText}</strong>
+        <div class="ability-meter"><span style="width:${Math.max(0, Math.min(100, item.accuracy))}%"></span></div>
+      </div>
+    `;
+  }).join("") || `<p class="muted">完成训练后生成能力趋势。</p>`;
+  $("#historySessionCount").textContent = `${state.practiceSessions.length} 次`;
+  $("#practiceSessionList").innerHTML = state.practiceSessions.map(session => `
+    <button class="master-list-item ${state.selectedPracticeSession?.session?.id === session.id ? "active" : ""}" data-practice-session="${session.id}">
+      <span class="master-number">${session.score}%</span>
+      <span class="master-copy">
+        <strong>${escapeHtml(session.article_title || session.question_type || "综合训练")}</strong>
+        <small>${escapeHtml(session.session_mode === "mock" ? "模考" : "训练")} · ${session.correct_count}/${session.question_count} · ${formatDuration(session.elapsed_seconds)}</small>
+        <em>${escapeHtml(session.completed_at.replace("T", " ").slice(0, 16))}</em>
+      </span>
+    </button>
+  `).join("") || `<div class="empty-state">尚无已完成训练</div>`;
+  const detail = state.selectedPracticeSession;
+  if (!detail) {
+    $("#practiceSessionDetail").innerHTML = `<div class="empty-state">选择一条训练记录查看题目、答案和证据。</div>`;
+    return;
+  }
+  const session = detail.session;
+  $("#practiceSessionDetail").innerHTML = `
+    <div class="detail-head">
+      <div><span class="eyebrow">${escapeHtml(session.style)} · ${session.session_mode === "mock" ? "模考" : "训练"}</span><h2>${escapeHtml(session.article_title || session.question_type || "训练详情")}</h2></div>
+      <div class="badge-row">${badge(`${session.score}%`, session.score >= 70 ? "teal" : "amber")}${badge(`${session.correct_count}/${session.question_count}`)}</div>
+    </div>
+    <div class="toolbar"><button data-history-next-type="${escapeHtml(session.question_type === "mixed" ? "" : session.question_type)}">再练本题型</button></div>
+    ${(detail.attempts || []).map((attempt, index) => `
+      <section class="history-attempt">
+        <div class="badge-row">${badge(`第 ${index + 1} 题`)}${badge(attempt.correct ? "正确" : "错误", attempt.correct ? "teal" : "red")}${badge(attempt.question_type)}</div>
+        <h3>${searchableEnglish(attempt.prompt)}</h3>
+        <p><strong>你的答案：</strong>${searchableEnglish(attempt.user_answer || "未作答", false)}</p>
+        <p><strong>正确答案：</strong>${searchableEnglish(attempt.answer, false)}</p>
+        <p><strong>原文证据：</strong>${searchableEnglish(attempt.evidence || "暂无证据")}</p>
+        ${attempt.article_id ? `<button data-replay-evidence="${attempt.article_id}" data-replay-text="${escapeHtml(attempt.evidence || "")}">回到原文</button>` : ""}
+      </section>
+    `).join("")}
+  `;
+}
+
 function renderAll() {
   renderStats();
   renderDashboard();
@@ -1021,6 +1085,7 @@ function renderAll() {
   renderQuizSource();
   renderCards();
   renderMistakes();
+  renderPracticeHistory();
   renderLexicon();
 }
 
@@ -1238,6 +1303,28 @@ async function loadBridgeConfig() {
 async function loadMistakes() {
   const data = await api("/api/mistakes");
   state.mistakes = data.mistakes || [];
+}
+
+async function loadPracticeHistory({ selectFirst = false } = {}) {
+  const params = new URLSearchParams({ style: state.style });
+  const [sessions, analytics] = await Promise.all([
+    api(`/api/practice-sessions?${params.toString()}`),
+    api(`/api/practice/analytics?${params.toString()}`),
+  ]);
+  state.practiceSessions = sessions.sessions || [];
+  state.practiceAnalytics = analytics;
+  const selectedId = state.selectedPracticeSession?.session?.id;
+  if (selectedId && !state.practiceSessions.some(session => session.id === selectedId)) {
+    state.selectedPracticeSession = null;
+  }
+  if (selectFirst && !state.selectedPracticeSession && state.practiceSessions[0]) {
+    await selectPracticeSession(state.practiceSessions[0].id, { render: false });
+  }
+}
+
+async function selectPracticeSession(id, { render = true } = {}) {
+  state.selectedPracticeSession = await api(`/api/practice-sessions/${id}`);
+  if (render) renderPracticeHistory();
 }
 
 async function loadFeeds() {
@@ -1474,11 +1561,28 @@ async function finishQuizSession() {
     renderStats();
     renderDashboard();
   } else {
-    session.result = localPracticeResult();
+    const attemptIds = state.quizzes
+      .map(quiz => state.answerFeedback[quiz.id]?.attempt_id)
+      .filter(Boolean);
+    if (attemptIds.length) {
+      session.result = await api("/api/practice-sessions/record", {
+        method: "POST",
+        body: JSON.stringify({
+          attempt_ids: attemptIds,
+          question_count: state.quizzes.length,
+          elapsed_seconds: elapsedSeconds,
+        }),
+      });
+    } else {
+      session.result = localPracticeResult();
+    }
   }
   session.elapsedSeconds = elapsedSeconds;
   session.submitted = true;
   state.showAnswers = true;
+  clearQuizDraft();
+  await loadPracticeHistory();
+  renderPracticeHistory();
   renderQuizzes();
   toast(session.mode === "mock" ? "交卷完成，已生成能力与错因分析" : "训练结束，已生成本轮总结");
 }
@@ -1727,6 +1831,10 @@ document.addEventListener("click", async event => {
     }
     if (button.id === "refreshAllBtn") await boot();
     if (button.id === "saveLearnerSettingsBtn") await saveLearnerSettings();
+    if (button.id === "refreshPracticeHistoryBtn") {
+      await loadPracticeHistory({ selectFirst: true });
+      renderPracticeHistory();
+    }
     if (button.id === "modePrimaryAction") {
       await startDailyPlan();
     }
@@ -1757,6 +1865,7 @@ document.addEventListener("click", async event => {
     if (button.id === "generateFullPaperBtn") await generateFullPaper();
     if (button.id === "nextSetBtn" || button.dataset.nextSet) await generateNextSet();
     if (button.dataset.nextSetError) await generateNextSet({ questionType: button.dataset.nextSetType || "", errorType: button.dataset.nextSetError });
+    if (button.dataset.historyNextType !== undefined) await generateNextSet({ questionType: button.dataset.historyNextType || "" });
     if (button.id === "loadPaperBtn") await loadPaper(Number($("#quizPaperSelect").value));
     if (button.id === "restartQuizSessionBtn" || button.dataset.retrySession) {
       resetQuizSession();
@@ -1860,6 +1969,7 @@ document.addEventListener("click", async event => {
       state.selectedMistakeId = Number(button.dataset.selectMistake);
       renderMistakes();
     }
+    if (button.dataset.practiceSession) await selectPracticeSession(Number(button.dataset.practiceSession));
     if (button.dataset.generateSimilar) await generateSimilar(Number(button.dataset.generateSimilar));
     if (button.dataset.solveMistake) await toggleMistake(button.dataset.solveMistake);
   } catch (error) {
@@ -1887,7 +1997,8 @@ $("#globalStyle").addEventListener("change", async event => {
   state.style = event.target.value;
   localStorage.setItem("lc-v2-style", state.style);
   state.selectedPaper = null;
-  await Promise.all([loadArticles(), loadFeeds(), loadExamTypes(), loadExamLibrary(), loadToday()]);
+  state.selectedPracticeSession = null;
+  await Promise.all([loadArticles(), loadFeeds(), loadExamTypes(), loadExamLibrary(), loadToday(), loadPracticeHistory()]);
   await loadQuizzes();
   renderAll();
   toast(`文章池已切换为 ${state.style} 来源`);
@@ -1987,7 +2098,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 
 async function boot() {
   await loadHealth();
-  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleContentTypes(), loadBridgeConfig(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadCards(), loadMistakes(), loadFeeds(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleContentTypes(), loadBridgeConfig(), searchLexicon("", { open: false, history: false })]);
   if (!state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);
     state.selectedArticle = data.article;

@@ -27,6 +27,7 @@
       <span class="nav-group">训练与考试</span>
       <button class="nav-item" data-view="quiz">练习中心</button>
       <button class="nav-item" data-view="mistakes">错题本</button>
+      <button class="nav-item" data-view="history">训练记录</button>
     </nav>
     <div class="server-pill" id="serverStatus">连接中</div>
   </aside>
@@ -368,6 +369,25 @@
           <div class="master-list" id="mistakeList"></div>
         </aside>
         <section class="band master-content-panel" id="mistakeCoach"></section>
+      </div>
+    </section>
+
+    <section class="view" id="view-history">
+      <section class="band">
+        <div class="band-head">
+          <div><span class="eyebrow">Performance</span><h2 id="historyExamTitle">训练趋势</h2></div>
+          <button id="refreshPracticeHistoryBtn">刷新记录</button>
+        </div>
+        <div class="result-overview" id="historyOverview"></div>
+        <div class="history-recommendation" id="historyRecommendation"></div>
+        <div class="ability-trend-list" id="abilityTrendList"></div>
+      </section>
+      <div class="master-detail history-workspace">
+        <aside class="band master-list-panel">
+          <div class="band-head"><h2>训练历史</h2><span class="muted" id="historySessionCount"></span></div>
+          <div class="master-list" id="practiceSessionList"></div>
+        </aside>
+        <section class="band master-content-panel" id="practiceSessionDetail"></section>
       </div>
     </section>
   </main>

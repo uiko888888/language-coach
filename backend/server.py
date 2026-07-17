@@ -3103,7 +3103,7 @@ def record_quiz_attempt(
         "SELECT COUNT(*) FROM attempts WHERE quiz_id = ?", (quiz_data["id"],)
     ).fetchone()[0] == 0
     now = utc_now()
-    conn.execute(
+    cursor = conn.execute(
         """INSERT INTO attempts (quiz_id, session_id, user_answer, confidence, correct, error_type, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
         (quiz_data["id"], session_id, selected, confidence_score, 1 if correct else 0, error_type, now),
@@ -3124,6 +3124,7 @@ def record_quiz_attempt(
     points = (10 if correct else 2) if first_attempt else 0
     progress = award_progress(conn, points, correct=correct) if first_attempt else progress_payload(conn)
     return {
+        "attempt_id": cursor.lastrowid,
         "quiz_id": quiz_data["id"],
         "correct": correct,
         "user_answer": selected,
@@ -3144,6 +3145,127 @@ def practice_session_payload(row: sqlite3.Row | dict) -> dict:
     item["error_summary"] = json.loads(item.pop("error_summary_json", "{}") or "{}")
     item["confidence_summary"] = json.loads(item.pop("confidence_summary_json", "{}") or "{}")
     return item
+
+
+def summarize_attempt_rows(rows: list[sqlite3.Row | dict], question_count: int | None = None) -> dict:
+    values = [dict(row) for row in rows]
+    total = max(len(values), int(question_count or 0))
+    skill_summary: dict[str, dict[str, int]] = {}
+    error_summary: dict[str, int] = {}
+    confidence_summary: dict[str, dict[str, int]] = {}
+    confidence_labels = {1: "猜测", 2: "犹豫", 3: "确定"}
+    for item in values:
+        skill = item.get("skill") or "阅读理解"
+        skill_stats = skill_summary.setdefault(skill, {"total": 0, "correct": 0})
+        skill_stats["total"] += 1
+        skill_stats["correct"] += 1 if item.get("correct") else 0
+        if item.get("error_type"):
+            error_summary[item["error_type"]] = error_summary.get(item["error_type"], 0) + 1
+        confidence = normalize_confidence(item.get("confidence"))
+        if confidence:
+            label = confidence_labels[confidence]
+            confidence_stats = confidence_summary.setdefault(label, {"total": 0, "correct": 0})
+            confidence_stats["total"] += 1
+            confidence_stats["correct"] += 1 if item.get("correct") else 0
+    unanswered = max(0, total - len(values))
+    if unanswered:
+        error_summary["未作答"] = unanswered
+    correct_count = sum(1 for item in values if item.get("correct"))
+    return {
+        "question_count": total,
+        "answered_count": len(values),
+        "correct_count": correct_count,
+        "score": round(correct_count / max(1, total) * 100),
+        "skill_summary": skill_summary,
+        "error_summary": error_summary,
+        "confidence_summary": confidence_summary,
+    }
+
+
+def practice_session_detail(conn: sqlite3.Connection, session_id: int) -> dict | None:
+    session = conn.execute(
+        """
+        SELECT s.*, a.title AS article_title
+        FROM practice_sessions s
+        LEFT JOIN articles a ON a.id = s.article_id
+        WHERE s.id = ?
+        """,
+        (session_id,),
+    ).fetchone()
+    if not session:
+        return None
+    attempts = conn.execute(
+        """
+        SELECT at.id AS attempt_id, at.user_answer, at.confidence, at.correct, at.error_type, at.created_at,
+               q.id AS quiz_id, q.prompt, q.answer, q.evidence, q.skill, q.question_type,
+               q.difficulty, q.article_id, ar.title AS article_title
+        FROM attempts at
+        JOIN quizzes q ON q.id = at.quiz_id
+        LEFT JOIN articles ar ON ar.id = q.article_id
+        WHERE at.session_id = ?
+        ORDER BY at.id
+        """,
+        (session_id,),
+    ).fetchall()
+    return {"session": practice_session_payload(session), "attempts": rows_to_dicts(attempts)}
+
+
+def practice_analytics(style: str) -> dict:
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT at.correct, at.error_type, at.created_at, q.skill, q.question_type
+            FROM attempts at
+            JOIN quizzes q ON q.id = at.quiz_id
+            WHERE q.style = ?
+            ORDER BY at.created_at, at.id
+            """,
+            (style,),
+        ).fetchall()
+        sessions = conn.execute(
+            "SELECT * FROM practice_sessions WHERE style = ? ORDER BY completed_at DESC, id DESC LIMIT 8",
+            (style,),
+        ).fetchall()
+
+    def grouped(key: str) -> list[dict]:
+        buckets: dict[str, list[int]] = {}
+        for row in rows:
+            label = row[key] or "未分类"
+            buckets.setdefault(label, []).append(1 if row["correct"] else 0)
+        result = []
+        for label, values in buckets.items():
+            recent = values[-5:]
+            previous = values[-10:-5]
+            recent_accuracy = round(sum(recent) / len(recent) * 100)
+            previous_accuracy = round(sum(previous) / len(previous) * 100) if previous else None
+            result.append({
+                "label": label,
+                "total": len(values),
+                "correct": sum(values),
+                "accuracy": round(sum(values) / len(values) * 100),
+                "recent_accuracy": recent_accuracy,
+                "trend": recent_accuracy - previous_accuracy if previous_accuracy is not None else None,
+            })
+        return sorted(result, key=lambda item: (item["accuracy"], -item["total"], item["label"]))
+
+    skill_stats = grouped("skill")
+    type_stats = grouped("question_type")
+    total = len(rows)
+    correct = sum(1 for row in rows if row["correct"])
+    weakest = skill_stats[0] if skill_stats else None
+    weakest_type = type_stats[0] if type_stats else None
+    return {
+        "style": style,
+        "summary": {"attempts": total, "correct": correct, "accuracy": round(correct / max(1, total) * 100)},
+        "skills": skill_stats,
+        "question_types": type_stats,
+        "recent_sessions": [practice_session_payload(row) for row in sessions],
+        "recommendation": {
+            "skill": weakest["label"] if weakest else "",
+            "question_type": weakest_type["label"] if weakest_type else "",
+            "reason": f"当前最低正确率能力为 {weakest['label']}（{weakest['accuracy']}%）。" if weakest else "完成一次训练后生成建议。",
+        },
+    }
 
 
 def browser_bridge_token() -> str:
@@ -3531,11 +3653,31 @@ class App(BaseHTTPRequestHandler):
                     return json_response(self, {"error": "Exam paper not found"}, 404)
                 return json_response(self, {"paper": paper})
             if path == "/api/practice-sessions":
+                style = query.get("style", [""])[0]
+                where = "WHERE s.style = ?" if style else ""
+                params = (style,) if style else ()
                 with db() as conn:
                     rows = conn.execute(
-                        "SELECT * FROM practice_sessions ORDER BY completed_at DESC, id DESC LIMIT 20"
+                        f"""
+                        SELECT s.*, a.title AS article_title
+                        FROM practice_sessions s
+                        LEFT JOIN articles a ON a.id = s.article_id
+                        {where}
+                        ORDER BY s.completed_at DESC, s.id DESC LIMIT 50
+                        """,
+                        params,
                     ).fetchall()
                 return json_response(self, {"sessions": [practice_session_payload(row) for row in rows]})
+            match = re.fullmatch(r"/api/practice-sessions/(\d+)", path)
+            if match:
+                with db() as conn:
+                    detail = practice_session_detail(conn, int(match.group(1)))
+                if not detail:
+                    return json_response(self, {"error": "Practice session not found"}, 404)
+                return json_response(self, detail)
+            if path == "/api/practice/analytics":
+                style = query.get("style", ["IELTS"])[0]
+                return json_response(self, practice_analytics(style))
             if path == "/api/mistakes":
                 with db() as conn:
                     rows = conn.execute(
@@ -3951,6 +4093,63 @@ class App(BaseHTTPRequestHandler):
                         return json_response(self, {"error": "Quiz not found"}, 404)
                     result = record_quiz_attempt(conn, quiz, answer, confidence=payload.get("confidence"))
                 return json_response(self, result)
+            if path == "/api/practice-sessions/record":
+                raw_ids = payload.get("attempt_ids") or []
+                if not isinstance(raw_ids, list) or not raw_ids:
+                    return json_response(self, {"error": "At least one attempt is required"}, 400)
+                try:
+                    attempt_ids = list(dict.fromkeys(int(value) for value in raw_ids if int(value) > 0))
+                except (TypeError, ValueError):
+                    return json_response(self, {"error": "Attempt ids must be integers"}, 400)
+                if not attempt_ids or len(attempt_ids) > 50:
+                    return json_response(self, {"error": "Record between 1 and 50 attempts"}, 400)
+                placeholders = ",".join("?" for _ in attempt_ids)
+                with db() as conn:
+                    attempts = conn.execute(
+                        f"""
+                        SELECT at.*, q.article_id, q.style, q.question_type, q.skill
+                        FROM attempts at
+                        JOIN quizzes q ON q.id = at.quiz_id
+                        WHERE at.id IN ({placeholders})
+                        ORDER BY at.id
+                        """,
+                        attempt_ids,
+                    ).fetchall()
+                    if len(attempts) != len(attempt_ids):
+                        return json_response(self, {"error": "One or more attempts were not found"}, 404)
+                    if any(row["session_id"] is not None for row in attempts):
+                        return json_response(self, {"error": "One or more attempts already belong to a session"}, 409)
+                    article_ids = {row["article_id"] for row in attempts}
+                    styles = {row["style"] for row in attempts}
+                    question_types = {row["question_type"] for row in attempts}
+                    question_count = max(len(attempts), min(50, int(payload.get("question_count") or len(attempts))))
+                    summary = summarize_attempt_rows(attempts, question_count)
+                    cursor = conn.execute(
+                        """
+                        INSERT INTO practice_sessions
+                        (article_id, style, question_type, session_mode, question_count, answered_count,
+                         correct_count, elapsed_seconds, score, skill_summary_json, error_summary_json,
+                         confidence_summary_json, completed_at)
+                        VALUES (?, ?, ?, 'practice', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            next(iter(article_ids)) if len(article_ids) == 1 else None,
+                            next(iter(styles)) if len(styles) == 1 else "mixed",
+                            next(iter(question_types)) if len(question_types) == 1 else "mixed",
+                            summary["question_count"], summary["answered_count"], summary["correct_count"],
+                            max(0, min(21600, int(payload.get("elapsed_seconds") or 0))), summary["score"],
+                            json.dumps(summary["skill_summary"], ensure_ascii=False),
+                            json.dumps(summary["error_summary"], ensure_ascii=False),
+                            json.dumps(summary["confidence_summary"], ensure_ascii=False), utc_now(),
+                        ),
+                    )
+                    session_id = cursor.lastrowid
+                    conn.execute(
+                        f"UPDATE attempts SET session_id = ? WHERE id IN ({placeholders})",
+                        (session_id, *attempt_ids),
+                    )
+                    detail = practice_session_detail(conn, session_id)
+                return json_response(self, detail, 201)
             if path == "/api/practice-sessions":
                 raw_answers = payload.get("answers") or []
                 if not isinstance(raw_answers, list) or not raw_answers:
