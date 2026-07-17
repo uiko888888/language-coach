@@ -24,6 +24,7 @@ const state = {
   learnerSettings: {
     daily_minutes: 15,
     daily_tasks: ["reading", "practice", "review"],
+    daily_targets: { reading: 1, practice: 5, review: 2, vocabulary: 5 },
     short_goal: "",
     short_goal_date: "",
     long_goal: "",
@@ -294,17 +295,36 @@ function renderLearnerSettings() {
   document.querySelectorAll("[data-daily-task]").forEach(input => {
     input.checked = (settings.daily_tasks || []).includes(input.dataset.dailyTask);
   });
+  document.querySelectorAll("[data-daily-target]").forEach(input => {
+    input.value = String(settings.daily_targets?.[input.dataset.dailyTarget] || 1);
+  });
   $("#shortGoal").value = settings.short_goal || "";
   $("#shortGoalDate").value = settings.short_goal_date || "";
   $("#longGoal").value = settings.long_goal || "";
   $("#longGoalDate").value = settings.long_goal_date || "";
   $("#recommendationsEnabled").checked = settings.recommendations_enabled !== false;
-  $("#dailyPlanSummary").textContent = `${settings.daily_minutes || 15} 分钟`;
-  $("#dailyPlanTasks").innerHTML = (settings.daily_tasks || []).map(task => `<span class="daily-plan-task">${escapeHtml(dailyTaskLabels[task] || task)}</span>`).join("");
   const goals = [];
   if (settings.short_goal) goals.push(`<span><strong>近期：</strong>${escapeHtml(settings.short_goal)}${settings.short_goal_date ? ` · ${escapeHtml(settings.short_goal_date)}` : ""}</span>`);
   if (settings.long_goal) goals.push(`<span><strong>长期：</strong>${escapeHtml(settings.long_goal)}${settings.long_goal_date ? ` · ${escapeHtml(settings.long_goal_date)}` : ""}</span>`);
   $("#goalSummary").innerHTML = goals.join("") || `<span>尚未设置近期或长期目标</span>`;
+}
+
+function renderDailyPlan() {
+  const plan = state.today.plan || { minutes: state.learnerSettings.daily_minutes, tasks: [], items: [] };
+  $("#dailyPlanSummary").textContent = plan.completed ? "今日已完成" : `${plan.minutes || 15} 分钟 · ${plan.summary || "待开始"}`;
+  $("#dailyPlanTasks").innerHTML = (plan.tasks || []).map(item => `
+    <div class="daily-plan-task ${item.done ? "done" : ""}">
+      <div class="daily-plan-task-head"><strong>${escapeHtml(dailyTaskLabels[item.task] || item.task)}</strong><span>${item.completed}/${item.target}</span></div>
+      <div class="ability-meter"><span style="width:${item.percent}%"></span></div>
+      ${item.done ? `<small>已完成</small>` : `<button data-complete-daily-task="${item.task}" data-daily-target-count="${item.target}">标记完成</button>`}
+    </div>
+  `).join("") || `<span class="muted">保存计划后生成今日任务。</span>`;
+  $("#dailyPlanQueue").innerHTML = (plan.items || []).map(item => `
+    <div class="daily-plan-queue-item ${item.completed ? "completed" : ""}">
+      <span>${badge(dailyTaskLabels[item.task] || item.task, item.completed ? "" : "teal")} ${escapeHtml(item.title || `${item.item_type} #${item.item_id}`)}</span>
+      ${item.completed ? `<small>已完成</small>` : `<button data-complete-plan-item="${item.id}">完成</button>`}
+    </div>
+  `).join("");
 }
 
 function renderDashboard() {
@@ -321,6 +341,7 @@ function renderDashboard() {
     : `优先匹配考试难度、证据定位与同义替换；今日计划 ${state.learnerSettings.daily_minutes} 分钟。${activeGoal ? ` 当前目标：${activeGoal}` : ""}`;
   $("#modePrimaryAction").textContent = interest ? "开始轻松阅读" : "开始今日训练";
   $("#globalStyle").title = interest ? "兴趣素材生成题目时参照的考试难度" : "当前备考目标";
+  renderDailyPlan();
 
   $("#recentArticles").innerHTML = (state.today.lanes || []).map(lane => {
     const article = lane.article;
@@ -329,7 +350,7 @@ function renderDashboard() {
       <div class="badge-row">${badge(lane.label, "amber")}${badge(article.content_type_label || "学术解释", "teal")}${badge(article.source || "manual")}</div>
       <h3>${escapeHtml(article.title)}</h3>
       <p>${escapeHtml(lane.reason)} · ${escapeHtml(excerpt(article.highlight || article.body, 120))}</p>
-      <button data-open-article="${article.id}">阅读</button>
+      <div class="toolbar"><button data-open-article="${article.id}">阅读</button><button data-add-plan-item="article" data-plan-task="reading" data-plan-item-id="${article.id}" data-plan-item-title="${escapeHtml(article.title)}">加入今日阅读</button></div>
     </div>
   `;
   }).join("") || `<div class="item muted">文章池中还没有可推荐内容</div>`;
@@ -340,6 +361,7 @@ function renderDashboard() {
       <h3>${escapeHtml(excerpt(item.prompt, 90))}</h3>
       <p>你的答案：${escapeHtml(item.user_answer || "")}</p>
       <p>正确答案：${escapeHtml(item.answer || "")}</p>
+      <button data-add-plan-item="mistake" data-plan-task="review" data-plan-item-id="${item.id}" data-plan-item-title="${escapeHtml(excerpt(item.prompt, 100))}">加入今日复盘</button>
     </div>
   `).join("") || `<div class="item muted">暂无错题</div>`;
   $("#browserLearningQueue").innerHTML = state.browserClips.slice(0, 6).map(clip => `
@@ -349,6 +371,7 @@ function renderDashboard() {
       ${clip.context && clip.context !== clip.source_text ? `<p>${escapeHtml(excerpt(clip.context, 130))}</p>` : ""}
       <div class="toolbar">
         ${clip.article_id ? `<button data-open-article="${clip.article_id}">进入文章</button><button data-quiz-article="${clip.article_id}">生成练习</button>` : `<button data-search-query="${escapeHtml(excerpt(clip.source_text, 70))}" data-open-lexicon="true">继续查词</button>`}
+        <button data-add-plan-item="clip" data-plan-task="${clip.kind === "word" ? "vocabulary" : "reading"}" data-plan-item-id="${clip.id}" data-plan-item-title="${escapeHtml(excerpt(clip.source_text, 100))}">加入今日计划</button>
         ${clip.page_url ? `<a class="button-link" href="${escapeHtml(clip.page_url)}" target="_blank" rel="noreferrer">返回网页</a>` : ""}
       </div>
     </div>
@@ -1132,6 +1155,9 @@ async function saveLearnerSettings() {
     body: JSON.stringify({
       daily_minutes: Number($("#dailyMinutes").value),
       daily_tasks: dailyTasks,
+      daily_targets: Object.fromEntries(
+        [...document.querySelectorAll("[data-daily-target]")].map(input => [input.dataset.dailyTarget, Number(input.value) || 1]),
+      ),
       short_goal: $("#shortGoal").value.trim(),
       short_goal_date: $("#shortGoalDate").value,
       long_goal: $("#longGoal").value.trim(),
@@ -1144,6 +1170,35 @@ async function saveLearnerSettings() {
   renderLearnerSettings();
   renderDashboard();
   toast("学习计划和目标已保存");
+}
+
+function applyDailyPlan(plan) {
+  state.today.plan = { ...(state.today.plan || {}), ...plan };
+  renderDailyPlan();
+}
+
+async function setDailyTaskComplete(task, completedCount) {
+  const data = await api("/api/daily-plan/progress", {
+    method: "POST",
+    body: JSON.stringify({ task, completed_count: completedCount }),
+  });
+  applyDailyPlan(data.plan);
+  toast(data.plan.completed ? "今日计划已完成" : `${dailyTaskLabels[task] || task}已更新`);
+}
+
+async function addDailyPlanItem({ task, itemType, itemId, title }) {
+  const data = await api("/api/daily-plan/items", {
+    method: "POST",
+    body: JSON.stringify({ task, item_type: itemType, item_id: itemId, title }),
+  });
+  applyDailyPlan(data.plan);
+  toast("已加入今日计划");
+}
+
+async function completeDailyPlanItem(id) {
+  const data = await api(`/api/daily-plan/items/${id}/complete`, { method: "POST", body: "{}" });
+  applyDailyPlan(data.plan);
+  toast(data.plan.completed ? "今日计划已完成" : "任务已完成");
 }
 
 async function loadExamTypes() {
@@ -1581,8 +1636,9 @@ async function finishQuizSession() {
   session.submitted = true;
   state.showAnswers = true;
   clearQuizDraft();
-  await loadPracticeHistory();
+  await Promise.all([loadPracticeHistory(), loadToday()]);
   renderPracticeHistory();
+  renderDashboard();
   renderQuizzes();
   toast(session.mode === "mock" ? "交卷完成，已生成能力与错因分析" : "训练结束，已生成本轮总结");
 }
@@ -1674,9 +1730,11 @@ async function saveCard(term = $("#cardTerm").value.trim(), context = $("#cardCo
     }),
   });
   state.cards = [data.card, ...state.cards.filter(card => card.id !== data.card.id)];
+  if (data.created) await loadToday();
   renderCards();
   renderLexicon();
   renderStats();
+  renderDashboard();
   toast(data.created ? "已加入生词本" : "已更新已有生词的语境");
 }
 
@@ -1779,7 +1837,7 @@ async function refreshFeeds() {
 async function toggleMistake(id) {
   const data = await api(`/api/mistakes/${id}/solve`, { method: "POST", body: "{}" });
   if (data.progress) state.progress = data.progress;
-  await loadMistakes();
+  await Promise.all([loadMistakes(), loadToday()]);
   renderAll();
   if (data.points) toast(`错题复盘完成，+${data.points} XP`);
 }
@@ -1831,6 +1889,23 @@ document.addEventListener("click", async event => {
     }
     if (button.id === "refreshAllBtn") await boot();
     if (button.id === "saveLearnerSettingsBtn") await saveLearnerSettings();
+    if (button.dataset.completeDailyTask) {
+      await setDailyTaskComplete(
+        button.dataset.completeDailyTask,
+        Number(button.dataset.dailyTargetCount),
+      );
+    }
+    if (button.dataset.addPlanItem) {
+      await addDailyPlanItem({
+        task: button.dataset.planTask,
+        itemType: button.dataset.addPlanItem,
+        itemId: Number(button.dataset.planItemId),
+        title: button.dataset.planItemTitle || "",
+      });
+    }
+    if (button.dataset.completePlanItem) {
+      await completeDailyPlanItem(Number(button.dataset.completePlanItem));
+    }
     if (button.id === "refreshPracticeHistoryBtn") {
       await loadPracticeHistory({ selectFirst: true });
       renderPracticeHistory();

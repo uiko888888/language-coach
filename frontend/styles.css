@@ -321,7 +321,14 @@ label {
 .daily-plan-band .band-head { align-items: center; }
 .daily-plan-band .band-head strong { color: var(--teal-dark); font-size: 18px; }
 .daily-plan-tasks { display: flex; flex-wrap: wrap; gap: 8px; }
-.daily-plan-task { padding: 7px 10px; border-left: 3px solid var(--teal); background: var(--surface-2); font-size: 13px; }
+.daily-plan-task { min-width: 180px; padding: 9px 10px; border-left: 3px solid var(--teal); background: var(--surface-2); font-size: 13px; }
+.daily-plan-task.done { border-left-color: var(--green); background: #e8f4eb; }
+.daily-plan-task-head { display: flex; justify-content: space-between; gap: 10px; }
+.daily-plan-task .ability-meter { margin-top: 7px; }
+.daily-plan-task button { min-height: 28px; margin-top: 7px; padding: 3px 8px; }
+.daily-plan-queue { display: grid; gap: 6px; margin-top: 10px; }
+.daily-plan-queue-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-top: 1px solid var(--line); }
+.daily-plan-queue-item.completed { color: var(--muted); text-decoration: line-through; }
 .goal-summary { display: grid; gap: 5px; margin-top: 12px; color: var(--muted); font-size: 13px; }
 .plan-settings { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
 .plan-settings summary { cursor: pointer; color: var(--teal-dark); font-weight: 700; }
@@ -331,6 +338,7 @@ label {
 .plan-task-fieldset legend { padding: 0 5px; color: var(--muted); font-size: 13px; }
 .plan-task-fieldset label { display: flex; align-items: center; gap: 5px; margin: 0; }
 .plan-task-fieldset input { min-height: auto; }
+.plan-task-fieldset input[type="number"] { width: 58px; min-height: 28px; margin-left: 2px; }
 .plan-actions { justify-content: flex-end; margin-top: 12px; }
 
 .progress-chip {

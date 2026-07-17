@@ -762,6 +762,27 @@ def init_db() -> None:
               value TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS daily_plan_progress (
+              day TEXT NOT NULL,
+              task TEXT NOT NULL,
+              completed_count INTEGER NOT NULL DEFAULT 0,
+              updated_at TEXT NOT NULL,
+              PRIMARY KEY (day, task)
+            );
+
+            CREATE TABLE IF NOT EXISTS daily_plan_items (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              day TEXT NOT NULL,
+              task TEXT NOT NULL,
+              item_type TEXT NOT NULL,
+              item_id INTEGER NOT NULL,
+              title TEXT NOT NULL DEFAULT '',
+              completed INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              UNIQUE(day, item_type, item_id)
+            );
+
             CREATE TABLE IF NOT EXISTS progress (
               id INTEGER PRIMARY KEY CHECK (id = 1),
               xp INTEGER NOT NULL DEFAULT 0,
@@ -2284,9 +2305,11 @@ CEFR_ORDER = {"A1": 1, "A2": 2, "B1": 3, "B2": 4, "C1": 5, "C2": 6}
 LEARNER_SETTINGS_KEY = "learner_profile"
 DAILY_PLAN_MINUTES = {5, 15, 30, 60}
 DAILY_PLAN_TASKS = {"reading", "practice", "review", "vocabulary"}
+DAILY_PLAN_DEFAULT_TARGETS = {"reading": 1, "practice": 5, "review": 2, "vocabulary": 5}
 DEFAULT_LEARNER_SETTINGS = {
     "daily_minutes": 15,
     "daily_tasks": ["reading", "practice", "review"],
+    "daily_targets": DAILY_PLAN_DEFAULT_TARGETS,
     "short_goal": "",
     "short_goal_date": "",
     "long_goal": "",
@@ -2307,6 +2330,11 @@ def learner_settings() -> dict:
     settings = {**DEFAULT_LEARNER_SETTINGS, **(saved if isinstance(saved, dict) else {})}
     settings["daily_minutes"] = settings["daily_minutes"] if settings["daily_minutes"] in DAILY_PLAN_MINUTES else 15
     settings["daily_tasks"] = [task for task in settings["daily_tasks"] if task in DAILY_PLAN_TASKS] or ["reading"]
+    raw_targets = settings.get("daily_targets") if isinstance(settings.get("daily_targets"), dict) else {}
+    settings["daily_targets"] = {
+        task: max(1, min(50, int(raw_targets.get(task) or DAILY_PLAN_DEFAULT_TARGETS[task])))
+        for task in DAILY_PLAN_TASKS
+    }
     settings["recommendations_enabled"] = bool(settings["recommendations_enabled"])
     return settings
 
@@ -2321,6 +2349,10 @@ def update_learner_settings(payload: dict) -> dict:
     settings = {
         "daily_minutes": minutes,
         "daily_tasks": list(dict.fromkeys(tasks)),
+        "daily_targets": {
+            task: max(1, min(50, int((payload.get("daily_targets") or {}).get(task) or DAILY_PLAN_DEFAULT_TARGETS[task])))
+            for task in DAILY_PLAN_TASKS
+        },
         "short_goal": str(payload.get("short_goal") or "").strip()[:160],
         "short_goal_date": str(payload.get("short_goal_date") or "").strip()[:20],
         "long_goal": str(payload.get("long_goal") or "").strip()[:160],
@@ -2333,6 +2365,82 @@ def update_learner_settings(payload: dict) -> dict:
             (LEARNER_SETTINGS_KEY, json.dumps(settings, ensure_ascii=False)),
         )
     return settings
+
+
+def current_plan_day() -> str:
+    return datetime.now().astimezone().date().isoformat()
+
+
+def increment_daily_progress(conn: sqlite3.Connection, task: str, amount: int = 1, day: str = "") -> None:
+    if task not in DAILY_PLAN_TASKS or amount <= 0:
+        return
+    target_day = day or current_plan_day()
+    conn.execute(
+        """
+        INSERT INTO daily_plan_progress (day, task, completed_count, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(day, task) DO UPDATE SET
+          completed_count = daily_plan_progress.completed_count + excluded.completed_count,
+          updated_at = excluded.updated_at
+        """,
+        (target_day, task, amount, utc_now()),
+    )
+
+
+def set_daily_progress(conn: sqlite3.Connection, task: str, completed_count: int, day: str = "") -> None:
+    target_day = day or current_plan_day()
+    conn.execute(
+        """
+        INSERT INTO daily_plan_progress (day, task, completed_count, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(day, task) DO UPDATE SET
+          completed_count = excluded.completed_count,
+          updated_at = excluded.updated_at
+        """,
+        (target_day, task, max(0, completed_count), utc_now()),
+    )
+
+
+def daily_plan_snapshot(settings: dict | None = None, day: str = "") -> dict:
+    settings = settings or learner_settings()
+    target_day = day or current_plan_day()
+    with db() as conn:
+        progress_rows = conn.execute(
+            "SELECT task, completed_count FROM daily_plan_progress WHERE day = ?", (target_day,)
+        ).fetchall()
+        item_rows = conn.execute(
+            "SELECT * FROM daily_plan_items WHERE day = ? ORDER BY completed, created_at, id", (target_day,)
+        ).fetchall()
+    completed_by_task = {row["task"]: row["completed_count"] for row in progress_rows}
+    tasks = []
+    target_total = 0
+    completed_total = 0
+    for task in settings["daily_tasks"]:
+        target = settings["daily_targets"].get(task, DAILY_PLAN_DEFAULT_TARGETS[task])
+        completed = completed_by_task.get(task, 0)
+        target_total += target
+        completed_total += min(target, completed)
+        tasks.append({
+            "task": task,
+            "target": target,
+            "completed": completed,
+            "done": completed >= target,
+            "percent": min(100, round(completed / max(1, target) * 100)),
+        })
+    overall_percent = min(100, round(completed_total / max(1, target_total) * 100))
+    remaining_minutes = max(0, round(settings["daily_minutes"] * (100 - overall_percent) / 100))
+    if overall_percent < 100:
+        remaining_minutes = max(1, remaining_minutes)
+    return {
+        "date": target_day,
+        "minutes": settings["daily_minutes"],
+        "tasks": tasks,
+        "items": rows_to_dicts(item_rows),
+        "overall_percent": overall_percent,
+        "remaining_minutes": remaining_minutes,
+        "completed": bool(tasks) and all(item["done"] for item in tasks),
+        "summary": "今日计划已完成" if tasks and all(item["done"] for item in tasks) else f"还需约 {remaining_minutes} 分钟",
+    }
 
 
 def current_learner_level() -> str:
@@ -2564,6 +2672,7 @@ def estimated_study_minutes(article: dict) -> int:
 def today_content(exam: str = "", mode: str = "exam") -> dict:
     mode = mode if mode in {"interest", "exam"} else "exam"
     settings = learner_settings()
+    plan = daily_plan_snapshot(settings)
     articles = list_articles({"exam": [exam]})
     catalog = {item["name"]: item for item in source_catalog()}
     active = [item for item in subscription_payload() if item["active"]]
@@ -2646,11 +2755,7 @@ def today_content(exam: str = "", mode: str = "exam") -> dict:
         "exam": exam or "general",
         "mode": mode,
         "subscription_count": len(active),
-        "plan": {
-            "minutes": settings["daily_minutes"],
-            "tasks": settings["daily_tasks"],
-            "recommendations_enabled": settings["recommendations_enabled"],
-        },
+        "plan": {**plan, "recommendations_enabled": settings["recommendations_enabled"]},
         "goals": {
             "short": settings["short_goal"],
             "short_date": settings["short_goal_date"],
@@ -3540,6 +3645,8 @@ class App(BaseHTTPRequestHandler):
                     return json_response(self, {"progress": progress_payload(conn)})
             if path == "/api/learner-settings":
                 return json_response(self, {"settings": learner_settings()})
+            if path == "/api/daily-plan":
+                return json_response(self, {"plan": daily_plan_snapshot()})
             if path == "/api/browser/status":
                 return json_response(self, {"ok": True, "translation": translation_status()})
             if path == "/api/browser/token":
@@ -3724,6 +3831,47 @@ class App(BaseHTTPRequestHandler):
                 except (TypeError, ValueError) as exc:
                     return json_response(self, {"error": str(exc)}, 400)
                 return json_response(self, {"settings": settings})
+            if path == "/api/daily-plan/progress":
+                task = str(payload.get("task") or "")
+                if task not in DAILY_PLAN_TASKS:
+                    return json_response(self, {"error": "Unknown daily task"}, 400)
+                with db() as conn:
+                    if "completed_count" in payload:
+                        set_daily_progress(conn, task, int(payload.get("completed_count") or 0))
+                    else:
+                        increment_daily_progress(conn, task, max(1, int(payload.get("amount") or 1)))
+                return json_response(self, {"plan": daily_plan_snapshot()})
+            if path == "/api/daily-plan/items":
+                task = str(payload.get("task") or "")
+                item_type = str(payload.get("item_type") or "")
+                item_id = int(payload.get("item_id") or 0)
+                if task not in DAILY_PLAN_TASKS or item_type not in {"mistake", "clip", "article"} or not item_id:
+                    return json_response(self, {"error": "A valid task and source item are required"}, 400)
+                now = utc_now()
+                with db() as conn:
+                    conn.execute(
+                        """
+                        INSERT INTO daily_plan_items (day, task, item_type, item_id, title, completed, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+                        ON CONFLICT(day, item_type, item_id) DO UPDATE SET
+                          task = excluded.task, title = excluded.title, updated_at = excluded.updated_at
+                        """,
+                        (current_plan_day(), task, item_type, item_id, str(payload.get("title") or "")[:180], now, now),
+                    )
+                return json_response(self, {"plan": daily_plan_snapshot()}, 201)
+            match = re.fullmatch(r"/api/daily-plan/items/(\d+)/complete", path)
+            if match:
+                with db() as conn:
+                    item = conn.execute("SELECT * FROM daily_plan_items WHERE id = ?", (int(match.group(1)),)).fetchone()
+                    if not item:
+                        return json_response(self, {"error": "Daily plan item not found"}, 404)
+                    if not item["completed"]:
+                        conn.execute(
+                            "UPDATE daily_plan_items SET completed = 1, updated_at = ? WHERE id = ?",
+                            (utc_now(), item["id"]),
+                        )
+                        increment_daily_progress(conn, item["task"], 1, item["day"])
+                return json_response(self, {"plan": daily_plan_snapshot()})
             if path == "/api/browser/translate":
                 if not self.browser_authorized():
                     return json_response(self, {"error": "Invalid browser bridge token"}, 401)
@@ -4082,6 +4230,7 @@ class App(BaseHTTPRequestHandler):
                         )
                         card_id = cursor.lastrowid
                         created = True
+                        increment_daily_progress(conn, "vocabulary", 1)
                     card = conn.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
                 return json_response(self, {"card": dict(card), "created": created}, 201 if created else 200)
             if path == "/api/attempts":
@@ -4148,6 +4297,7 @@ class App(BaseHTTPRequestHandler):
                         f"UPDATE attempts SET session_id = ? WHERE id IN ({placeholders})",
                         (session_id, *attempt_ids),
                     )
+                    increment_daily_progress(conn, "practice", summary["answered_count"])
                     detail = practice_session_detail(conn, session_id)
                 return json_response(self, detail, 201)
             if path == "/api/practice-sessions":
@@ -4231,6 +4381,7 @@ class App(BaseHTTPRequestHandler):
                             json.dumps(confidence_summary, ensure_ascii=False), session_id,
                         ),
                     )
+                    increment_daily_progress(conn, "practice", answered_count)
                     session = conn.execute("SELECT * FROM practice_sessions WHERE id = ?", (session_id,)).fetchone()
                 return json_response(
                     self,
@@ -4362,6 +4513,7 @@ class App(BaseHTTPRequestHandler):
                     earns_reward = becoming_solved and not bool(current["reward_claimed"])
                     if earns_reward:
                         conn.execute("UPDATE mistakes SET reward_claimed = 1 WHERE id = ?", (match.group(1),))
+                        increment_daily_progress(conn, "review", 1)
                     progress = award_progress(conn, 5, reviewed=True) if earns_reward else progress_payload(conn)
                 return json_response(self, {"ok": True, "points": 5 if earns_reward else 0, "progress": progress})
             if path == "/api/feeds":

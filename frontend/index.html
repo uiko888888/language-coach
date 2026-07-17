@@ -118,6 +118,7 @@
           <strong id="dailyPlanSummary">15 分钟</strong>
         </div>
         <div class="daily-plan-tasks" id="dailyPlanTasks"></div>
+        <div class="daily-plan-queue" id="dailyPlanQueue"></div>
         <div class="goal-summary" id="goalSummary"></div>
         <details class="plan-settings">
           <summary>调整计划与目标</summary>
@@ -132,10 +133,10 @@
             </label>
             <fieldset class="plan-task-fieldset">
               <legend>学习内容</legend>
-              <label><input type="checkbox" data-daily-task="reading" /> 阅读</label>
-              <label><input type="checkbox" data-daily-task="practice" /> 做题</label>
-              <label><input type="checkbox" data-daily-task="review" /> 错题复盘</label>
-              <label><input type="checkbox" data-daily-task="vocabulary" /> 词块复习</label>
+              <label><input type="checkbox" data-daily-task="reading" /> 阅读 <input type="number" min="1" max="50" data-daily-target="reading" aria-label="阅读目标数量" /></label>
+              <label><input type="checkbox" data-daily-task="practice" /> 做题 <input type="number" min="1" max="50" data-daily-target="practice" aria-label="做题目标数量" /></label>
+              <label><input type="checkbox" data-daily-task="review" /> 错题复盘 <input type="number" min="1" max="50" data-daily-target="review" aria-label="错题复盘目标数量" /></label>
+              <label><input type="checkbox" data-daily-task="vocabulary" /> 词块复习 <input type="number" min="1" max="50" data-daily-target="vocabulary" aria-label="词块复习目标数量" /></label>
             </fieldset>
             <label>近期目标
               <input id="shortGoal" maxlength="160" placeholder="例如：两周内稳定完成 IELTS 判断题" />

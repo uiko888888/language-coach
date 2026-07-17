@@ -8,6 +8,28 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 
+## [0.8.0-alpha.10] - 2026-07-17
+
+### Added
+
+- Added persistent daily completion counts for reading, practice, mistake review, and vocabulary.
+- Added editable per-task targets, overall progress, estimated remaining time, and a completion summary.
+- Added an idempotent Today queue for recommended articles, mistakes, and browser-extension clips.
+- Added automatic progress updates when practice is archived, a mistake is first solved, or a new word or phrase is saved.
+- Added manual completion controls for reading and other work completed outside an automatically measured action.
+- Added integration coverage for settings, manual progress, queue deduplication, one-time completion, and automatic progress hooks.
+
+### Changed
+
+- Finishing a practice session, saving a new card, and solving a mistake now refresh the Today dashboard immediately.
+- Daily plans are executable learning checklists rather than category-only recommendations.
+
+### Known limits
+
+- Reading completion remains manual so opening an article does not falsely count as learning.
+- Daily progress is local and calendar-day based; streak repair, timezone settings, weekly summaries, and cross-device sync are not implemented.
+- Plan completion summarizes workload only and does not increase ability scores.
+
 ## [0.8.0-alpha.9] - 2026-07-17
 
 ### Added

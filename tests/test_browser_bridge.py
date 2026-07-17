@@ -212,6 +212,93 @@ class BrowserBridgeTests(unittest.TestCase):
         generic, _ = self.request("/api/today?exam=IELTS&mode=exam")
         self.assertTrue(all(lane["reason"] == "通用内容安排" for lane in generic["lanes"]))
 
+    def test_daily_plan_executes_manual_queue_and_automatic_progress(self):
+        with server.db() as conn:
+            conn.execute("DELETE FROM daily_plan_items")
+            conn.execute("DELETE FROM daily_plan_progress")
+
+        saved, _ = self.request(
+            "/api/learner-settings",
+            "POST",
+            {
+                "daily_minutes": 30,
+                "daily_tasks": ["reading", "practice", "review", "vocabulary"],
+                "daily_targets": {"reading": 2, "practice": 2, "review": 1, "vocabulary": 1},
+            },
+        )
+        self.assertEqual(saved["settings"]["daily_targets"]["reading"], 2)
+
+        manual, _ = self.request(
+            "/api/daily-plan/progress", "POST", {"task": "reading", "completed_count": 1}
+        )
+        reading = next(item for item in manual["plan"]["tasks"] if item["task"] == "reading")
+        self.assertEqual(reading["completed"], 1)
+
+        with server.db() as conn:
+            article_id = conn.execute("SELECT id FROM articles ORDER BY id LIMIT 1").fetchone()[0]
+        payload = {
+            "task": "reading",
+            "item_type": "article",
+            "item_id": article_id,
+            "title": "Daily reading",
+        }
+        self.request("/api/daily-plan/items", "POST", payload)
+        duplicate, _ = self.request("/api/daily-plan/items", "POST", payload)
+        self.assertEqual(len(duplicate["plan"]["items"]), 1)
+        item_id = duplicate["plan"]["items"][0]["id"]
+        completed, _ = self.request(f"/api/daily-plan/items/{item_id}/complete", "POST", {})
+        repeated, _ = self.request(f"/api/daily-plan/items/{item_id}/complete", "POST", {})
+        reading = next(item for item in repeated["plan"]["tasks"] if item["task"] == "reading")
+        self.assertEqual(reading["completed"], 2)
+        self.assertTrue(completed["plan"]["items"][0]["completed"])
+
+        card, _ = self.request(
+            "/api/cards", "POST", {"term": "daily-loop-lexeme", "kind": "word", "context": "A test context."}
+        )
+        self.assertTrue(card["created"])
+
+        article, _ = self.request(
+            "/api/articles",
+            "POST",
+            {"title": "Daily plan practice", "body": server.SAMPLE_ARTICLE, "source": "manual"},
+        )
+        generated, _ = self.request(
+            f"/api/articles/{article['article']['id']}/quizzes",
+            "POST",
+            {"mode": "reading", "style": "IELTS", "question_type": "tfng"},
+        )
+        quiz = generated["quizzes"][0]
+        wrong_answer = next(option for option in quiz["options"] if option != quiz["answer"])
+        self.request("/api/attempts", "POST", {"quiz_id": quiz["id"], "answer": wrong_answer})
+        mistakes, _ = self.request("/api/mistakes")
+        mistake = next(item for item in mistakes["mistakes"] if item["quiz_id"] == quiz["id"])
+        first_solve, _ = self.request(f"/api/mistakes/{mistake['id']}/solve", "POST", {})
+        second_solve, _ = self.request(f"/api/mistakes/{mistake['id']}/solve", "POST", {})
+        self.assertEqual(first_solve["points"], 5)
+        self.assertEqual(second_solve["points"], 0)
+
+        session, _ = self.request(
+            "/api/practice-sessions",
+            "POST",
+            {
+                "session_mode": "mock",
+                "elapsed_seconds": 30,
+                "answers": [{"quiz_id": quiz["id"], "answer": quiz["answer"], "confidence": 3}],
+            },
+        )
+        self.assertEqual(session["session"]["answered_count"], 1)
+        plan, _ = self.request("/api/daily-plan")
+        counts = {item["task"]: item["completed"] for item in plan["plan"]["tasks"]}
+        self.assertEqual(counts, {"reading": 2, "practice": 1, "review": 1, "vocabulary": 1})
+        self.assertGreater(plan["plan"]["remaining_minutes"], 0)
+
+        finished, _ = self.request(
+            "/api/daily-plan/progress", "POST", {"task": "practice", "completed_count": 2}
+        )
+        self.assertTrue(finished["plan"]["completed"])
+        self.assertEqual(finished["plan"]["remaining_minutes"], 0)
+        self.assertEqual(finished["plan"]["summary"], "今日计划已完成")
+
     def test_ielts_generation_and_wrong_answer_record_skill_and_error(self):
         created, _ = self.request(
             "/api/articles",
