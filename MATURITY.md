@@ -12,9 +12,9 @@ This is a product benchmark against established interaction patterns, not a live
 | Dictionary and word chunks | 4.5/10 | Eudic, commercial learner dictionaries | Open coverage, frequency and bilingual examples are limited | Kaikki, Tatoeba and wordfreq layers |
 | Review scheduling | 3/10 | Anki/FSRS | Cards and mistakes exist without memory scheduling | Shared FSRS queue for words, mistakes and listening lines |
 | Listening and clip study | 2/10 | Eudic clips, asbplayer, Language Reactor | No timed subtitle player or repeat loop yet | User-authorized subtitle and media clip workspace |
-| Content discovery | 5/10 | News readers and Eudic daily content | Collections, event tracking and feedback are incomplete | Profile-aware collections and explicit feedback |
+| Content discovery | 6.2/10 | News readers and Eudic daily content | Two layouts and public/private scopes exist; collections, reading state and feedback are incomplete | Persist filters, track reading state and add collections |
 | Universal delivery | 3/10 | Hosted PWA products | Current edition is local and single-user | Accounts, cloud database, worker queue and PWA |
-| Engineering operations | 6.5/10 | Production SaaS | Practice state is modularized, but HTTP/business code remains concentrated and browser E2E is partial | Continue domain extraction, conflict control and observability |
+| Engineering operations | 6.7/10 | Production SaaS | Versioned material migration exists, but HTTP/business code remains concentrated and browser E2E is partial | Continue domain extraction, conflict control and observability |
 
 ## Differentiation
 
@@ -33,6 +33,8 @@ legal article / webpage / subtitle
 Current strengths are source traceability, one-material-many-uses, evidence replay, contextual lookup and the browser extension intake. The product does not yet have a moat in dictionary coverage, adaptive modeling, listening interaction or public delivery.
 
 `alpha.20` adds a stronger adaptive candidate: an unfinished run survives refresh/browser changes, and the next prescription explains accuracy, time, answer changes, hints, confidence errors and independent-question coverage. This is more differentiated than a generic recommendation card because it remains connected to evidence replay, error diagnosis and immediate targeted practice. It is not yet a moat until real usage proves that following the prescription improves the next set.
+
+`alpha.21` improves discovery without replacing the efficient split reader: users can scan a grid, distinguish public sources from private imports, and move each card directly into reading, training or today's plan. This makes one-material-many-uses more visible, but layout choice alone is not differentiation; it must later be measured by faster selection and higher training completion.
 
 Interest and exam modes now use different home workflows: immersion and expression collection versus target, weakness and question-type prescription. They still share one profile so interest activity can later contribute domain evidence without masquerading as exam-score gains.
 

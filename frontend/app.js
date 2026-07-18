@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.20";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.21";
 const SUPPORTED_API_VERSION = "1";
 
 const state = {
@@ -38,6 +38,8 @@ const state = {
     long_goal: "",
     long_goal_date: "",
     recommendations_enabled: true,
+    article_layout: "split",
+    article_density: "comfortable",
   },
   learnerProfile: { completed: false, cefr: "B1", confidence: "low", recommended_levels: ["B1", "B2"] },
   profileSource: "",
@@ -61,6 +63,8 @@ const state = {
   articleContentTypes: [],
   articleContentType: "",
   recommendedOnly: false,
+  articleVisibility: "",
+  articleFacets: { visibility: { all: 0, public: 0, private: 0 }, topics: {}, levels: {} },
   bridge: null,
   browserClips: [],
   quizDraftRestored: false,
@@ -771,9 +775,46 @@ function renderPrescription() {
   $("#prescriptionBody").innerHTML = prescriptionHtml(prescription);
 }
 
+function articleGridCard(article) {
+  const minutes = Math.max(5, Math.min(30, Math.ceil((article.content_word_count || 1) / 120) * 5));
+  const learningState = article.recommended_today ? `今日推荐 ${article.daily_rank}` : article.content_status === "full" ? "可完整精读" : "摘要速读";
+  return `
+    <article class="article-discovery-card">
+      <div class="badge-row">
+        ${badge(article.visibility === "private" ? "私人" : "公开", article.visibility === "private" ? "amber" : "teal")}
+        ${badge(article.level, "teal")}
+        ${article.exam_fit ? badge(`${state.style} ${article.exam_fit}%`) : ""}
+      </div>
+      <h3>${escapeHtml(article.title)}</h3>
+      <p>${escapeHtml(excerpt(article.highlight || article.body, 180))}</p>
+      <div class="article-card-meta"><span>${escapeHtml(article.source || "manual")}</span><span>${minutes} 分钟</span><span>${learningState}</span></div>
+      <div class="article-card-themes">${(article.theme_tags || []).slice(0, 3).map(theme => badge(theme, "amber")).join("")}</div>
+      <div class="article-card-actions">
+        <button data-open-article="${article.id}">阅读</button>
+        <button class="primary" data-quiz-article="${article.id}">转为训练</button>
+        <button data-add-plan-item="article" data-plan-task="reading" data-plan-item-id="${article.id}" data-plan-item-title="${escapeHtml(article.title)}">加入今日</button>
+      </div>
+    </article>`;
+}
+
 function renderArticles() {
   const list = $("#articleTitleList");
   const detail = $("#articleDetail");
+  const layout = state.learnerSettings.article_layout || "split";
+  const density = state.learnerSettings.article_density || "comfortable";
+  $("#articlePoolLayout").className = `master-detail article-layout-${layout} article-density-${density}`;
+  document.querySelectorAll("[data-article-layout]").forEach(button => button.classList.toggle("active", button.dataset.articleLayout === layout));
+  document.querySelectorAll("[data-article-density]").forEach(button => button.classList.toggle("active", button.dataset.articleDensity === density));
+  document.querySelectorAll("[data-article-visibility]").forEach(button => button.classList.toggle("active", button.dataset.articleVisibility === state.articleVisibility));
+  const visibilityCounts = state.articleFacets.visibility || {};
+  $("#articleCountAll").textContent = visibilityCounts.all || 0;
+  $("#articleCountPublic").textContent = visibilityCounts.public || 0;
+  $("#articleCountPrivate").textContent = visibilityCounts.private || 0;
+  if (state.articleTopics.length) {
+    const selectedTopic = state.articleTopic;
+    $("#articleTopicFilter").innerHTML = `<option value="">全部主题</option>${state.articleTopics.map(topic => `<option value="${escapeHtml(topic)}">${escapeHtml(topic)} (${state.articleFacets.topics?.[topic] || 0})</option>`).join("")}`;
+    $("#articleTopicFilter").value = selectedTopic;
+  }
   const refreshStatus = state.feedStatus;
   const latestRun = refreshStatus?.latest_run;
   const failedSources = (refreshStatus?.sources || []).filter(source => source.consecutive_failures > 0).length;
@@ -789,7 +830,11 @@ function renderArticles() {
       state.selectedPoolArticleId = state.articles[0].id;
     }
     const selected = state.articles.find(article => article.id === state.selectedPoolArticleId);
-    list.innerHTML = state.articles.map((article, index) => `
+    if (layout === "grid") {
+      list.innerHTML = state.articles.map(articleGridCard).join("");
+      detail.innerHTML = "";
+    } else {
+      list.innerHTML = state.articles.map((article, index) => `
       <button class="master-list-item ${article.id === selected.id ? "active" : ""}" data-select-article="${article.id}">
         <span class="master-number">${String(index + 1).padStart(2, "0")}</span>
         <span class="master-copy">
@@ -830,6 +875,7 @@ function renderArticles() {
       ${selected.source_url ? `<a class="source-link" href="${escapeHtml(selected.source_url)}" target="_blank" rel="noreferrer">打开原始来源</a>` : ""}
       <details class="content-editor"><summary>${selected.content_status === "full" ? "编辑完整正文" : "补充完整正文"}</summary><textarea id="articleContentInput">${escapeHtml(selected.body)}</textarea><button class="primary" data-save-article-content="${selected.id}">保存为完整正文</button></details>
     `;
+    }
   }
 
   const visibleSources = state.sourceCatalog.filter(source => {
@@ -1643,6 +1689,16 @@ async function loadLearnerSettings() {
   renderLearnerSettings();
 }
 
+async function saveArticlePreferences(changes) {
+  const payload = {
+    article_layout: changes.article_layout || state.learnerSettings.article_layout || "split",
+    article_density: changes.article_density || state.learnerSettings.article_density || "comfortable",
+  };
+  const data = await api("/api/article-preferences", { method: "POST", body: JSON.stringify(payload) });
+  state.learnerSettings = data.settings;
+  renderArticles();
+}
+
 async function saveLearnerSettings() {
   const dailyTasks = [...document.querySelectorAll("[data-daily-task]:checked")].map(input => input.dataset.dailyTask);
   if (!dailyTasks.length) return toast("每天至少选择一项学习内容");
@@ -1880,8 +1936,10 @@ async function loadArticles(q = "") {
   if (state.articleContentType) params.set("content_type", state.articleContentType);
   if (state.articleHub) params.set("hub", state.articleHub);
   if (state.recommendedOnly) params.set("recommended", "1");
+  if (state.articleVisibility) params.set("visibility", state.articleVisibility);
   const data = await api(`/api/articles?${params.toString()}`);
   state.articles = data.articles || [];
+  state.articleFacets = data.facets || state.articleFacets;
 }
 
 async function loadArticleHubs() {
@@ -2532,6 +2590,20 @@ document.addEventListener("click", async event => {
   const button = event.target.closest("button");
   if (!button) return;
   try {
+    if (button.dataset.articleLayout) {
+      await saveArticlePreferences({ article_layout: button.dataset.articleLayout });
+      return;
+    }
+    if (button.dataset.articleDensity) {
+      await saveArticlePreferences({ article_density: button.dataset.articleDensity });
+      return;
+    }
+    if (button.dataset.articleVisibility !== undefined) {
+      state.articleVisibility = button.dataset.articleVisibility;
+      await loadArticles($("#articleSearch").value.trim());
+      renderArticles();
+      return;
+    }
     if (button.id === "openProfileDialogBtn" || button.dataset.openProfileDialog !== undefined) openProfileDialog();
     if (button.id === "closeProfileDialogBtn" || button.id === "cancelProfileDialogBtn") closeProfileDialog();
     if (button.id === "openAssistantBtn") openAssistant();

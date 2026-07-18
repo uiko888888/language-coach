@@ -130,7 +130,7 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.20";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.21";', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
 
@@ -161,6 +161,20 @@ class ProfileUiContractTests(unittest.TestCase):
             self.assertIn(contract, self.js)
         self.assertIn(".resume-practice-band", self.css)
         self.assertIn(".prescription-metrics", self.css)
+
+    def test_article_pool_preserves_split_default_and_adds_personalized_grid(self):
+        for element_id in (
+            "articlePoolLayout", "articleCountAll", "articleCountPublic", "articleCountPrivate",
+        ):
+            self.assertIn(f'id="{element_id}"', self.html)
+        for contract in (
+            'data-article-layout="split"', 'data-article-layout="grid"',
+            'data-article-visibility="private"', 'function articleGridCard(article)',
+            'api("/api/article-preferences"', 'article_layout: "split"',
+        ):
+            self.assertIn(contract, self.html + self.js)
+        self.assertIn(".master-detail.article-layout-grid", self.css)
+        self.assertIn("grid-template-columns: clamp(260px, 26vw, 320px) minmax(0, 1fr)", self.css)
 
 
 if __name__ == "__main__":

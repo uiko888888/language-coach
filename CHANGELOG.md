@@ -9,6 +9,27 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.21] - 2026-07-18
+
+### Added
+
+- Added an optional article discovery grid while preserving the split title-list/detail layout as the default.
+- Added public/private material classification, filtering and real scope/theme counts.
+- Added comfortable and compact card density controls with server-persisted layout preferences.
+- Added article cards with highlights, source, CEFR level, exam fit, estimated study time, themes and direct learning actions.
+
+### Changed
+
+- Manual articles, browser imports and private EPUB chapters now enter the private material scope by default.
+- Database schema version 4 backfills existing local imports without exposing them as public material.
+- The fixed global left sidebar and desktop-first master/detail reading workflow remain unchanged.
+
+### Known limits
+
+- Reading state is inferred from content availability and recommendation state; explicit unread/reading/completed tracking is pending.
+- Filter selections other than layout and density are session-only, and user collections are not implemented yet.
+- Browser visual automation is still not part of the repository test suite; this release relies on UI contracts plus manual runtime verification.
+
 ## [0.8.0-alpha.20] - 2026-07-18
 
 ### Added

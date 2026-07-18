@@ -339,7 +339,24 @@
     </section>
 
     <section class="view" id="view-articles">
-      <div class="master-detail">
+      <div class="band article-pool-toolbar">
+        <div class="article-scope-switch" role="group" aria-label="素材范围">
+          <button class="active" data-article-visibility="">全部 <span id="articleCountAll">0</span></button>
+          <button data-article-visibility="public">公开素材 <span id="articleCountPublic">0</span></button>
+          <button data-article-visibility="private">私人材料 <span id="articleCountPrivate">0</span></button>
+        </div>
+        <div class="article-view-preferences">
+          <div class="article-layout-switch" role="group" aria-label="文章池布局">
+            <button data-article-layout="split" title="标题列表与正文左右布局">左右精读</button>
+            <button data-article-layout="grid" title="以卡片浏览文章">网格发现</button>
+          </div>
+          <div class="article-density-switch" role="group" aria-label="卡片密度">
+            <button data-article-density="comfortable">舒适</button>
+            <button data-article-density="compact">紧凑</button>
+          </div>
+        </div>
+      </div>
+      <div class="master-detail" id="articlePoolLayout">
         <aside class="band master-list-panel">
           <div class="band-head">
             <h2>文章标题</h2>

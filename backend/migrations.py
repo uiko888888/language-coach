@@ -128,10 +128,22 @@ def _practice_run_state(conn: sqlite3.Connection) -> None:
     )
 
 
+def _article_visibility(conn: sqlite3.Connection) -> None:
+    _ensure_column(conn, "articles", "visibility", "TEXT NOT NULL DEFAULT 'public'")
+    private_conditions = ["source IN ('manual', 'browser', 'private EPUB')"]
+    if "source_url" in _columns(conn, "articles"):
+        private_conditions.append("source_url LIKE 'private-epub://%'")
+    conn.execute(f"UPDATE articles SET visibility = 'private' WHERE {' OR '.join(private_conditions)}")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_articles_visibility ON articles(visibility)"
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     (1, "consolidate legacy schema", _legacy_schema),
     (2, "add training loop metrics", _training_loop_metrics),
     (3, "add server-side practice run state", _practice_run_state),
+    (4, "classify public and private article material", _article_visibility),
 )
 
 

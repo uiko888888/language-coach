@@ -156,6 +156,35 @@ class LearningFlowTests(unittest.TestCase):
         finally:
             server.save_learner_settings(original)
 
+    def test_article_preferences_and_visibility_are_persisted(self):
+        original = server.learner_settings()
+        created_id = None
+        try:
+            settings = server.update_article_preferences({
+                "article_layout": "grid", "article_density": "compact",
+            })
+            self.assertEqual(settings["article_layout"], "grid")
+            self.assertEqual(server.learner_settings()["article_density"], "compact")
+            with server.db() as conn:
+                now = server.utc_now()
+                created_id = conn.execute(
+                    """INSERT INTO articles
+                       (title, body, source, visibility, created_at, updated_at)
+                       VALUES ('Private notes', 'A private reading passage.', 'manual', 'private', ?, ?)""",
+                    (now, now),
+                ).lastrowid
+            private_items = server.list_articles({"visibility": ["private"]})
+            self.assertTrue(any(item["id"] == created_id for item in private_items))
+            self.assertTrue(all(item["visibility"] == "private" for item in private_items))
+            facets = server.article_facets({})
+            self.assertGreaterEqual(facets["visibility"]["private"], 1)
+            self.assertGreaterEqual(facets["visibility"]["public"], 1)
+        finally:
+            if created_id:
+                with server.db() as conn:
+                    conn.execute("DELETE FROM articles WHERE id = ?", (created_id,))
+            server.save_learner_settings(original)
+
     def test_weekly_calibration_updates_only_eligible_reading_domain(self):
         original = server.learner_settings()
         now = datetime(2026, 7, 18, 2, 0, tzinfo=timezone.utc)

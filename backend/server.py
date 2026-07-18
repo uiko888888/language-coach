@@ -810,8 +810,8 @@ def materialize_book_chapter(conn: sqlite3.Connection, chapter_id: int) -> dict 
     title = f"{row['book_title']} · {row['title']}"
     cursor = conn.execute(
         """INSERT INTO articles
-           (title, language, level, topic, source, source_url, content_status, content_type, body, created_at, updated_at)
-           VALUES (?, ?, ?, 'literature', 'private EPUB', ?, 'full', 'culture', ?, ?, ?)""",
+           (title, language, level, topic, source, visibility, source_url, content_status, content_type, body, created_at, updated_at)
+           VALUES (?, ?, ?, 'literature', 'private EPUB', 'private', ?, 'full', 'culture', ?, ?, ?)""",
         (title, row["language"] or "en", estimate_level(row["body"]), source_url, row["body"], now, now),
     )
     conn.execute("UPDATE book_chapters SET article_id = ?, updated_at = ? WHERE id = ?", (cursor.lastrowid, now, chapter_id))
@@ -895,6 +895,7 @@ def init_db() -> None:
               level TEXT NOT NULL DEFAULT 'B1-B2',
               topic TEXT NOT NULL DEFAULT 'general',
               source TEXT NOT NULL DEFAULT 'manual',
+              visibility TEXT NOT NULL DEFAULT 'public',
               source_url TEXT NOT NULL DEFAULT '',
               content_status TEXT NOT NULL DEFAULT 'summary',
               content_type TEXT NOT NULL DEFAULT 'auto',
@@ -3091,6 +3092,8 @@ DEFAULT_LEARNER_SETTINGS = {
     "long_goal": "",
     "long_goal_date": "",
     "recommendations_enabled": True,
+    "article_layout": "split",
+    "article_density": "comfortable",
     "profile_completed": False,
     "profile_source": "",
     "assessment": {"type": "", "date": "", "overall": None, "sections": {}},
@@ -3137,6 +3140,8 @@ def learner_settings() -> dict:
         for task in DAILY_PLAN_TASKS
     }
     settings["recommendations_enabled"] = bool(settings["recommendations_enabled"])
+    settings["article_layout"] = settings["article_layout"] if settings["article_layout"] in {"split", "grid"} else "split"
+    settings["article_density"] = settings["article_density"] if settings["article_density"] in {"comfortable", "compact"} else "comfortable"
     return settings
 
 
@@ -3392,6 +3397,19 @@ def update_learner_settings(payload: dict) -> dict:
     current.update(settings)
     save_learner_settings(current)
     return current
+
+
+def update_article_preferences(payload: dict) -> dict:
+    layout = str(payload.get("article_layout") or "split")
+    density = str(payload.get("article_density") or "comfortable")
+    if layout not in {"split", "grid"}:
+        raise ValueError("article_layout must be split or grid")
+    if density not in {"comfortable", "compact"}:
+        raise ValueError("article_density must be comfortable or compact")
+    settings = learner_settings()
+    settings.update({"article_layout": layout, "article_density": density})
+    save_learner_settings(settings)
+    return settings
 
 
 def current_plan_day() -> str:
@@ -3671,6 +3689,9 @@ def list_articles(query: dict[str, list[str]]) -> list[dict]:
         ranked = [item for item in ranked if topic in item["theme_tags"]]
     if query.get("recommended", [""])[0] == "1":
         ranked = [item for item in ranked if item["recommended_today"]]
+    visibility = query.get("visibility", [""])[0]
+    if visibility in {"public", "private"}:
+        ranked = [item for item in ranked if item.get("visibility", "public") == visibility]
     content_type = query.get("content_type", [""])[0]
     if content_type:
         ranked = [item for item in ranked if item["content_type"] == content_type]
@@ -3680,6 +3701,25 @@ def list_articles(query: dict[str, list[str]]) -> list[dict]:
     elif hub:
         ranked = [item for item in ranked if item["content_hub"] == hub]
     return ranked
+
+
+def article_facets(query: dict[str, list[str]]) -> dict:
+    base_query = {key: value for key, value in query.items() if key in {"exam", "q", "level"}}
+    items = list_articles(base_query)
+    visibility = {"all": len(items), "public": 0, "private": 0}
+    topics: dict[str, int] = {}
+    levels: dict[str, int] = {}
+    for item in items:
+        scope = item.get("visibility", "public")
+        visibility[scope] = visibility.get(scope, 0) + 1
+        levels[item["level"]] = levels.get(item["level"], 0) + 1
+        for topic in item.get("theme_tags") or []:
+            topics[topic] = topics.get(topic, 0) + 1
+    return {
+        "visibility": visibility,
+        "topics": dict(sorted(topics.items(), key=lambda value: (-value[1], value[0]))),
+        "levels": dict(sorted(levels.items())),
+    }
 
 
 def subscription_payload() -> list[dict]:
@@ -5205,7 +5245,7 @@ class App(BaseHTTPRequestHandler):
                 types = [{"id": key, "label": label, "engine_type": engine} for key, label, engine in EXAM_QUESTION_TYPES.get(style, EXAM_QUESTION_TYPES["general"])]
                 return json_response(self, {"style": style, "types": types})
             if path == "/api/articles":
-                return json_response(self, {"articles": list_articles(query)})
+                return json_response(self, {"articles": list_articles(query), "facets": article_facets(query)})
             if path == "/api/article-topics":
                 topics = [*ARTICLE_THEMES.keys(), "综合阅读"]
                 return json_response(self, {"topics": topics})
@@ -5410,6 +5450,12 @@ class App(BaseHTTPRequestHandler):
                 except (TypeError, ValueError) as exc:
                     return json_response(self, {"error": str(exc)}, 400)
                 return json_response(self, {"settings": settings})
+            if path == "/api/article-preferences":
+                try:
+                    settings = update_article_preferences(payload)
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, {"settings": settings})
             if path == "/api/learner-profile":
                 try:
                     result = update_learner_profile(payload)
@@ -5557,15 +5603,15 @@ class App(BaseHTTPRequestHandler):
                             content_type = infer_content_type({"source": "browser", "title": title, "body": body})
                             conn.execute(
                                 """UPDATE articles SET title = ?, body = ?, translation_zh = ?, content_status = 'full',
-                                   content_type = ?, source = 'browser', updated_at = ? WHERE id = ?""",
+                                   content_type = ?, source = 'browser', visibility = 'private', updated_at = ? WHERE id = ?""",
                                 (title, body, translated, content_type, now, article_id),
                             )
                         else:
                             content_type = infer_content_type({"source": "browser", "title": title, "body": body})
                             cursor = conn.execute(
                                 """INSERT INTO articles
-                                   (title, language, level, topic, source, source_url, content_status, content_type, body, translation_zh, created_at, updated_at)
-                                   VALUES (?, 'en', ?, 'browser', 'browser', ?, 'full', ?, ?, ?, ?, ?)""",
+                                   (title, language, level, topic, source, visibility, source_url, content_status, content_type, body, translation_zh, created_at, updated_at)
+                                   VALUES (?, 'en', ?, 'browser', 'browser', 'private', ?, 'full', ?, ?, ?, ?, ?)""",
                                 (title, estimate_level(body), page_url, content_type, body, translated, now, now),
                             )
                             article_id = cursor.lastrowid
@@ -5614,8 +5660,8 @@ class App(BaseHTTPRequestHandler):
                 with db() as conn:
                     cursor = conn.execute(
                         """
-                        INSERT INTO articles (title, language, level, topic, source, source_url, content_type, body, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO articles (title, language, level, topic, source, visibility, source_url, content_type, body, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, 'private', ?, ?, ?, ?, ?)
                         """,
                         (
                             title,
