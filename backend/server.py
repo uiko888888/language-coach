@@ -3642,6 +3642,80 @@ def source_profile(source: str, exam: str = "") -> dict:
     }
 
 
+EXAM_WORD_RANGES = {
+    "IELTS": (650, 1000),
+    "TOEFL": (500, 850),
+    "CET4": (250, 450),
+    "CET6": (300, 500),
+    "KAOYAN": (350, 550),
+    "TEM4": (300, 500),
+    "TEM8": (500, 850),
+    "GRE": (150, 450),
+    "GMAT": (200, 450),
+}
+
+USER_CONTROLLED_SOURCES = {"manual", "browser", "private EPUB", "seed"}
+
+
+def article_quality_profile(article: dict, exam: str = "") -> dict:
+    text = str(article.get("body") or "").strip()
+    word_count = len(words(text))
+    paragraph_values = [value.strip() for value in re.split(r"\n\s*\n", text) if value.strip()]
+    sentence_values = sentences(text) if text else []
+    normalized_paragraphs = [re.sub(r"\s+", " ", value).casefold() for value in paragraph_values]
+    duplicate_count = len(normalized_paragraphs) - len(set(normalized_paragraphs))
+    script_noise = bool(EMBEDDED_SCRIPT_NOISE.search(text))
+    status = article.get("content_status") or ("full" if article.get("source") in USER_CONTROLLED_SOURCES else "summary")
+    requested_exam = str(exam or "IELTS").upper()
+    minimum, maximum = EXAM_WORD_RANGES.get(requested_exam, EXAM_WORD_RANGES["IELTS"])
+    length_status = "matched" if minimum <= word_count <= maximum else "short" if word_count < minimum else "long"
+
+    issues = []
+    score = 100
+    if status != "full":
+        score -= 45
+        issues.append("仅有来源摘要，不是完整正文")
+    if word_count < 50:
+        score -= 30
+        issues.append("自然语言内容过短")
+    if len(sentence_values) < 3:
+        score -= 15
+        issues.append("可分析句子不足")
+    if script_noise:
+        score -= 70
+        issues.append("检测到网页脚本污染")
+    if duplicate_count:
+        score -= min(25, duplicate_count * 5)
+        issues.append("存在重复段落")
+    if length_status == "short":
+        issues.append(f"低于 {requested_exam} 建议下限 {minimum} 词")
+    elif length_status == "long":
+        issues.append(f"高于 {requested_exam} 建议上限 {maximum} 词")
+
+    user_controlled = article.get("source") in USER_CONTROLLED_SOURCES
+    training_eligible = status == "full" and score >= 60 and not script_noise and (length_status == "matched" or user_controlled)
+    if status != "full":
+        block_reason = "当前只有 RSS 摘要，请打开原文或补充合法正文后再训练"
+    elif score < 60 or script_noise:
+        block_reason = "正文质量未通过训练门槛"
+    elif length_status != "matched" and not user_controlled:
+        block_reason = f"正文共 {word_count} 词，不在 {requested_exam} 建议的 {minimum}-{maximum} 词范围内"
+    else:
+        block_reason = ""
+    return {
+        "content_quality_score": max(0, score),
+        "content_quality_label": "优" if score >= 85 else "合格" if score >= 60 else "待修复",
+        "content_quality_issues": issues,
+        "exam_word_min": minimum,
+        "exam_word_max": maximum,
+        "exam_length_status": length_status,
+        "exam_length_label": "字数匹配" if length_status == "matched" else "字数偏短" if length_status == "short" else "字数偏长",
+        "training_eligible": training_eligible,
+        "training_block_reason": block_reason,
+        "user_length_override": user_controlled and length_status != "matched",
+    }
+
+
 def recommendation_profile(article: dict) -> dict:
     try:
         source_date = article.get("published_at") or article["created_at"]
@@ -3654,7 +3728,9 @@ def recommendation_profile(article: dict) -> dict:
     depth = min(15, len(words(article.get("body", ""))) // 18)
     level_fit = 10 if article.get("level") in {"B2", "B2-C1", "C1"} else 7
     exam_score = round(article["exam_fit"] * 0.3)
-    score = source_quality + freshness + depth + level_fit + exam_score
+    quality_bonus = round(article.get("content_quality_score", 0) * 0.15)
+    training_penalty = 0 if article.get("training_eligible") else 35
+    score = source_quality + freshness + depth + level_fit + exam_score + quality_bonus - training_penalty
     reasons = []
     if article["exam_fit"] >= 90:
         reasons.append("考试匹配")
@@ -3662,8 +3738,10 @@ def recommendation_profile(article: dict) -> dict:
         reasons.append("近期更新")
     if source_quality >= 25:
         reasons.append("核心来源")
-    if depth >= 10:
+    if depth >= 10 and article.get("training_eligible"):
         reasons.append("适合精读")
+    if article.get("exam_length_status") == "matched":
+        reasons.append("字数匹配")
     return {"recommendation_score": score, "recommendation_reasons": reasons[:3] or ["主题补充"]}
 
 
@@ -3698,13 +3776,14 @@ def enrich_article(article: dict, exam: str = "") -> dict:
     item = dict(article)
     item.update(source_profile(item["source"], exam))
     item.update(article_theme_profile(item))
-    item.update(recommendation_profile(item))
     item["content_type"] = infer_content_type(item)
     item["content_type_label"] = CONTENT_TYPE_LABELS[item["content_type"]]
     item["content_hub"] = content_hub_for(item["source"], item["content_type"])
     item["content_hub_label"] = CONTENT_HUBS[item["content_hub"]]
     item["content_status"] = item.get("content_status") or ("full" if item["source"] in {"seed", "manual"} else "summary")
     item["content_word_count"] = len(words(item.get("body", "")))
+    item.update(article_quality_profile(item, exam))
+    item.update(recommendation_profile(item))
     original_paragraphs = [value for value in re.split(r"\n\s*\n", item.get("body", "")) if value.strip()]
     translated_paragraphs = [value for value in re.split(r"\n\s*\n", item.get("translation_zh", "")) if value.strip()]
     item["paragraph_count"] = len(original_paragraphs)
@@ -3880,13 +3959,13 @@ def today_content(exam: str = "", mode: str = "exam") -> dict:
         lane_specs = (
             ("quick", "5 分钟看看", choose(lambda item: item["study_minutes"] <= 5), "轻松了解一个新话题"),
             ("focused", "15 分钟沉浸", choose(lambda item: item["subscribed"] or item["content_type"] == "culture"), "来自兴趣与订阅"),
-            ("practice", "顺手练一练", choose(lambda item: item["content_type"] in {"report", "culture", "explainer"}), "把喜欢的内容转成词汇和小练习"),
+            ("practice", "顺手练一练", choose(lambda item: item["training_eligible"] and item["content_type"] in {"report", "culture", "explainer"}, fallback=False), "把喜欢的内容转成词汇和小练习"),
         )
     else:
         lane_specs = (
-            ("quick", "5 分钟热身", choose(lambda item: item["study_minutes"] <= 5 and item["content_type"] in {"report", "institution"}), "进入考试阅读状态"),
-            ("focused", "15 分钟精读", choose(lambda item: item["exam_fit"] >= 90 and item["study_minutes"] <= 15), "匹配当前考试与难度"),
-            ("deep", "30 分钟专项", choose(lambda item: item["content_type"] in {"opinion", "explainer", "research"}), "适合证据、同义替换与题型训练"),
+            ("quick", "5 分钟热身", choose(lambda item: item["training_eligible"] and item["content_type"] in {"report", "institution"}, fallback=False), "进入考试阅读状态"),
+            ("focused", "15 分钟精读", choose(lambda item: item["training_eligible"] and item["exam_fit"] >= 90, fallback=False), "匹配当前考试与难度"),
+            ("deep", "30 分钟专项", choose(lambda item: item["training_eligible"] and item["content_type"] in {"opinion", "explainer", "research"}, fallback=False), "适合证据、同义替换与题型训练"),
         )
 
     lanes = []
@@ -6149,6 +6228,12 @@ class App(BaseHTTPRequestHandler):
                     article = conn.execute("SELECT * FROM articles WHERE id = ?", (article_id,)).fetchone()
                     if not article:
                         return json_response(self, {"error": "Article not found"}, 404)
+                    quality = article_quality_profile(dict(article), style)
+                    if not quality["training_eligible"]:
+                        return json_response(self, {
+                            "error": quality["training_block_reason"],
+                            "quality": quality,
+                        }, 422)
                     items = generate_quiz_items(article["body"], mode, style, question_type)
                     now = utc_now()
                     saved = []

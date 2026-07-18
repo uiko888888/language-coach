@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.2";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.3";
 const SUPPORTED_API_VERSION = "1";
 
 const state = {
@@ -704,7 +704,7 @@ function renderDashboard() {
         <button data-open-article="${article.id}">${interest ? "沉浸阅读" : "精读原文"}</button>
         ${interest
           ? `<button data-add-plan-item="article" data-plan-task="reading" data-plan-item-id="${article.id}" data-plan-item-title="${escapeHtml(article.title)}">加入兴趣清单</button>`
-          : `<button class="primary" data-quiz-article="${article.id}">按此文训练</button>`}
+          : articleTrainingAction(article, "按此文训练")}
       </div>
     </div>
   `;
@@ -792,6 +792,8 @@ function articleGridCard(article) {
         ${badge(article.visibility === "private" ? "私人" : "公开", article.visibility === "private" ? "amber" : "teal")}
         ${badge(article.level, "teal")}
         ${article.exam_fit ? badge(`${state.style} ${article.exam_fit}%`) : ""}
+        ${badge(`${article.content_quality_label} · ${article.content_quality_score}分`, article.content_quality_score >= 60 ? "teal" : "amber")}
+        ${badge(`${article.exam_length_label} · ${article.content_word_count}词`, article.exam_length_status === "matched" ? "teal" : "amber")}
       </div>
       <h3>${escapeHtml(article.title)}</h3>
       <p>${escapeHtml(excerpt(article.highlight || article.body, 180))}</p>
@@ -799,10 +801,16 @@ function articleGridCard(article) {
       <div class="article-card-themes">${(article.theme_tags || []).slice(0, 3).map(theme => badge(theme, "amber")).join("")}</div>
       <div class="article-card-actions">
         <button data-open-article="${article.id}">阅读</button>
-        <button class="primary" data-quiz-article="${article.id}">转为训练</button>
+        ${articleTrainingAction(article, "转为训练")}
         <button data-add-plan-item="article" data-plan-task="reading" data-plan-item-id="${article.id}" data-plan-item-title="${escapeHtml(article.title)}">加入今日</button>
       </div>
     </article>`;
+}
+
+function articleTrainingAction(article, label = "生成题") {
+  return article.training_eligible
+    ? `<button class="primary" data-quiz-article="${article.id}">${label}</button>`
+    : `<button disabled title="${escapeHtml(article.training_block_reason || "素材暂不符合训练要求")}">${article.content_status === "full" ? "暂不适合出题" : "摘要不可出题"}</button>`;
 }
 
 function renderArticles() {
@@ -872,10 +880,11 @@ function renderArticles() {
           <button data-toggle-translation="true">${state.showTranslation ? "隐藏译文" : "显示译文"}</button>
           <button data-translate-article="${selected.id}">一键翻译</button>
           <button data-open-article="${selected.id}">进入阅读台</button>
-          <button class="primary" data-quiz-article="${selected.id}">生成题</button>
+          ${articleTrainingAction(selected)}
         </div>
       </div>
       ${selected.recommended_today ? `<div class="daily-recommendation"><strong>今日推荐 ${selected.daily_rank}</strong><span>${escapeHtml((selected.recommendation_reasons || []).join(" · "))}</span><small>推荐分 ${selected.recommendation_score}</small></div>` : ""}
+      <div class="content-notice ${selected.training_eligible ? "quality-pass" : ""}"><div><strong>素材质量 ${selected.content_quality_score} · ${escapeHtml(selected.content_quality_label)}</strong><span>${escapeHtml(selected.exam_length_label)}：${selected.content_word_count} 词；${state.style} 建议 ${selected.exam_word_min}-${selected.exam_word_max} 词。${selected.training_eligible ? " 已通过训练门槛。" : ` ${selected.training_block_reason}`}</span></div></div>
       ${selected.content_status !== "full" ? `<div class="content-notice"><div><strong>当前保存的是 RSS 摘要</strong><span>阅读器已经显示全部本地内容，完整文章需要打开原始来源或补充正文。</span></div>${selected.source_url ? `<a href="${escapeHtml(selected.source_url)}" target="_blank" rel="noreferrer">打开完整原文</a>` : ""}</div>` : ""}
       ${selected.theme_tags?.length ? `<div class="article-themes"><span>文章主题</span>${selected.theme_tags.map(theme => badge(theme, "amber")).join("")}</div>` : ""}
       ${selected.source_topics?.length ? `<div class="source-topics"><span class="topic-label">来源领域</span>${selected.source_topics.map(topic => badge(topic)).join("")}</div>` : ""}
@@ -919,9 +928,9 @@ function renderReader() {
     $("#analysisPanel").innerHTML = "";
     return;
   }
-  $("#readerTitle").textContent = article.title;
-  $("#readerMeta").innerHTML = `${badge(article.level, "teal")}${badge(article.content_type_label || "学术解释", article.content_type === "opinion" ? "amber" : "teal")}${badge(article.content_status === "full" ? `完整正文 · ${article.content_word_count}词` : `RSS摘要 · ${article.content_word_count}词`, article.content_status === "full" ? "teal" : "amber")}${(article.theme_tags || []).map(theme => badge(theme, "amber")).join("")}${badge(article.source || "manual")}`;
-  $("#readerContentNotice").innerHTML = article.content_status !== "full" ? `<div class="content-notice compact"><div><strong>当前为 RSS 摘要</strong><span>完整内容请打开原文，或在文章池补充正文。</span></div>${article.source_url ? `<a href="${escapeHtml(article.source_url)}" target="_blank" rel="noreferrer">打开原文</a>` : ""}</div>` : "";
+  $("#readerTitle").textContent = `${article.content_status === "full" ? "" : "来源摘要 · "}${article.title}`;
+  $("#readerMeta").innerHTML = `${badge(article.level, "teal")}${badge(article.content_type_label || "学术解释", article.content_type === "opinion" ? "amber" : "teal")}${badge(article.content_status === "full" ? `完整正文 · ${article.content_word_count}词` : `RSS摘要 · ${article.content_word_count}词`, article.content_status === "full" ? "teal" : "amber")}${badge(`${article.exam_length_label} · ${state.style} ${article.exam_word_min}-${article.exam_word_max}词`, article.exam_length_status === "matched" ? "teal" : "amber")}${badge(`质量 ${article.content_quality_score}`)}${(article.theme_tags || []).map(theme => badge(theme, "amber")).join("")}${badge(article.source || "manual")}`;
+  $("#readerContentNotice").innerHTML = article.content_status !== "full" ? `<div class="content-notice compact"><div><strong>这是来源摘要，不是原文</strong><span>受版权与 feed 范围限制，系统只保存来源主动提供的摘要。可打开原站，或通过插件带回你有权使用的正文。</span></div>${article.source_url ? `<a href="${escapeHtml(article.source_url)}" target="_blank" rel="noreferrer">打开原文</a>` : ""}</div>` : article.training_eligible ? "" : `<div class="content-notice compact"><div><strong>暂不适合考试出题</strong><span>${escapeHtml(article.training_block_reason)}</span></div></div>`;
   $("#readerBody").innerHTML = state.evidenceReplay
     ? evidenceBilingualParagraphs(article.body, article.translation_zh, state.showTranslation, state.evidenceReplay)
     : bilingualParagraphs(article.body, article.translation_zh, state.showTranslation);
@@ -931,6 +940,9 @@ function renderReader() {
   translationPanel.innerHTML = "";
   $("#toggleTranslationBtn").textContent = state.showTranslation ? "隐藏译文" : "显示译文";
   $("#toggleTranslationBtn").setAttribute("aria-pressed", String(state.showTranslation));
+  $("#generateQuizBtn").disabled = !article.training_eligible;
+  $("#generateQuizBtn").textContent = article.training_eligible ? "转为练习" : article.content_status === "full" ? "暂不适合出题" : "摘要不可出题";
+  $("#generateQuizBtn").title = article.training_block_reason || "";
   renderAnalysis();
 }
 

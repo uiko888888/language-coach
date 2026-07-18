@@ -39,7 +39,7 @@ async function run() {
   let browser;
   try {
     const version = await waitForServer();
-    if (version.app_version !== "0.8.0-alpha.23.0.2" || version.database_schema_version !== 8) {
+    if (version.app_version !== "0.8.0-alpha.23.0.3" || version.database_schema_version !== 8) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const cardResponse = await fetch(`${baseUrl}/api/cards`, {

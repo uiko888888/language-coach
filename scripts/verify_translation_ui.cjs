@@ -1,5 +1,5 @@
 const { chromium } = require("playwright");
-const { spawn } = require("child_process");
+const { spawn, execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
@@ -47,7 +47,7 @@ async function run() {
   const failures = [];
   try {
     const version = await waitForServer();
-    if (version.app_version !== "0.8.0-alpha.23.0.2" || version.database_schema_version !== 8) {
+    if (version.app_version !== "0.8.0-alpha.23.0.3" || version.database_schema_version !== 8) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const created = await post("/api/articles", {
@@ -57,6 +57,20 @@ async function run() {
       source: "manual",
     });
     const articleId = created.article.id;
+    const summary = await post("/api/articles", {
+      title: "Feed summary quality gate",
+      body: "A president has not explained a dismissal, causing concern among civil society and the military.",
+      level: "B2",
+      source: "manual",
+    });
+    const summaryId = summary.article.id;
+    execFileSync("python", ["-c", [
+      "import os, sqlite3",
+      "c=sqlite3.connect(os.environ['LANGUAGE_COACH_DB_PATH'])",
+      `c.execute(\"UPDATE articles SET source='BBC World', source_url='https://example.test/original', content_status='summary' WHERE id=?\", (${summaryId},))`,
+      "c.commit()",
+      "c.close()",
+    ].join("; ")], { cwd: root, env: { ...process.env, LANGUAGE_COACH_DB_PATH: database } });
 
     const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
     browser = await chromium.launch({ headless: true, executablePath: fs.existsSync(edgePath) ? edgePath : undefined });
@@ -65,6 +79,21 @@ async function run() {
     await page.goto(baseUrl, { waitUntil: "networkidle" });
     if (await page.locator("#assistantDialog[open]").count()) await page.click("#closeAssistantBtn");
     if (await page.locator("#profileEditor[open]").count()) await page.click("#cancelProfileDialogBtn");
+    await page.click('[data-view="articles"]');
+    await page.click(`[data-select-article="${summaryId}"]`);
+    await page.click(`#view-articles [data-open-article="${summaryId}"]`);
+    await page.waitForSelector("#view-reader.active");
+    if (!(await page.locator("#readerTitle").innerText()).startsWith("来源摘要")) failures.push("summary is presented as original text");
+    if (!(await page.locator("#readerContentNotice").innerText()).includes("不是原文")) failures.push("summary boundary notice is missing");
+    if (!(await page.locator("#generateQuizBtn").isDisabled())) failures.push("summary can still generate exam questions");
+    const rejected = await fetch(`${baseUrl}/api/articles/${summaryId}/quizzes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ style: "IELTS", question_type: "tfng" }),
+    });
+    if (rejected.status !== 422) failures.push(`summary API gate returned ${rejected.status}`);
+    await page.screenshot({ path: path.join(root, "artifacts", "content-quality-summary-desktop.png"), fullPage: true });
+
     await page.click('[data-view="articles"]');
     await page.click(`[data-select-article="${articleId}"]`);
     await page.click(`#view-articles [data-open-article="${articleId}"]`);

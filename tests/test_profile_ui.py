@@ -141,7 +141,7 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.2";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.3";', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
 
@@ -174,6 +174,13 @@ class ProfileUiContractTests(unittest.TestCase):
         self.assertIn('!article.translation_aligned', self.js)
         self.assertIn('await translateArticle(article.id)', self.js)
         self.assertIn('article?.translation_aligned ? "显示译文" : "一键翻译"', self.js)
+
+    def test_article_training_actions_respect_server_quality_gate(self):
+        self.assertIn("function articleTrainingAction(article", self.js)
+        self.assertIn("article.training_eligible", self.js)
+        self.assertIn("摘要不可出题", self.js)
+        self.assertIn("这是来源摘要，不是原文", self.js)
+        self.assertIn('$("#generateQuizBtn").disabled = !article.training_eligible', self.js)
 
     def test_server_practice_state_and_prescription_are_user_controlled(self):
         for element_id in (

@@ -205,6 +205,32 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(data["article"]["content_type"], "explainer")
         self.assertEqual(data["article"]["source_kind"], "网页导入")
 
+    def test_summary_article_is_rejected_by_server_training_gate(self):
+        now = server.utc_now()
+        with server.db() as conn:
+            cursor = conn.execute(
+                """INSERT INTO articles
+                   (title, language, level, topic, source, source_url, content_status, content_type, body, created_at, updated_at)
+                   VALUES ('Feed summary', 'en', 'B2', 'news', 'BBC World', 'https://example.test/summary',
+                           'summary', 'report', 'A short source summary.', ?, ?)""",
+                (now, now),
+            )
+            article_id = cursor.lastrowid
+        try:
+            self.request(
+                f"/api/articles/{article_id}/quizzes",
+                "POST",
+                {"style": "IELTS", "mode": "mixed", "question_type": "tfng"},
+            )
+        except urllib.error.HTTPError as error:
+            payload = json.load(error)
+            self.assertEqual(error.code, 422)
+            self.assertIn("RSS 摘要", payload["error"])
+            self.assertFalse(payload["quality"]["training_eligible"])
+            error.close()
+        else:
+            self.fail("Summary article bypassed the server training gate")
+
     def test_translation_cache_works_without_network(self):
         text = "A cached translation"
         digest = hashlib.sha256(text.encode("utf-8")).hexdigest()

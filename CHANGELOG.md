@@ -9,6 +9,24 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.23.0.3] - 2026-07-18
+
+### Added
+
+- Added exam-specific article word ranges for IELTS, TOEFL, CET4, CET6, KAOYAN, TEM4, TEM8, GRE and GMAT.
+- Added explainable article quality scores, issues, length fit and training eligibility to every article payload.
+- Added a server-side 422 quality gate so summary content cannot bypass the UI and generate exam questions.
+
+### Changed
+
+- RSS summaries are labeled as source summaries rather than original articles and link back to the publisher.
+- Exam-mode recommendations only expose training actions for eligible full text; user-controlled full material keeps an explicit length override.
+
+### Known limits
+
+- Word ranges currently apply at exam level, not every individual task type.
+- Long full articles are not silently shortened; coherent, clearly labeled excerpt generation remains future work.
+
 ## [0.8.0-alpha.23.0.2] - 2026-07-18
 
 ### Fixed

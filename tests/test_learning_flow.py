@@ -497,6 +497,32 @@ class LearningFlowTests(unittest.TestCase):
         }, "IELTS")
         self.assertEqual(item["content_status"], "summary")
         self.assertEqual(item["content_word_count"], 4)
+        self.assertFalse(item["training_eligible"])
+        self.assertIn("RSS 摘要", item["training_block_reason"])
+
+    def test_exam_word_ranges_and_quality_gate_distinguish_feed_from_user_material(self):
+        ielts_body = "Evidence supports a careful public policy decision. " * 100
+        feed = server.enrich_article({
+            "id": 100, "title": "Complete report", "body": ielts_body,
+            "source": "BBC World", "content_status": "full", "created_at": server.utc_now(), "level": "B2",
+        }, "IELTS")
+        self.assertEqual((feed["exam_word_min"], feed["exam_word_max"]), (650, 1000))
+        self.assertTrue(feed["training_eligible"])
+        self.assertEqual(feed["exam_length_status"], "matched")
+
+        short_feed = server.enrich_article({
+            "id": 101, "title": "Short report", "body": "A short but complete report. " * 20,
+            "source": "BBC World", "content_status": "full", "created_at": server.utc_now(), "level": "B2",
+        }, "IELTS")
+        self.assertFalse(short_feed["training_eligible"])
+        self.assertEqual(short_feed["exam_length_status"], "short")
+
+        user_material = server.enrich_article({
+            "id": 102, "title": "Personal excerpt", "body": "A personal excerpt for focused practice. " * 20,
+            "source": "manual", "content_status": "full", "created_at": server.utc_now(), "level": "B2",
+        }, "IELTS")
+        self.assertTrue(user_material["training_eligible"])
+        self.assertTrue(user_material["user_length_override"])
 
     def test_current_affairs_sources_have_explicit_classification(self):
         names = {feed["name"] for feed in server.DEFAULT_FEEDS}
@@ -585,9 +611,9 @@ class LearningFlowTests(unittest.TestCase):
     def test_subscriptions_shape_unique_today_content(self):
         now = server.utc_now()
         fixtures = [
-            ("World briefing", "BBC World", "report", "A concise world report explains a significant policy change and its public effects."),
-            ("A measured policy argument", "Guardian Opinion", "opinion", "The writer develops a qualified argument about evidence, institutions, and public trust. " * 8),
-            ("Institutional health update", "UN News", "institution", "The institution reports a health programme and explains the evidence behind the international response."),
+            ("World briefing", "BBC World", "report", "A concise world report explains a significant policy change and its public effects. " * 40),
+            ("A measured policy argument", "Guardian Opinion", "opinion", "The writer develops a qualified argument about evidence, institutions, and public trust. " * 40),
+            ("Institutional health update", "UN News", "institution", "The institution reports a health programme and explains the evidence behind the international response. " * 40),
         ]
         with server.db() as conn:
             for title, source, content_type, body in fixtures:
