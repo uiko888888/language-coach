@@ -9,6 +9,20 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.23.0.2] - 2026-07-18
+
+### Fixed
+
+- Practice translation now calls the article translation endpoint when aligned Chinese is missing instead of rendering empty placeholders.
+- RSS HTML extraction ignores scripts, styles, SVG, noscript and template nodes before article normalization.
+- Added a second guard for leaked Gravity Forms JavaScript in malformed feed content.
+- Added schema 8 audited repair of existing polluted article bodies; original content remains in `article_content_repairs`.
+
+### Known limits
+
+- This release fixes the evidenced script-contamination pattern. It does not yet provide source-specific extraction for every publisher or generic mojibake repair.
+- Machine translation still requires a configured and verified provider.
+
 ## [0.8.0-alpha.23.0.1] - 2026-07-18
 
 ### Fixed

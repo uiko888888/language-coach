@@ -80,6 +80,19 @@ class FeedRefreshTests(unittest.TestCase):
         self.assertEqual(source_run["imported_count"], 1)
         self.assertFalse(server.feed_refresh_due())
 
+    def test_html_cleaning_discards_embedded_scripts_before_article_normalization(self):
+        visible = "Evidence helps communities understand a difficult policy decision. " * 40
+        encoded = f"<article><p>{visible}</p><script>window['gf_submitting_17'] = true; GF_AJAX_POSTBACK = [];</script></article>"
+        entry = server.ET.fromstring(
+            f"<item><title>Readable report</title><link>https://example.test/readable</link>"
+            f"<description>Short summary.</description><encoded xmlns='urn:test'><![CDATA[{encoded}]]></encoded></item>"
+        )
+        payload = server.feed_entry_payload(entry, {"name": "Test Feed"})
+        self.assertEqual(payload["content_status"], "full")
+        self.assertIn("Evidence helps communities", payload["body"])
+        self.assertNotIn("GF_AJAX_POSTBACK", payload["body"])
+        self.assertNotIn("gf_submitting", payload["body"])
+
     def test_conditional_refresh_handles_not_modified(self):
         with server.db() as conn:
             conn.execute("UPDATE feeds SET etag = '\"feed-v1\"', last_modified = 'yesterday' WHERE name = 'Test Feed'")

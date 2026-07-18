@@ -141,7 +141,7 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.1";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.2";', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
 
@@ -168,6 +168,12 @@ class ProfileUiContractTests(unittest.TestCase):
             self.assertIn(contract, self.js)
         for selector in (".option-analysis", ".location-signals", ".mastery-progress", ".quiz-hint-row"):
             self.assertIn(selector, self.css)
+
+    def test_practice_translation_fetches_missing_translation_instead_of_showing_empty_rows(self):
+        self.assertIn('async function toggleArticleTranslation()', self.js)
+        self.assertIn('!article.translation_aligned', self.js)
+        self.assertIn('await translateArticle(article.id)', self.js)
+        self.assertIn('article?.translation_aligned ? "显示译文" : "一键翻译"', self.js)
 
     def test_server_practice_state_and_prescription_are_user_controlled(self):
         for element_id in (

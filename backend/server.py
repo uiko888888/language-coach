@@ -1408,10 +1408,44 @@ def text_response(handler: BaseHTTPRequestHandler, content: bytes, content_type:
     handler.wfile.write(content)
 
 
+class ReadableHTMLParser(HTMLParser):
+    ignored_tags = {"script", "style", "svg", "noscript", "template"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self.ignored_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.casefold() in self.ignored_tags:
+            self.ignored_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.casefold() in self.ignored_tags and self.ignored_depth:
+            self.ignored_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if not self.ignored_depth:
+            self.parts.append(data)
+
+
+EMBEDDED_SCRIPT_NOISE = re.compile(
+    r"(?i)(?:\bGF_AJAX_POSTBACK\b|\bgform_confirmation_loaded\b|\bgform_pre_post_render\b|"
+    r"\bgformRedirect\b|\bgform_wrapper_\d+\b|\bconfirmation_content\b|window\[['\"]gf_|jQuery\(['\"]#gform)"
+)
+
+
+def strip_embedded_script_noise(value: str) -> str:
+    marker = EMBEDDED_SCRIPT_NOISE.search(value or "")
+    return (value or "")[:marker.start()].rstrip(" \t\r\n,;:{[(") if marker else (value or "")
+
+
 def clean_html(value: str) -> str:
-    value = re.sub(r"<[^>]+>", " ", value or "")
-    value = html.unescape(value)
-    return re.sub(r"\s+", " ", value).strip()
+    parser = ReadableHTMLParser()
+    parser.feed(value or "")
+    parser.close()
+    text = strip_embedded_script_noise(" ".join(parser.parts))
+    return re.sub(r"\s+", " ", html.unescape(text)).strip()
 
 
 def sentences(text: str) -> list[str]:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
+import hashlib
+import re
 from collections.abc import Callable
 from datetime import datetime, timezone
 
@@ -171,6 +173,60 @@ def _review_schedule(conn: sqlite3.Connection) -> None:
     backfill_review_items(conn, _utc_now())
 
 
+SCRIPT_NOISE_PATTERN = re.compile(
+    r"(?i)(?:\bGF_AJAX_POSTBACK\b|\bgform_confirmation_loaded\b|\bgform_pre_post_render\b|"
+    r"\bgformRedirect\b|\bgform_wrapper_\d+\b|\bconfirmation_content\b|window\[['\"]gf_|jQuery\(['\"]#gform)"
+)
+
+
+def _sanitize_feed_articles(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """CREATE TABLE IF NOT EXISTS article_content_repairs (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             article_id INTEGER NOT NULL UNIQUE,
+             original_body TEXT NOT NULL,
+             original_translation_zh TEXT NOT NULL DEFAULT '',
+             reason TEXT NOT NULL,
+             repaired_at TEXT NOT NULL,
+             FOREIGN KEY(article_id) REFERENCES articles(id)
+           );"""
+    )
+    if "body" not in _columns(conn, "articles"):
+        return
+    columns = _columns(conn, "articles")
+    translation_column = "translation_zh" if "translation_zh" in columns else None
+    rows = conn.execute(
+        f"SELECT id, body{', translation_zh' if translation_column else ''} FROM articles WHERE body != ''"
+    ).fetchall()
+    for row in rows:
+        body = row[1] or ""
+        marker = SCRIPT_NOISE_PATTERN.search(body)
+        if not marker:
+            continue
+        cleaned = body[:marker.start()].rstrip(" \t\r\n,;:{[(")
+        if len(re.findall(r"[A-Za-z][A-Za-z'-]*", cleaned)) < 30:
+            continue
+        original_translation = row[2] or "" if translation_column else ""
+        conn.execute(
+            """INSERT OR IGNORE INTO article_content_repairs
+               (article_id, original_body, original_translation_zh, reason, repaired_at)
+               VALUES (?, ?, ?, 'embedded-script-noise', ?)""",
+            (row[0], body, original_translation, _utc_now()),
+        )
+        assignments = ["body = ?"]
+        params: list[object] = [cleaned]
+        if translation_column:
+            assignments.append("translation_zh = ''")
+        if "content_hash" in columns:
+            assignments.append("content_hash = ?")
+            params.append(hashlib.sha256(cleaned.casefold().encode("utf-8")).hexdigest())
+        if "updated_at" in columns:
+            assignments.append("updated_at = ?")
+            params.append(_utc_now())
+        params.append(row[0])
+        conn.execute(f"UPDATE articles SET {', '.join(assignments)} WHERE id = ?", params)
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     (1, "consolidate legacy schema", _legacy_schema),
     (2, "add training loop metrics", _training_loop_metrics),
@@ -179,6 +235,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     (5, "add layered open lexical data", _open_lexical_layers),
     (6, "add private lexical query history", _lexical_query_history),
     (7, "add unified review scheduling", _review_schedule),
+    (8, "remove embedded script noise from feed articles", _sanitize_feed_articles),
 )
 
 

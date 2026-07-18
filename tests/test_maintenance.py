@@ -6,7 +6,7 @@ from pathlib import Path
 
 from backend import server
 from backend.backups import create_backup, list_backups, restore_backup
-from backend.migrations import run_migrations
+from backend.migrations import _sanitize_feed_articles, run_migrations
 from backend.versioning import API_VERSION, SCHEMA_VERSION
 
 
@@ -31,14 +31,32 @@ class MaintenanceTests(unittest.TestCase):
             attempt_columns = {row[1] for row in conn.execute("PRAGMA table_info(attempts)")}
             mistake_columns = {row[1] for row in conn.execute("PRAGMA table_info(mistakes)")}
             practice_run_columns = {row[1] for row in conn.execute("PRAGMA table_info(practice_runs)")}
-            self.assertEqual(len(migrations), 7)
+            self.assertEqual(len(migrations), 8)
         self.assertIn("translation_zh", article_columns)
         self.assertIn("content_status", article_columns)
         self.assertTrue({"elapsed_seconds", "answer_changes", "hint_used"}.issubset(attempt_columns))
         self.assertTrue({"remedial_attempts", "remedial_correct_streak", "mastery_source"}.issubset(mistake_columns))
         self.assertIn("visibility", article_columns)
-        self.assertEqual(migrations[-1][1], "add unified review scheduling")
+        self.assertEqual(migrations[-1][1], "remove embedded script noise from feed articles")
         self.assertTrue({"quiz_ids_json", "feedback_json", "elapsed_seconds", "status"}.issubset(practice_run_columns))
+
+    def test_script_noise_repair_is_audited_and_clears_misaligned_translation(self):
+        with sqlite3.connect(":memory:") as conn:
+            conn.execute(
+                """CREATE TABLE articles (
+                     id INTEGER PRIMARY KEY, body TEXT NOT NULL, translation_zh TEXT NOT NULL,
+                     content_hash TEXT NOT NULL, updated_at TEXT NOT NULL
+                   )"""
+            )
+            clean = "A readable report explains policy evidence for local communities. " * 8
+            dirty = clean + " GF_AJAX_POSTBACK = []; jQuery('#gform_wrapper_17').html(contents);"
+            conn.execute("INSERT INTO articles VALUES (1, ?, '旧译文', 'old', '')", (dirty,))
+            _sanitize_feed_articles(conn)
+            article = conn.execute("SELECT * FROM articles WHERE id = 1").fetchone()
+            repair = conn.execute("SELECT * FROM article_content_repairs WHERE article_id = 1").fetchone()
+        self.assertNotIn("GF_AJAX_POSTBACK", article[1])
+        self.assertEqual(article[2], "")
+        self.assertIn("GF_AJAX_POSTBACK", repair[2])
 
     def test_backup_round_trip_restores_database_and_creates_safety_copy(self):
         with tempfile.TemporaryDirectory() as temp_dir:

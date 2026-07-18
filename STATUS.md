@@ -4,6 +4,9 @@
 
 ## 已可用
 
+- 练习中心译文按钮会在缺少对齐译文时调用翻译接口，不再只显示空占位
+- RSS 正文使用 HTML 解析器排除 script/style/svg/noscript/template 内容
+- schema 8 修复已存 Gravity Forms 脚本污染并在审计表保留原始正文和旧译文
 - WordNet 中文义项与例句译文直接展示，缺失翻译自动经已验证服务补齐并缓存
 - 查询词、开放词条、WordNet 和精选词条统一提供英式与美式语音入口
 - Kaikki 方言标签可区分 UK/US IPA；无方言证据时只显示通用 IPA

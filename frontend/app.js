@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.1";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.2";
 const SUPPORTED_API_VERSION = "1";
 
 const state = {
@@ -943,7 +943,7 @@ function renderQuizSource() {
   const translation = $("#quizTranslationPanel");
   translation.hidden = true;
   translation.innerHTML = "";
-  $("#quizTranslationBtn").textContent = state.showTranslation ? "隐藏译文" : "显示译文";
+  $("#quizTranslationBtn").textContent = state.showTranslation ? "隐藏译文" : article?.translation_aligned ? "显示译文" : "一键翻译";
 }
 
 function renderAnalysis() {
@@ -2641,6 +2641,19 @@ async function translateArticle(id = state.selectedArticle?.id) {
   toast(data.cached ? "已载入缓存译文" : "翻译完成并已保存");
 }
 
+async function toggleArticleTranslation() {
+  const article = state.selectedArticle;
+  if (!article) return toast("先选文章");
+  if (!state.showTranslation && !article.translation_aligned) {
+    await translateArticle(article.id);
+    return;
+  }
+  state.showTranslation = !state.showTranslation;
+  renderReader();
+  renderArticles();
+  renderQuizSource();
+}
+
 async function saveArticleContent(id) {
   const body = $("#articleContentInput")?.value.trim();
   if (!body) return toast("正文不能为空");
@@ -2942,12 +2955,7 @@ document.addEventListener("click", async event => {
         limit: Number(button.dataset.startPrescription) || 5,
       });
     }
-    if (button.id === "toggleTranslationBtn" || button.id === "quizTranslationBtn" || button.dataset.toggleTranslation) {
-      state.showTranslation = !state.showTranslation;
-      renderReader();
-      renderArticles();
-      renderQuizSource();
-    }
+    if (button.id === "toggleTranslationBtn" || button.id === "quizTranslationBtn" || button.dataset.toggleTranslation) await toggleArticleTranslation();
     if (button.id === "saveTranslationBtn") await saveTranslation();
     if (button.id === "translateArticleBtn") await translateArticle();
     if (button.dataset.translateArticle) await translateArticle(Number(button.dataset.translateArticle));
