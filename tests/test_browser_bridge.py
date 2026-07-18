@@ -1,5 +1,6 @@
 import hashlib
 import json
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -274,6 +275,81 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(saved["summary"]["usable"], 1)
         quality, _ = self.request("/api/extraction/quality")
         self.assertGreaterEqual(quality["classifier_readiness"]["observed"]["block_labels"], 1)
+
+    def test_representative_review_batch_tracks_time_and_confusion(self):
+        source_versions = [
+            ("The Conversation Politics", "conversation-rules-v2"),
+            ("BBC World", "bbc-rss-v1"),
+            ("Guardian World", "guardian-rss-v1"),
+            ("JSTOR Daily", "jstor-rss-v1"),
+        ]
+        now = server.utc_now()
+        with server.db() as conn:
+            for index, (source, version) in enumerate(source_versions):
+                conn.execute(
+                    """INSERT INTO articles
+                       (title, language, level, topic, source, content_status, content_type, body,
+                        extraction_version, extraction_confidence, created_at, updated_at)
+                       VALUES (?, 'en', 'B2', 'review', ?, 'full', 'report', ?, ?, 0.95, ?, ?)""",
+                    (
+                        f"Representative source {index}", source,
+                        "A representative paragraph provides enough evidence for source extraction review.",
+                        version, now, now,
+                    ),
+                )
+        batch, _ = self.request(
+            "/api/extraction/review-batches", "POST", {"target_size": 4, "force_new": True}
+        )
+        self.assertEqual(batch["summary"]["total"], 4)
+        self.assertEqual({item["adapter"] for item in batch["items"]}, {"conversation", "bbc", "guardian", "jstor"})
+        item = batch["items"][0]
+        active, _ = self.request(
+            f"/api/extraction/review-items/{item['id']}/activity", "POST", {"elapsed_seconds": 7}
+        )
+        active_item = next(value for value in active["items"] if value["id"] == item["id"])
+        self.assertEqual(active_item["active_seconds"], 7)
+        annotation, _ = self.request(f"/api/articles/{item['article_id']}/extraction-blocks")
+        block = next(value for value in annotation["blocks"] if value["suggested_label"] == "body")
+        saved, _ = self.request(
+            f"/api/articles/{item['article_id']}/extraction-block-labels",
+            "POST",
+            {
+                "block_hash": block["block_hash"], "label": "boilerplate",
+                "batch_item_id": item["id"], "elapsed_seconds": 5,
+            },
+        )
+        self.assertEqual(saved["summary"]["labeled"], 1)
+        refreshed, _ = self.request(f"/api/extraction/review-batches/{batch['batch']['id']}")
+        refreshed_item = next(value for value in refreshed["items"] if value["id"] == item["id"])
+        self.assertEqual(refreshed_item["active_seconds"], 12)
+        self.assertEqual(refreshed["analytics"]["corrected_suggestions"], 1)
+        self.assertEqual(refreshed["analytics"]["confusion"][0]["suggested_label"], "body")
+        self.assertEqual(refreshed["analytics"]["confusion"][0]["label"], "boilerplate")
+
+    def test_representative_review_batch_does_not_persist_empty_batch(self):
+        with sqlite3.connect(":memory:") as conn:
+            conn.row_factory = sqlite3.Row
+            conn.executescript(
+                """CREATE TABLE articles (
+                     id INTEGER PRIMARY KEY, source TEXT NOT NULL, extraction_version TEXT NOT NULL,
+                     body TEXT NOT NULL, content_status TEXT NOT NULL, published_at TEXT NOT NULL
+                   );
+                   CREATE TABLE article_extraction_block_labels (
+                     id INTEGER PRIMARY KEY, article_id INTEGER NOT NULL
+                   );
+                   CREATE TABLE article_extraction_feedback (
+                     id INTEGER PRIMARY KEY, article_id INTEGER NOT NULL, verdict TEXT
+                   );
+                   CREATE TABLE article_extraction_review_batches (
+                     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+                     target_size INTEGER NOT NULL, status TEXT NOT NULL,
+                     created_at TEXT NOT NULL, completed_at TEXT NOT NULL DEFAULT ''
+                   );"""
+            )
+            with self.assertRaisesRegex(ValueError, "No eligible"):
+                server.create_extraction_review_batch(conn, 20)
+            count = conn.execute("SELECT COUNT(*) FROM article_extraction_review_batches").fetchone()[0]
+        self.assertEqual(count, 0)
 
     def test_translation_cache_works_without_network(self):
         text = "A cached translation"

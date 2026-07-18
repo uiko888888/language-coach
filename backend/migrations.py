@@ -452,6 +452,42 @@ def _article_extraction_block_labels(conn: sqlite3.Connection) -> None:
     )
 
 
+def _article_extraction_review_batches(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """CREATE TABLE IF NOT EXISTS article_extraction_review_batches (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             name TEXT NOT NULL,
+             target_size INTEGER NOT NULL DEFAULT 20,
+             status TEXT NOT NULL DEFAULT 'active',
+             created_at TEXT NOT NULL,
+             completed_at TEXT NOT NULL DEFAULT ''
+           );
+           CREATE TABLE IF NOT EXISTS article_extraction_review_items (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             batch_id INTEGER NOT NULL,
+             article_id INTEGER NOT NULL,
+             position INTEGER NOT NULL,
+             source TEXT NOT NULL,
+             adapter TEXT NOT NULL,
+             extraction_version TEXT NOT NULL DEFAULT '',
+             total_blocks INTEGER NOT NULL DEFAULT 0,
+             status TEXT NOT NULL DEFAULT 'pending',
+             started_at TEXT NOT NULL DEFAULT '',
+             last_activity_at TEXT NOT NULL DEFAULT '',
+             completed_at TEXT NOT NULL DEFAULT '',
+             active_seconds INTEGER NOT NULL DEFAULT 0,
+             UNIQUE(batch_id, article_id),
+             UNIQUE(batch_id, position),
+             FOREIGN KEY(batch_id) REFERENCES article_extraction_review_batches(id),
+             FOREIGN KEY(article_id) REFERENCES articles(id)
+           );
+           CREATE INDEX IF NOT EXISTS idx_extraction_review_items_batch
+           ON article_extraction_review_items(batch_id, position);
+           CREATE INDEX IF NOT EXISTS idx_extraction_review_items_article
+           ON article_extraction_review_items(article_id, status);"""
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     (1, "consolidate legacy schema", _legacy_schema),
     (2, "add training loop metrics", _training_loop_metrics),
@@ -465,6 +501,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     (10, "remove embedded image captions from article body", _embedded_article_captions),
     (11, "apply registered source extraction adapters", _source_adapter_backfill),
     (12, "add human article block labels", _article_extraction_block_labels),
+    (13, "add representative extraction review batches", _article_extraction_review_batches),
 )
 
 

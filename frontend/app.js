@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.6";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.7";
 const SUPPORTED_API_VERSION = "1";
 
 const state = {
@@ -28,6 +28,9 @@ const state = {
   extractionQuality: { adapters: [], sources: [], classifier_readiness: null },
   extractionAnnotation: null,
   extractionBlockIndex: 0,
+  extractionReviewBatch: null,
+  extractionReviewItem: null,
+  extractionActivityStartedAt: 0,
   runtime: null,
   backups: [],
   sourceCatalog: [],
@@ -831,6 +834,7 @@ function sourceMetadataHtml(article) {
     ${sourceQuality ? `<p><strong>人工校验</strong><span>${sourceQuality.feedback_count} 条反馈 · ${sourceQuality.issue_count || 0} 条问题</span></p>` : ""}
     ${readiness ? `<p><strong>分类器数据</strong><span>${readiness.observed.block_labels}/${readiness.thresholds.block_labels} 个区块标签 · ${readiness.ready ? "达到评估门槛" : "继续积累"}</span></p>` : ""}
     <div class="toolbar extraction-feedback">
+      <button data-open-extraction-batch>20篇抽检</button>
       <button data-open-extraction-labeler="${article.id}">区块标注</button>
       <button data-extraction-feedback="correct" data-article-id="${article.id}">准确</button>
       <button data-extraction-feedback="caption_in_body" data-article-id="${article.id}">图片说明混入</button>
@@ -2734,6 +2738,20 @@ function renderExtractionLabeler() {
   const current = blocks[state.extractionBlockIndex];
   $("#extractionLabelTitle").textContent = data.article.title;
   $("#extractionLabelMeta").textContent = `${data.article.source} · ${data.article.extraction_version || "未记录规则"}`;
+  const batch = state.extractionReviewBatch;
+  const batchSelect = $("#extractionBatchSelect");
+  batchSelect.hidden = !batch;
+  $("#nextExtractionArticleBtn").hidden = !batch;
+  if (batch) {
+    batchSelect.innerHTML = batch.items.map(item => `<option value="${item.id}">${String(item.position).padStart(2, "0")} · ${item.status === "completed" ? "已完成" : item.source} · ${escapeHtml(item.title)}</option>`).join("");
+    batchSelect.value = String(state.extractionReviewItem?.id || "");
+    const hitRate = batch.analytics.suggestion_hit_rate == null ? "等待标签" : `命中 ${Math.round(batch.analytics.suggestion_hit_rate * 100)}%`;
+    const average = batch.analytics.average_active_minutes == null ? "暂无完成耗时" : `平均 ${batch.analytics.average_active_minutes} 分钟`;
+    $("#extractionBatchAnalytics").textContent = `批次 ${batch.summary.completed}/${batch.summary.total} · ${hitRate} · ${average}`;
+    $("#nextExtractionArticleBtn").disabled = !batch.items.some(item => item.status !== "completed" && item.id !== state.extractionReviewItem?.id);
+  } else {
+    $("#extractionBatchAnalytics").textContent = "";
+  }
   $("#extractionLabelProgress").textContent = `${data.summary.labeled} / ${data.summary.total}`;
   $("#extractionUsableCount").textContent = `可用标签 ${data.summary.usable}`;
   $("#previousExtractionBlockBtn").disabled = state.extractionBlockIndex <= 0;
@@ -2760,8 +2778,34 @@ function renderExtractionLabeler() {
   $("#extractionBlockList").querySelector(".active")?.scrollIntoView({ block: "nearest" });
 }
 
-async function openExtractionLabeler(articleId) {
+function extractionActivitySeconds() {
+  return state.extractionActivityStartedAt
+    ? Math.max(0, Math.round((Date.now() - state.extractionActivityStartedAt) / 1000))
+    : 0;
+}
+
+async function recordExtractionActivity() {
+  if (!state.extractionReviewItem) return;
+  state.extractionReviewBatch = await api(`/api/extraction/review-items/${state.extractionReviewItem.id}/activity`, {
+    method: "POST",
+    body: JSON.stringify({ elapsed_seconds: extractionActivitySeconds() }),
+  });
+  state.extractionReviewItem = state.extractionReviewBatch.items.find(item => item.id === state.extractionReviewItem.id) || state.extractionReviewItem;
+  state.extractionActivityStartedAt = Date.now();
+}
+
+async function openExtractionLabeler(articleId, { reviewItem = null, keepBatch = false } = {}) {
+  if (!keepBatch) state.extractionReviewBatch = null;
+  state.extractionReviewItem = reviewItem;
   state.extractionAnnotation = await api(`/api/articles/${articleId}/extraction-blocks`);
+  if (reviewItem) {
+    state.extractionReviewBatch = await api(`/api/extraction/review-items/${reviewItem.id}/activity`, {
+      method: "POST",
+      body: JSON.stringify({ elapsed_seconds: 0 }),
+    });
+    state.extractionReviewItem = state.extractionReviewBatch.items.find(item => item.id === reviewItem.id) || reviewItem;
+  }
+  state.extractionActivityStartedAt = Date.now();
   const firstRemaining = state.extractionAnnotation.blocks.findIndex(block => !block.label);
   state.extractionBlockIndex = firstRemaining >= 0 ? firstRemaining : 0;
   renderExtractionLabeler();
@@ -2769,14 +2813,58 @@ async function openExtractionLabeler(articleId) {
   if (!dialog.open) dialog.showModal();
 }
 
+async function openExtractionReviewBatch() {
+  state.extractionReviewBatch = await api("/api/extraction/review-batches", {
+    method: "POST",
+    body: JSON.stringify({ target_size: 20 }),
+  });
+  const item = state.extractionReviewBatch.items.find(value => value.status !== "completed") || state.extractionReviewBatch.items[0];
+  if (!item) return toast("没有可抽检文章");
+  await openExtractionLabeler(item.article_id, { reviewItem: item, keepBatch: true });
+}
+
+async function switchExtractionReviewItem(itemId) {
+  if (!state.extractionReviewBatch) return;
+  await recordExtractionActivity();
+  const item = state.extractionReviewBatch.items.find(value => value.id === Number(itemId));
+  if (item) await openExtractionLabeler(item.article_id, { reviewItem: item, keepBatch: true });
+}
+
+async function nextExtractionReviewArticle() {
+  if (!state.extractionReviewBatch) return;
+  const items = state.extractionReviewBatch.items;
+  const currentIndex = items.findIndex(item => item.id === state.extractionReviewItem?.id);
+  const ordered = [...items.slice(currentIndex + 1), ...items.slice(0, currentIndex + 1)];
+  const next = ordered.find(item => item.status !== "completed" && item.id !== state.extractionReviewItem?.id);
+  if (next) await switchExtractionReviewItem(next.id);
+  else toast("当前批次已完成");
+}
+
+async function closeExtractionLabeler() {
+  await recordExtractionActivity();
+  $("#extractionLabelDialog").close();
+  state.extractionActivityStartedAt = 0;
+}
+
 async function saveExtractionBlockLabel(blockHash, label) {
   const articleId = state.extractionAnnotation?.article?.id;
   if (!articleId) return;
   const currentIndex = state.extractionBlockIndex;
+  const elapsedSeconds = extractionActivitySeconds();
   state.extractionAnnotation = await api(`/api/articles/${articleId}/extraction-block-labels`, {
     method: "POST",
-    body: JSON.stringify({ block_hash: blockHash, label }),
+    body: JSON.stringify({
+      block_hash: blockHash,
+      label,
+      batch_item_id: state.extractionReviewItem?.id || 0,
+      elapsed_seconds: elapsedSeconds,
+    }),
   });
+  state.extractionActivityStartedAt = Date.now();
+  if (state.extractionReviewBatch) {
+    state.extractionReviewBatch = await api(`/api/extraction/review-batches/${state.extractionReviewBatch.batch.id}`);
+    state.extractionReviewItem = state.extractionReviewBatch.items.find(item => item.id === state.extractionReviewItem?.id) || state.extractionReviewItem;
+  }
   await loadExtractionQuality();
   const blocks = state.extractionAnnotation.blocks;
   const nextRemaining = blocks.findIndex((block, index) => index > currentIndex && !block.label);
@@ -3072,13 +3160,15 @@ document.addEventListener("click", async event => {
     if (button.id === "saveTranslationBtn") await saveTranslation();
     if (button.id === "translateArticleBtn") await translateArticle();
     if (button.dataset.translateArticle) await translateArticle(Number(button.dataset.translateArticle));
+    if (button.dataset.openExtractionBatch !== undefined) await openExtractionReviewBatch();
     if (button.dataset.openExtractionLabeler) await openExtractionLabeler(Number(button.dataset.openExtractionLabeler));
     if (button.dataset.extractionBlockIndex !== undefined) {
       state.extractionBlockIndex = Number(button.dataset.extractionBlockIndex);
       renderExtractionLabeler();
     }
     if (button.dataset.saveExtractionLabel) await saveExtractionBlockLabel(button.dataset.blockHash, button.dataset.saveExtractionLabel);
-    if (button.id === "closeExtractionLabelBtn") $("#extractionLabelDialog").close();
+    if (button.id === "closeExtractionLabelBtn") await closeExtractionLabeler();
+    if (button.id === "nextExtractionArticleBtn") await nextExtractionReviewArticle();
     if (button.id === "previousExtractionBlockBtn" && state.extractionBlockIndex > 0) {
       state.extractionBlockIndex -= 1;
       renderExtractionLabeler();
@@ -3286,6 +3376,15 @@ $("#globalStyle").addEventListener("change", async event => {
 });
 
 $("#quizPracticeType").addEventListener("change", applyQuizControlChange);
+
+$("#extractionBatchSelect").addEventListener("change", async event => {
+  await switchExtractionReviewItem(Number(event.target.value));
+});
+
+$("#extractionLabelDialog").addEventListener("cancel", event => {
+  event.preventDefault();
+  closeExtractionLabeler().catch(error => toast(error.message));
+});
 
 $("#quizScope").addEventListener("change", async event => {
   if (event.target.value !== "full-paper") {

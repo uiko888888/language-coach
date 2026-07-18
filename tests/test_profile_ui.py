@@ -141,7 +141,7 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.6";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.7";', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
 
@@ -196,13 +196,17 @@ class ProfileUiContractTests(unittest.TestCase):
         for element_id in (
             "extractionLabelDialog", "extractionLabelMeta", "extractionLabelProgress",
             "extractionBlockList", "extractionBlockDetail", "extractionUsableCount",
-            "previousExtractionBlockBtn", "nextExtractionBlockBtn",
+            "previousExtractionBlockBtn", "nextExtractionBlockBtn", "extractionBatchSelect",
+            "extractionBatchAnalytics", "nextExtractionArticleBtn",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
         for contract in (
             "data-open-extraction-labeler", "function renderExtractionLabeler()",
             "async function openExtractionLabeler(", "async function saveExtractionBlockLabel(",
             "/extraction-blocks", "/extraction-block-labels", "data-save-extraction-label",
+            "data-open-extraction-batch", "async function openExtractionReviewBatch()",
+            "async function recordExtractionActivity()", "/api/extraction/review-batches",
+            "/activity", "async function nextExtractionReviewArticle()",
         ):
             self.assertIn(contract, self.js)
         self.assertIn(".extraction-label-workspace", self.css)

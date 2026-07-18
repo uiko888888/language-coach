@@ -601,7 +601,8 @@
       <button type="button" id="closeExtractionLabelBtn" aria-label="关闭区块标注">关闭</button>
     </div>
     <div class="extraction-label-status">
-      <div id="extractionLabelMeta"></div>
+      <div><div id="extractionLabelMeta"></div><span id="extractionBatchAnalytics"></span></div>
+      <select id="extractionBatchSelect" aria-label="抽检文章" hidden></select>
       <strong id="extractionLabelProgress">0 / 0</strong>
     </div>
     <div class="extraction-label-workspace">
@@ -611,6 +612,7 @@
     <div class="extraction-label-footer">
       <span id="extractionUsableCount">可用标签 0</span>
       <div class="toolbar">
+        <button type="button" id="nextExtractionArticleBtn" hidden>下一篇</button>
         <button type="button" id="previousExtractionBlockBtn" aria-label="上一个区块">←</button>
         <button type="button" id="nextExtractionBlockBtn" aria-label="下一个区块">→</button>
       </div>

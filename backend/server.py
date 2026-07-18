@@ -28,7 +28,7 @@ from pathlib import Path
 
 try:
     from .backups import create_backup, list_backups, restore_backup
-    from .content_extraction import BLOCK_LABELS, adapter_catalog, extract_source_content, suggest_annotation_blocks
+    from .content_extraction import BLOCK_LABELS, adapter_catalog, adapter_for_source, extract_source_content, suggest_annotation_blocks
     from .lexical_data import lookup_lexical_layers, search_open_entries
     from .migrations import run_migrations
     from .practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
@@ -36,7 +36,7 @@ try:
     from .versioning import SCHEMA_VERSION, app_version, version_payload
 except ImportError:
     from backups import create_backup, list_backups, restore_backup
-    from content_extraction import BLOCK_LABELS, adapter_catalog, extract_source_content, suggest_annotation_blocks
+    from content_extraction import BLOCK_LABELS, adapter_catalog, adapter_for_source, extract_source_content, suggest_annotation_blocks
     from lexical_data import lookup_lexical_layers, search_open_entries
     from migrations import run_migrations
     from practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
@@ -5431,6 +5431,142 @@ def extraction_annotation_payload(conn: sqlite3.Connection, article_id: int) -> 
         "labels": [{"id": label, "label": BLOCK_LABEL_NAMES[label]} for label in BLOCK_LABELS],
         "summary": {"total": len(blocks), "labeled": labeled, "usable": usable, "remaining": len(blocks) - labeled},
     }
+
+
+def create_extraction_review_batch(conn: sqlite3.Connection, target_size: int = 20, force_new: bool = False) -> dict:
+    target_size = max(4, min(int(target_size or 20), 40))
+    if not force_new:
+        active = conn.execute(
+            "SELECT id FROM article_extraction_review_batches WHERE status = 'active' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if active:
+            return extraction_review_batch_payload(conn, active["id"])
+    rows = conn.execute(
+        """SELECT a.*, COUNT(DISTINCT l.id) AS label_count,
+                  COUNT(DISTINCT CASE WHEN f.verdict IS NOT NULL AND f.verdict != 'correct' THEN f.id END) AS issue_count
+           FROM articles a
+           LEFT JOIN article_extraction_block_labels l ON l.article_id = a.id
+           LEFT JOIN article_extraction_feedback f ON f.article_id = a.id
+           WHERE a.extraction_version != '' AND a.body != ''
+           GROUP BY a.id
+           ORDER BY label_count, issue_count DESC,
+                    CASE WHEN a.content_status = 'full' THEN 0 ELSE 1 END,
+                    a.published_at DESC, a.id DESC"""
+    ).fetchall()
+    groups: dict[str, list[sqlite3.Row]] = {}
+    for row in rows:
+        adapter = adapter_for_source(row["source"])
+        if adapter.key == "generic":
+            continue
+        groups.setdefault(adapter.key, []).append(row)
+    adapter_keys = [key for key in ("conversation", "bbc", "guardian", "jstor") if groups.get(key)]
+    selected: list[tuple[str, sqlite3.Row]] = []
+    quota = max(1, target_size // max(1, len(adapter_keys)))
+    for key in adapter_keys:
+        selected.extend((key, row) for row in groups[key][:quota])
+        groups[key] = groups[key][quota:]
+    while len(selected) < target_size and any(groups.get(key) for key in adapter_keys):
+        for key in adapter_keys:
+            if len(selected) >= target_size:
+                break
+            if groups.get(key):
+                selected.append((key, groups[key].pop(0)))
+    if not selected:
+        raise ValueError("No eligible source-adapter articles are available for extraction review")
+    now = utc_now()
+    cursor = conn.execute(
+        """INSERT INTO article_extraction_review_batches (name, target_size, status, created_at)
+           VALUES (?, ?, 'active', ?)""",
+        (f"代表性来源抽检 {now[:10]}", len(selected), now),
+    )
+    batch_id = cursor.lastrowid
+    for position, (adapter, row) in enumerate(selected, start=1):
+        annotation = extraction_annotation_payload(conn, row["id"])
+        conn.execute(
+            """INSERT INTO article_extraction_review_items
+               (batch_id, article_id, position, source, adapter, extraction_version, total_blocks)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (batch_id, row["id"], position, row["source"], adapter, row["extraction_version"], annotation["summary"]["total"]),
+        )
+    return extraction_review_batch_payload(conn, batch_id)
+
+
+def extraction_review_batch_payload(conn: sqlite3.Connection, batch_id: int) -> dict | None:
+    batch = conn.execute("SELECT * FROM article_extraction_review_batches WHERE id = ?", (batch_id,)).fetchone()
+    if not batch:
+        return None
+    rows = conn.execute(
+        """SELECT i.*, a.title, a.content_status FROM article_extraction_review_items i
+           JOIN articles a ON a.id = i.article_id WHERE i.batch_id = ? ORDER BY i.position""",
+        (batch_id,),
+    ).fetchall()
+    items = []
+    confusion: dict[tuple[str, str], int] = {}
+    accepted = corrected = unsure = usable = 0
+    source_stats: dict[str, dict] = {}
+    completed_seconds = []
+    for row in rows:
+        annotation = extraction_annotation_payload(conn, row["article_id"])
+        summary = annotation["summary"]
+        status = "completed" if summary["total"] and summary["remaining"] == 0 else "in_progress" if summary["labeled"] else row["status"]
+        completed_at = row["completed_at"]
+        if status == "completed" and not completed_at:
+            completed_at = utc_now()
+        conn.execute(
+            """UPDATE article_extraction_review_items SET total_blocks = ?, status = ?, completed_at = ? WHERE id = ?""",
+            (summary["total"], status, completed_at, row["id"]),
+        )
+        if status == "completed":
+            completed_seconds.append(row["active_seconds"])
+        stats = source_stats.setdefault(row["adapter"], {"adapter": row["adapter"], "articles": 0, "completed": 0, "labels": 0, "corrected": 0})
+        stats["articles"] += 1
+        stats["completed"] += int(status == "completed")
+        for block in annotation["blocks"]:
+            label = block["label"]
+            if not label:
+                continue
+            if label == "unsure":
+                unsure += 1
+                continue
+            usable += 1
+            stats["labels"] += 1
+            if label == block["suggested_label"]:
+                accepted += 1
+            else:
+                corrected += 1
+                stats["corrected"] += 1
+            confusion[(block["suggested_label"], label)] = confusion.get((block["suggested_label"], label), 0) + 1
+        items.append({
+            "id": row["id"], "article_id": row["article_id"], "position": row["position"],
+            "title": row["title"], "source": row["source"], "adapter": row["adapter"],
+            "content_status": row["content_status"], "status": status,
+            "active_seconds": row["active_seconds"], **summary,
+        })
+    completed = sum(item["status"] == "completed" for item in items)
+    batch_status = "completed" if items and completed == len(items) else "active"
+    completed_at = batch["completed_at"] or (utc_now() if batch_status == "completed" else "")
+    conn.execute(
+        "UPDATE article_extraction_review_batches SET status = ?, completed_at = ? WHERE id = ?",
+        (batch_status, completed_at, batch_id),
+    )
+    return {
+        "batch": {**dict(batch), "status": batch_status, "completed_at": completed_at},
+        "items": items,
+        "summary": {"total": len(items), "completed": completed, "remaining": len(items) - completed},
+        "analytics": {
+            "usable_labels": usable,
+            "accepted_suggestions": accepted,
+            "corrected_suggestions": corrected,
+            "unsure_labels": unsure,
+            "suggestion_hit_rate": round(accepted / usable, 4) if usable else None,
+            "average_active_minutes": round(sum(completed_seconds) / len(completed_seconds) / 60, 1) if completed_seconds else None,
+            "confusion": [
+                {"suggested_label": source, "label": target, "count": count}
+                for (source, target), count in sorted(confusion.items()) if source != target
+            ],
+            "sources": list(source_stats.values()),
+        },
+    }
 def parse_feed_datetime(value: str) -> str:
     raw = (value or "").strip()
     if not raw:
@@ -5764,6 +5900,18 @@ class App(BaseHTTPRequestHandler):
                 return json_response(self, feed_refresh_status())
             if path == "/api/extraction/quality":
                 return json_response(self, extraction_quality_report())
+            if path == "/api/extraction/review-batches/active":
+                with db() as conn:
+                    row = conn.execute(
+                        "SELECT id FROM article_extraction_review_batches WHERE status = 'active' ORDER BY id DESC LIMIT 1"
+                    ).fetchone()
+                    batch = extraction_review_batch_payload(conn, row["id"]) if row else None
+                return json_response(self, batch) if batch else json_response(self, {"error": "No active review batch"}, 404)
+            match = re.fullmatch(r"/api/extraction/review-batches/(\d+)", path)
+            if match:
+                with db() as conn:
+                    batch = extraction_review_batch_payload(conn, int(match.group(1)))
+                return json_response(self, batch) if batch else json_response(self, {"error": "Review batch not found"}, 404)
             match = re.fullmatch(r"/api/articles/(\d+)/extraction-blocks", path)
             if match:
                 with db() as conn:
@@ -6001,6 +6149,36 @@ class App(BaseHTTPRequestHandler):
         path = parsed.path
         try:
             payload = read_json(self)
+            if path == "/api/extraction/review-batches":
+                try:
+                    with db() as conn:
+                        batch = create_extraction_review_batch(
+                            conn,
+                            int(payload.get("target_size") or 20),
+                            bool(payload.get("force_new")),
+                        )
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 422)
+                return json_response(self, batch, 201)
+            match = re.fullmatch(r"/api/extraction/review-items/(\d+)/activity", path)
+            if match:
+                elapsed = max(0, min(int(payload.get("elapsed_seconds") or 0), 300))
+                with db() as conn:
+                    item = conn.execute(
+                        "SELECT * FROM article_extraction_review_items WHERE id = ?", (int(match.group(1)),)
+                    ).fetchone()
+                    if not item:
+                        return json_response(self, {"error": "Review item not found"}, 404)
+                    now = utc_now()
+                    conn.execute(
+                        """UPDATE article_extraction_review_items SET
+                           status = CASE WHEN status = 'pending' THEN 'in_progress' ELSE status END,
+                           started_at = CASE WHEN started_at = '' THEN ? ELSE started_at END,
+                           last_activity_at = ?, active_seconds = active_seconds + ? WHERE id = ?""",
+                        (now, now, elapsed, item["id"]),
+                    )
+                    batch = extraction_review_batch_payload(conn, item["batch_id"])
+                return json_response(self, batch)
             match = re.fullmatch(r"/api/reviews/(\d+)/rate", path)
             if match:
                 try:
@@ -6457,6 +6635,15 @@ class App(BaseHTTPRequestHandler):
                     block = next((item for item in annotation["blocks"] if item["block_hash"] == block_hash), None)
                     if not block:
                         return json_response(self, {"error": "Extraction block not found"}, 404)
+                    batch_item_id = int(payload.get("batch_item_id") or 0)
+                    review_item = None
+                    if batch_item_id:
+                        review_item = conn.execute(
+                            "SELECT * FROM article_extraction_review_items WHERE id = ? AND article_id = ?",
+                            (batch_item_id, annotation["article"]["id"]),
+                        ).fetchone()
+                        if not review_item:
+                            return json_response(self, {"error": "Review item does not match article"}, 400)
                     now = utc_now()
                     conn.execute(
                         """INSERT INTO article_extraction_block_labels
@@ -6478,6 +6665,17 @@ class App(BaseHTTPRequestHandler):
                         ),
                     )
                     updated = extraction_annotation_payload(conn, annotation["article"]["id"])
+                    if review_item:
+                        elapsed = max(0, min(int(payload.get("elapsed_seconds") or 0), 300))
+                        status = "completed" if updated["summary"]["remaining"] == 0 else "in_progress"
+                        completed_at = now if status == "completed" else review_item["completed_at"]
+                        conn.execute(
+                            """UPDATE article_extraction_review_items SET status = ?,
+                               started_at = CASE WHEN started_at = '' THEN ? ELSE started_at END,
+                               last_activity_at = ?, completed_at = ?, active_seconds = active_seconds + ?
+                               WHERE id = ?""",
+                            (status, now, now, completed_at, elapsed, review_item["id"]),
+                        )
                 return json_response(self, updated)
             if path == "/api/cards":
                 term = (payload.get("term") or "").strip()

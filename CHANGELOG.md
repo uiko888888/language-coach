@@ -9,6 +9,26 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.23.0.7] - 2026-07-19
+
+### Added
+
+- Added schema 13 persistent review batches for a representative 20-article extraction audit.
+- Added balanced sampling across BBC, The Conversation, Guardian and JSTOR adapters when enough material is available.
+- Added active annotation time, suggestion hit rate, correction confusion and per-source progress analytics.
+- Added batch resume, article switching and next-incomplete-article controls to the desktop annotation workspace.
+
+### Changed
+
+- Block-label saves can now update their matching batch item without creating labels automatically.
+- Extraction review analytics only use explicit human labels; uncertain labels remain outside hit-rate calculations.
+
+### Known limits
+
+- The workflow measures extraction quality but does not improve it by itself. Accuracy claims require completion of the real 20-article review.
+- Candidate blocks and suggested labels are deterministic assistance, not ground truth.
+- Classifier training remains disabled until 100 reviewed articles, 25 corrected examples, 3 sources and 500 usable block labels are available.
+
 ## [0.8.0-alpha.23.0.6] - 2026-07-19
 
 ### Added

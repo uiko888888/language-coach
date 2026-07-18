@@ -37,13 +37,13 @@ class MaintenanceTests(unittest.TestCase):
             attempt_columns = {row[1] for row in conn.execute("PRAGMA table_info(attempts)")}
             mistake_columns = {row[1] for row in conn.execute("PRAGMA table_info(mistakes)")}
             practice_run_columns = {row[1] for row in conn.execute("PRAGMA table_info(practice_runs)")}
-            self.assertEqual(len(migrations), 12)
+            self.assertEqual(len(migrations), 13)
         self.assertIn("translation_zh", article_columns)
         self.assertIn("content_status", article_columns)
         self.assertTrue({"elapsed_seconds", "answer_changes", "hint_used"}.issubset(attempt_columns))
         self.assertTrue({"remedial_attempts", "remedial_correct_streak", "mastery_source"}.issubset(mistake_columns))
         self.assertIn("visibility", article_columns)
-        self.assertEqual(migrations[-1][1], "add human article block labels")
+        self.assertEqual(migrations[-1][1], "add representative extraction review batches")
         self.assertTrue({"author", "image_caption", "disclosure", "extraction_version"}.issubset(article_columns))
         self.assertTrue({"quiz_ids_json", "feedback_json", "elapsed_seconds", "status"}.issubset(practice_run_columns))
 

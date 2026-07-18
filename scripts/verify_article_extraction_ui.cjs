@@ -47,7 +47,7 @@ async function run() {
   const failures = [];
   try {
     const version = await waitForServer();
-    if (version.app_version !== "0.8.0-alpha.23.0.6" || version.database_schema_version !== 12) {
+    if (version.app_version !== "0.8.0-alpha.23.0.7" || version.database_schema_version !== 13) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const body = [
@@ -105,6 +105,14 @@ async function run() {
     if (!(await page.locator("#extractionLabelProgress").innerText()).startsWith("1 /")) failures.push("annotation progress did not update");
     await page.screenshot({ path: path.join(root, "artifacts", "article-extraction-labeler-desktop.png"), fullPage: true });
     await page.click("#closeExtractionLabelBtn");
+    await page.click("#articleDetail [data-open-extraction-batch]");
+    await page.waitForSelector("#extractionLabelDialog[open]");
+    if (await page.locator("#extractionBatchSelect").isHidden()) failures.push("review batch selector is hidden");
+    if (!(await page.locator("#extractionBatchAnalytics").innerText()).includes("批次")) failures.push("review batch analytics are missing");
+    await page.click('[data-save-extraction-label="image_caption"]');
+    await page.waitForFunction(() => document.querySelector("#extractionLabelProgress")?.textContent.trim().startsWith("2 /"));
+    await page.screenshot({ path: path.join(root, "artifacts", "article-extraction-batch-desktop.png"), fullPage: true });
+    await page.click("#closeExtractionLabelBtn");
     await page.click(`#articleDetail [data-extraction-feedback="correct"][data-article-id="${articleId}"]`);
     await page.waitForTimeout(200);
     const feedback = execFileSync("python", ["-c", [
@@ -113,12 +121,12 @@ async function run() {
       "print(c.execute(\"SELECT verdict FROM article_extraction_feedback ORDER BY id DESC LIMIT 1\").fetchone()[0])",
     ].join("; ")], { cwd: root, env: { ...process.env, LANGUAGE_COACH_DB_PATH: database } }).toString().trim();
     if (feedback !== "correct") failures.push(`feedback was not stored: ${feedback}`);
-    const blockLabel = execFileSync("python", ["-c", [
+    const blockLabels = execFileSync("python", ["-c", [
       "import os, sqlite3",
       "c=sqlite3.connect(os.environ['LANGUAGE_COACH_DB_PATH'])",
-      "print(c.execute(\"SELECT label FROM article_extraction_block_labels ORDER BY id DESC LIMIT 1\").fetchone()[0])",
+      "print(','.join(row[0] for row in c.execute(\"SELECT label FROM article_extraction_block_labels ORDER BY id\")))",
     ].join("; ")], { cwd: root, env: { ...process.env, LANGUAGE_COACH_DB_PATH: database } }).toString().trim();
-    if (blockLabel !== "author") failures.push(`block label was not stored: ${blockLabel}`);
+    if (!blockLabels.includes("author") || !blockLabels.includes("image_caption")) failures.push(`block labels were not stored: ${blockLabels}`);
     await page.screenshot({ path: path.join(root, "artifacts", "article-extraction-desktop.png"), fullPage: true });
   } finally {
     if (browser) await browser.close();
