@@ -127,6 +127,34 @@ class LexicalSearchTests(unittest.TestCase):
         self.assertEqual(collocations[0]["observed_count"], 2)
         self.assertEqual(collocations[0]["source"], "个人文章语料")
 
+    def test_verified_morphology_resolution_enriches_wordnet_results(self):
+        payload = server.lexical_search("inspecting")
+        self.assertEqual(payload["resolution"], {"from": "inspecting", "to": "inspect"})
+        self.assertTrue(any(item.get("headword") == "inspect" for item in payload["results"]))
+
+    def test_spelling_suggestions_only_return_indexed_terms(self):
+        payload = server.lexical_search("inspeckt")
+        self.assertIn("inspect", payload["suggestions"])
+        with server.db() as conn:
+            self.assertTrue(conn.execute(
+                "SELECT 1 FROM wordnet_lemmas WHERE normalized = ? LIMIT 1", (payload["suggestions"][0],)
+            ).fetchone() or any(
+                row["headword"].casefold() == payload["suggestions"][0]
+                for row in conn.execute("SELECT headword FROM dictionary_entries")
+            ))
+
+    def test_full_query_history_is_persistent_and_quick_search_is_not_tracked(self):
+        with server.db() as conn:
+            conn.execute("DELETE FROM lexical_queries")
+        server.lexical_search("inspect")
+        self.assertEqual(server.lexical_query_history()["recent"], [])
+        server.lexical_search("Inspect", track=True)
+        server.lexical_search("inspect", track=True)
+        history = server.lexical_query_history()
+        self.assertEqual(history["recent"][0]["normalized"], "inspect")
+        self.assertEqual(history["recent"][0]["lookup_count"], 2)
+        self.assertEqual(history["recent"][0]["query_kind"], "word")
+
 
 if __name__ == "__main__":
     unittest.main()

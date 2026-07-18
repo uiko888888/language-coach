@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.22";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.22.1";
 const SUPPORTED_API_VERSION = "1";
 
 const state = {
@@ -26,6 +26,8 @@ const state = {
   subscriptions: [],
   today: { lanes: [], subscription_count: 0 },
   lexiconResults: [],
+  lexiconMeta: { resolution: null, suggestions: [] },
+  lexiconHistory: { recent: [], frequent: [] },
   lexicalDataStatus: { layers: [], sources: [], counts: {} },
   selectedLexicalItem: null,
   lexiconFilter: "all",
@@ -1094,6 +1096,34 @@ function bilingualExamples(examples, item) {
   }).join("");
 }
 
+function finalizeLexicalDetail(item) {
+  const detail = $("#lexiconDetail");
+  const term = lexicalLabel(item);
+  const hero = detail.querySelector(".dictionary-hero");
+  if (!hero || !term) return;
+  let toolbar = hero.querySelector(".toolbar");
+  if (!toolbar) {
+    toolbar = document.createElement("div");
+    toolbar.className = "toolbar";
+    hero.append(toolbar);
+  }
+  toolbar.insertAdjacentHTML("beforeend", `
+    <button data-copy-lexical="${escapeHtml(term)}" title="复制词头与当前释义">复制</button>
+    <details class="external-dictionaries"><summary>更多词典</summary><div>
+      <a href="https://dict.eudic.net/dicts/en/${encodeURIComponent(term)}" target="_blank" rel="noreferrer">欧路</a>
+      <a href="https://dictionary.cambridge.org/dictionary/english/${encodeURIComponent(term)}" target="_blank" rel="noreferrer">Cambridge</a>
+      <a href="https://www.collinsdictionary.com/dictionary/english/${encodeURIComponent(term)}" target="_blank" rel="noreferrer">Collins</a>
+      <a href="https://www.merriam-webster.com/dictionary/${encodeURIComponent(term)}" target="_blank" rel="noreferrer">Merriam-Webster</a>
+    </div></details>`);
+  const sections = [...detail.querySelectorAll(".dictionary-section")].filter(section => section.querySelector("h3"));
+  if (sections.length < 2) return;
+  const links = sections.map((section, index) => {
+    section.id = `lexical-section-${index}`;
+    return `<button data-jump-lexical-section="${section.id}">${escapeHtml(section.querySelector("h3").textContent)}</button>`;
+  }).join("");
+  hero.insertAdjacentHTML("afterend", `<nav class="dictionary-section-nav" aria-label="词条分区">${links}</nav>`);
+}
+
 function renderLexicalDetail(item) {
   const detail = $("#lexiconDetail");
   if (!item) {
@@ -1109,6 +1139,7 @@ function renderLexicalDetail(item) {
       <div class="morph-origin"><span>来源</span><strong>${escapeHtml(item.origin)}</strong><p>${escapeHtml(item.note)}</p></div>
       <section class="dictionary-section"><h3>代表词</h3><div class="term-grid">${termButtons(item.examples, "family")}</div></section>
     `;
+    finalizeLexicalDetail(item);
     return;
   }
   if (item.type === "query") {
@@ -1124,6 +1155,7 @@ function renderLexicalDetail(item) {
         <section class="dictionary-section"><h3>下一步</h3><p>先确认当前语境含义，再保存整句。后续开放词典导入会补充高频义项、搭配、近义辨析和词源。</p></section>
       </div>
     `;
+    finalizeLexicalDetail(item);
     return;
   }
   if (item.type === "open") {
@@ -1145,6 +1177,7 @@ function renderLexicalDetail(item) {
       </div>
       <details class="lexical-source-disclosure"><summary>数据来源与许可证</summary><ul>${lexicalSources(layers.sources)}</ul></details>
     `;
+    finalizeLexicalDetail(item);
     return;
   }
   if (item.type === "wordnet") {
@@ -1172,6 +1205,7 @@ function renderLexicalDetail(item) {
       ${item.contexts?.length ? `<section class="dictionary-section"><h3>真实语境 · ${item.contexts.length} 例</h3>${contextExamples(item.contexts)}</section>` : ""}
       ${item.open_sources?.length ? `<details class="lexical-source-disclosure"><summary>数据来源与许可证</summary><ul>${lexicalSources(item.open_sources)}</ul></details>` : ""}
     `;
+    finalizeLexicalDetail(item);
     return;
   }
   const saved = state.cards.some(card => card.term.toLowerCase() === item.headword.toLowerCase());
@@ -1189,6 +1223,27 @@ function renderLexicalDetail(item) {
       <section class="dictionary-section"><h3>真实语境</h3><div class="example-list">${bilingualExamples(item.examples, item)}</div></section>
     </div>
   `;
+  finalizeLexicalDetail(item);
+}
+
+function renderLexiconGuidance() {
+  const panel = $("#lexiconGuidance");
+  const resolution = state.lexiconMeta.resolution;
+  const suggestions = state.lexiconMeta.suggestions || [];
+  panel.hidden = !resolution && !suggestions.length;
+  panel.innerHTML = resolution
+    ? `<span>已识别词形</span><button data-search-query="${escapeHtml(resolution.to)}"><strong>${escapeHtml(resolution.from)}</strong> → ${escapeHtml(resolution.to)}</button>`
+    : suggestions.length
+      ? `<span>你是不是想查</span><div>${suggestions.map(term => `<button data-search-query="${escapeHtml(term)}">${escapeHtml(term)}</button>`).join("")}</div>`
+      : "";
+}
+
+function renderLexiconHistory() {
+  const panel = $("#lexiconHistory");
+  const items = state.lexiconHistory.recent || [];
+  panel.innerHTML = items.length ? `
+    <div class="history-query-list">${items.slice(0, 12).map(item => `<button data-search-query="${escapeHtml(item.query)}"><span>${escapeHtml(item.query)}</span>${item.lookup_count > 1 ? `<small>${item.lookup_count} 次</small>` : ""}</button>`).join("")}</div>
+    <button class="text-action" id="clearLexiconHistoryBtn">清空本机记录</button>` : `<p class="muted">完整查词后会保存在本机，快速联想不计入。</p>`;
 }
 
 function renderLexicon() {
@@ -1206,6 +1261,8 @@ function renderLexicon() {
     <div class="lexical-layer-row ${layer.installed ? "installed" : "missing"}">
       <span>${escapeHtml(layer.label)}</span><strong>${layer.installed ? Number(layer.count).toLocaleString("zh-CN") : "未导入"}</strong>
     </div>`).join("");
+  renderLexiconGuidance();
+  renderLexiconHistory();
   renderLexicalDetail(state.selectedLexicalItem);
 }
 
@@ -1214,14 +1271,25 @@ async function loadDictionaryStatus() {
   state.lexicalDataStatus = data;
 }
 
-async function searchLexicon(query, { open = true, quick = false, history = true } = {}) {
+async function loadLexiconHistory() {
+  state.lexiconHistory = await api("/api/lexicon/history");
+}
+
+async function clearLexiconHistory() {
+  state.lexiconHistory = await api("/api/lexicon/history/clear", { method: "POST", body: "{}" });
+  renderLexiconHistory();
+  toast("本机查词记录已清空");
+}
+
+async function searchLexicon(query, { open = true, quick = false, history = true, track = true } = {}) {
   const value = String(query || "").trim();
-  const data = await api(`/api/lexicon/search?q=${encodeURIComponent(value)}`);
+  const data = await api(`/api/lexicon/search?q=${encodeURIComponent(value)}${quick || !track || !value ? "" : "&track=1"}`);
   if (quick) {
     renderQuickResults(data.results || [], value);
     return data.results || [];
   }
   state.lexiconResults = data.results || [];
+  state.lexiconMeta = { resolution: data.resolution || null, suggestions: data.suggestions || [] };
   state.selectedLexicalItem = state.lexiconResults[0] || null;
   $("#lexiconSearch").value = value;
   $("#globalLexiconSearch").value = value;
@@ -1236,6 +1304,10 @@ async function searchLexicon(query, { open = true, quick = false, history = true
     }
   }
   renderLexicon();
+  if (value) {
+    await loadLexiconHistory();
+    renderLexiconHistory();
+  }
   const wordnet = state.lexiconResults.find(item => item.type === "wordnet" && (!item.headword_translation_zh || (item.synonyms || []).some(value => !value.meaning_zh)));
   if (wordnet && state.bridge?.translation?.verified === true && !state.wordnetAutoTranslationFailed) {
     await translateWordNetEntry(wordnet, { silent: true }).catch(error => {
@@ -2826,6 +2898,16 @@ document.addEventListener("click", async event => {
       await navigator.clipboard.writeText($("#bridgeToken").value);
       toast("连接令牌已复制");
     }
+    if (button.id === "clearLexiconHistoryBtn") await clearLexiconHistory();
+    if (button.dataset.copyLexical) {
+      const item = state.selectedLexicalItem;
+      const meaning = item?.meaning_zh || item?.headword_translation_zh || item?.translation_zh || item?.core_meaning || "";
+      await navigator.clipboard.writeText([button.dataset.copyLexical, meaning].filter(Boolean).join("\n"));
+      toast("词头与释义已复制");
+    }
+    if (button.dataset.jumpLexicalSection) {
+      document.getElementById(button.dataset.jumpLexicalSection)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
     if (button.id === "loadMistakesBtn") {
       await loadMistakes();
       renderAll();
@@ -3040,7 +3122,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 async function boot() {
   await loadHealth();
   await loadActivePracticeData();
-  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadBridgeConfig(), loadBackups(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), searchLexicon("", { open: false, history: false })]);
   const restoredServerRun = await restoreServerPracticeRun();
   if (!restoredServerRun && !state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);
@@ -3058,7 +3140,7 @@ async function boot() {
   else maybeOpenAssistant();
   const startupParams = new URLSearchParams(window.location.search);
   if (startupParams.get("view") === "lexicon" || startupParams.get("q")) {
-    await searchLexicon(startupParams.get("q") || "", { open: true, history: false });
+    await searchLexicon(startupParams.get("q") || "", { open: true, history: false, track: false });
   }
 }
 
@@ -3097,7 +3179,7 @@ window.addEventListener("popstate", async () => {
   const params = new URLSearchParams(window.location.search);
   const view = params.get("view") || "dashboard";
   if (view === "lexicon") {
-    await searchLexicon(params.get("q") || "", { open: false, history: false });
+    await searchLexicon(params.get("q") || "", { open: false, history: false, track: false });
   } else {
     setView(view, { pushHistory: false });
     renderAll();

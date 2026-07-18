@@ -9,7 +9,7 @@ This is a product benchmark against established interaction patterns, not a live
 | Real content to training | 7.5/10 | Read Frog, LUTE | Generated-question quality is still rule-limited | Evidence-aware AI generation with rejection rules |
 | Reading exam training | 7.2/10 | IELTS/TOEFL practice platforms | Formal scoring and several complete-paper models remain incomplete | Validate prescriptions against next-set improvement |
 | Learning profile | 7.2/10 | EF SET onboarding, adaptive learning apps | Behavior evidence now drives prescriptions but not validated CEFR changes | Add prescription feedback and outcome evidence |
-| Dictionary and word chunks | 5.8/10 | Eudic, commercial learner dictionaries | Layered import and UI are ready, but the real database still lacks Kaikki, Tatoeba and wordfreq data | Import licensed subsets and validate polysemy, phrases and Chinese recall |
+| Dictionary and word chunks | 5.9/10 | Eudic, Cambridge, Collins, Merriam-Webster | Query correction, history and navigation are usable, but the real database still lacks Kaikki, Tatoeba and wordfreq data | Import licensed subsets and validate polysemy, phrases and Chinese recall |
 | Review scheduling | 3/10 | Anki/FSRS | Cards and mistakes exist without memory scheduling | Shared FSRS queue for words, mistakes and listening lines |
 | Listening and clip study | 2/10 | Eudic clips, asbplayer, Language Reactor | No timed subtitle player or repeat loop yet | User-authorized subtitle and media clip workspace |
 | Content discovery | 6.2/10 | News readers and Eudic daily content | Two layouts and public/private scopes exist; collections, reading state and feedback are incomplete | Persist filters, track reading state and add collections |
@@ -37,6 +37,8 @@ Current strengths are source traceability, one-material-many-uses, evidence repl
 `alpha.21` improves discovery without replacing the efficient split reader: users can scan a grid, distinguish public sources from private imports, and move each card directly into reading, training or today's plan. This makes one-material-many-uses more visible, but layout choice alone is not differentiation; it must later be measured by faster selection and higher training completion.
 
 `alpha.22` changes the dictionary from a WordNet-specific page into a layered open-data system. It separates semantic definitions, etymology/forms, attributable examples, general frequency and personal corpus evidence. The architecture and learning presentation exceed the 6/10 threshold, but the actual dictionary product remains 5.8/10 until licensed real subsets are imported and quality-audited; importer fixtures are not coverage.
+
+`alpha.22.1` borrows mature query interaction patterns without copying commercial content: verified inflection recovery, bounded spelling candidates, private recent/repeated searches, section jumps, copy and external verification. Query usability improves, but content coverage only moves to 5.9/10 because navigation cannot replace missing Chinese senses, curated collocations or audited examples.
 
 Interest and exam modes now use different home workflows: immersion and expression collection versus target, weakness and question-type prescription. They still share one profile so interest activity can later contribute domain evidence without masquerading as exam-score gains.
 

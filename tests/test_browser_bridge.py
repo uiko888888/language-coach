@@ -54,6 +54,19 @@ class BrowserBridgeTests(unittest.TestCase):
         else:
             self.fail("Browser clips endpoint accepted a request without a token")
 
+    def test_lexicon_history_tracks_full_queries_and_can_be_cleared(self):
+        self.request("/api/lexicon/history/clear", "POST", {})
+        self.request("/api/lexicon/search?q=inspect")
+        empty, _ = self.request("/api/lexicon/history")
+        self.assertEqual(empty["recent"], [])
+        result, _ = self.request("/api/lexicon/search?q=inspeckt&track=1")
+        self.assertIn("inspect", result["suggestions"])
+        history, _ = self.request("/api/lexicon/history")
+        self.assertEqual(history["recent"][0]["query"], "inspeckt")
+        cleared, _ = self.request("/api/lexicon/history/clear", "POST", {})
+        self.assertTrue(cleared["cleared"])
+        self.assertEqual(cleared["recent"], [])
+
     def test_profile_api_supports_score_and_quick_test_paths(self):
         original = server.learner_settings()
         try:

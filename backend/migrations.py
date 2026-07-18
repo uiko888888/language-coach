@@ -148,12 +148,30 @@ def _open_lexical_layers(conn: sqlite3.Connection) -> None:
     ensure_lexical_data_schema(conn)
 
 
+def _lexical_query_history(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """CREATE TABLE IF NOT EXISTS lexical_queries (
+             normalized TEXT PRIMARY KEY,
+             query TEXT NOT NULL,
+             query_kind TEXT NOT NULL,
+             lookup_count INTEGER NOT NULL DEFAULT 1,
+             first_searched_at TEXT NOT NULL,
+             last_searched_at TEXT NOT NULL
+           );
+           CREATE INDEX IF NOT EXISTS idx_lexical_queries_recent
+           ON lexical_queries(last_searched_at DESC);
+           CREATE INDEX IF NOT EXISTS idx_lexical_queries_frequent
+           ON lexical_queries(lookup_count DESC, last_searched_at DESC);"""
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     (1, "consolidate legacy schema", _legacy_schema),
     (2, "add training loop metrics", _training_loop_metrics),
     (3, "add server-side practice run state", _practice_run_state),
     (4, "classify public and private article material", _article_visibility),
     (5, "add layered open lexical data", _open_lexical_layers),
+    (6, "add private lexical query history", _lexical_query_history),
 )
 
 

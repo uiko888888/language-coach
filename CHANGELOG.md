@@ -9,6 +9,25 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.22.1] - 2026-07-18
+
+### Added
+
+- Added schema 6 private lexical query history with recent and repeated-query views and an explicit clear action.
+- Added conservative, index-verified morphology resolution and bounded spelling suggestions.
+- Added dictionary section navigation, copy action and legal external links to Eudic, Cambridge, Collins and Merriam-Webster.
+
+### Changed
+
+- Full dictionary searches are tracked locally while quick autocomplete remains read-only.
+- Resolved inflections can reuse the indexed WordNet base entry instead of falling back to a translation-only query.
+
+### Known limits
+
+- Query history is a local interest/review signal, not language ability evidence or general frequency.
+- Spelling suggestions are candidates from installed indexes, not authoritative corrections.
+- Actual Chinese, etymology, collocation and bilingual-example coverage remains limited until licensed open datasets are imported and audited.
+
 ## [0.8.0-alpha.22] - 2026-07-18
 
 ### Added

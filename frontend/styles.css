@@ -1098,6 +1098,16 @@ label {
 .search-examples { display: flex; gap: 5px; margin: -2px 0 10px; overflow-x: auto; }
 .search-examples button { min-height: 28px; padding: 0 8px; border-color: transparent; background: var(--surface-2); color: var(--muted); font-size: 12px; white-space: nowrap; }
 .lexicon-layout .master-list { max-height: calc(100vh - 240px); }
+.lexicon-guidance { display: grid; gap: 7px; margin: 10px 0; padding: 10px; border-left: 3px solid var(--amber); background: #fffaf2; }
+.lexicon-guidance > span { color: var(--muted); font-size: 12px; font-weight: 700; }
+.lexicon-guidance div { display: flex; flex-wrap: wrap; gap: 6px; }
+.lexicon-guidance button { min-height: 30px; padding: 5px 8px; background: var(--surface); }
+.lexicon-history, .lexical-data-status { margin-top: 12px; border-top: 1px solid var(--line); }
+.lexicon-history summary, .lexical-data-status summary { padding: 10px 0 7px; cursor: pointer; color: var(--teal-dark); font-weight: 700; }
+.history-query-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.history-query-list button { display: inline-flex; min-height: 29px; gap: 5px; align-items: center; padding: 4px 8px; background: var(--surface); }
+.history-query-list small { color: var(--muted); }
+.text-action { min-height: 28px; margin-top: 7px; padding: 2px 0; border: 0; background: transparent; color: var(--muted); }
 .lexical-data-status { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
 .lexical-data-status summary { cursor: pointer; color: var(--teal-dark); font-size: 12px; font-weight: 700; }
 .lexical-data-status > div { margin-top: 8px; }
@@ -1107,6 +1117,13 @@ label {
 .lexical-layer-row.missing strong { color: var(--amber); }
 
 .dictionary-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 17px; border-bottom: 1px solid var(--line); }
+.dictionary-section-nav { position: sticky; top: 0; z-index: 3; display: flex; gap: 6px; overflow-x: auto; padding: 9px 0; border-bottom: 1px solid var(--line); background: var(--surface); }
+.dictionary-section-nav button { min-height: 30px; padding: 5px 9px; white-space: nowrap; background: transparent; color: var(--teal-dark); }
+.external-dictionaries { position: relative; }
+.external-dictionaries summary { min-height: 36px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; list-style: none; background: var(--surface); }
+.external-dictionaries div { position: absolute; z-index: 8; right: 0; top: calc(100% + 5px); display: grid; min-width: 170px; padding: 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); box-shadow: 0 10px 28px rgba(23, 36, 34, 0.14); }
+.external-dictionaries a { padding: 7px 8px; color: var(--text); text-decoration: none; }
+.external-dictionaries a:hover { background: var(--surface-2); color: var(--teal-dark); }
 .dictionary-hero h2 { margin: 10px 0 5px; font-family: Georgia, "Times New Roman", serif; font-size: 34px; }
 .pronunciation { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--muted); }
 .pronunciation button, .lookup-heading button { min-height: 30px; padding: 0 8px; color: var(--teal-dark); }

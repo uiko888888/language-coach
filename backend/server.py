@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import hashlib
 import email.utils
+import difflib
 import json
 import mimetypes
 import posixpath
@@ -4264,13 +4265,132 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
     return results
 
 
-def lexical_search(query: str, limit: int = 30) -> dict:
+def lexical_query_kind(query: str) -> str:
+    if re.search(r"[\u3400-\u9fff]", query):
+        return "chinese"
+    if " " in query.strip():
+        return "phrase"
+    if query.startswith("-") or query.endswith("-"):
+        return "morpheme"
+    return "word"
+
+
+def record_lexical_query(query: str) -> None:
+    clean = re.sub(r"\s+", " ", query).strip()
+    normalized = clean.casefold()
+    if not normalized:
+        return
+    now = utc_now()
+    with db() as conn:
+        conn.execute(
+            """INSERT INTO lexical_queries
+               (normalized, query, query_kind, lookup_count, first_searched_at, last_searched_at)
+               VALUES (?, ?, ?, 1, ?, ?)
+               ON CONFLICT(normalized) DO UPDATE SET
+                 query = excluded.query,
+                 query_kind = excluded.query_kind,
+                 lookup_count = lexical_queries.lookup_count + 1,
+                 last_searched_at = excluded.last_searched_at""",
+            (normalized, clean, lexical_query_kind(clean), now, now),
+        )
+
+
+def lexical_query_history(limit: int = 30) -> dict:
+    try:
+        safe_limit = max(1, min(100, int(limit or 30)))
+    except (TypeError, ValueError):
+        safe_limit = 30
+    with db() as conn:
+        recent = rows_to_dicts(conn.execute(
+            "SELECT * FROM lexical_queries ORDER BY last_searched_at DESC LIMIT ?", (safe_limit,),
+        ).fetchall())
+        frequent = rows_to_dicts(conn.execute(
+            "SELECT * FROM lexical_queries ORDER BY lookup_count DESC, last_searched_at DESC LIMIT 10"
+        ).fetchall())
+    return {"recent": recent, "frequent": frequent}
+
+
+def lexical_candidate_exists(conn: sqlite3.Connection, candidate: str, curated_entries: list[dict]) -> bool:
+    normalized = candidate.casefold()
+    if any(
+        entry["headword"].casefold() == normalized
+        or normalized in {str(form).casefold() for form in entry.get("forms", [])}
+        for entry in curated_entries
+    ):
+        return True
+    if conn.execute("SELECT 1 FROM wordnet_lemmas WHERE normalized = ? LIMIT 1", (normalized,)).fetchone():
+        return True
+    return bool(conn.execute(
+        "SELECT 1 FROM open_lexical_entries WHERE normalized = ? LIMIT 1", (normalized,)
+    ).fetchone())
+
+
+def morphology_candidates(term: str) -> list[str]:
+    word = term.casefold()
+    if not re.fullmatch(r"[a-z][a-z'-]{2,79}", word):
+        return []
+    candidates: list[str] = []
+    if word.endswith("ies") and len(word) > 4:
+        candidates.append(word[:-3] + "y")
+    if word.endswith("ied") and len(word) > 4:
+        candidates.append(word[:-3] + "y")
+    if word.endswith("ing") and len(word) > 5:
+        stem = word[:-3]
+        candidates.extend([stem, stem + "e"])
+        if len(stem) > 2 and stem[-1] == stem[-2]:
+            candidates.append(stem[:-1])
+    if word.endswith("ed") and len(word) > 4:
+        stem = word[:-2]
+        candidates.extend([stem, stem + "e"])
+        if len(stem) > 2 and stem[-1] == stem[-2]:
+            candidates.append(stem[:-1])
+    if word.endswith("es") and len(word) > 4:
+        candidates.extend([word[:-2], word[:-1]])
+    elif word.endswith("s") and len(word) > 3:
+        candidates.append(word[:-1])
+    if word.endswith("est") and len(word) > 5:
+        candidates.extend([word[:-3], word[:-3] + "e"])
+    elif word.endswith("er") and len(word) > 4:
+        candidates.extend([word[:-2], word[:-2] + "e"])
+    return list(dict.fromkeys(value for value in candidates if value != word))
+
+
+def resolve_lexical_form(conn: sqlite3.Connection, term: str, curated_entries: list[dict]) -> str:
+    for candidate in morphology_candidates(term):
+        if lexical_candidate_exists(conn, candidate, curated_entries):
+            return candidate
+    return ""
+
+
+def spelling_suggestions(conn: sqlite3.Connection, term: str, curated_entries: list[dict], limit: int = 5) -> list[str]:
+    normalized = term.casefold()
+    if not re.fullmatch(r"[a-z][a-z'-]{2,39}", normalized):
+        return []
+    minimum, maximum = max(2, len(normalized) - 2), len(normalized) + 2
+    prefix = normalized[:1] + "%"
+    candidates = [entry["headword"].casefold() for entry in curated_entries]
+    candidates.extend(row[0] for row in conn.execute(
+        """SELECT DISTINCT normalized FROM wordnet_lemmas
+           WHERE normalized LIKE ? AND length(normalized) BETWEEN ? AND ? LIMIT 700""",
+        (prefix, minimum, maximum),
+    ))
+    candidates.extend(row[0] for row in conn.execute(
+        """SELECT DISTINCT normalized FROM open_lexical_entries
+           WHERE normalized LIKE ? AND length(normalized) BETWEEN ? AND ? LIMIT 300""",
+        (prefix, minimum, maximum),
+    ))
+    pool = list(dict.fromkeys(value for value in candidates if value and value != normalized))
+    return difflib.get_close_matches(normalized, pool, n=limit, cutoff=0.72)
+
+
+def lexical_search(query: str, limit: int = 30, track: bool = False) -> dict:
     raw = (query or "").strip()
     needle = raw.lower()
     compact = needle.strip("-")
     with db() as conn:
         entries = [lexical_entry(row) for row in conn.execute("SELECT * FROM dictionary_entries ORDER BY headword")]
         morphemes = [morpheme_entry(row) for row in conn.execute("SELECT * FROM morphemes ORDER BY kind, form")]
+        resolved_to = resolve_lexical_form(conn, raw, entries) if raw else ""
 
     results: list[dict] = []
     exact_lexical_match = False
@@ -4319,6 +4439,10 @@ def lexical_search(query: str, limit: int = 30) -> dict:
             results.append({"type": "morpheme", "score": score, "matched_by": matched_by, **morpheme})
 
     wordnet_results = wordnet_lookup(raw) if raw else []
+    if not wordnet_results and resolved_to:
+        wordnet_results = wordnet_lookup(resolved_to)
+        for item in wordnet_results:
+            item["matched_by"] = f"词形还原：{raw} → {resolved_to}"
     if wordnet_results:
         exact_lexical_match = True
         results.extend(wordnet_results)
@@ -4356,7 +4480,17 @@ def lexical_search(query: str, limit: int = 30) -> dict:
         })
 
     results.sort(key=lambda item: (-item["score"], item.get("headword", item.get("form", ""))))
-    return {"query": raw, "count": len(results), "results": results[:limit]}
+    with db() as conn:
+        suggestions = [] if not raw or exact_lexical_match or resolved_to else spelling_suggestions(conn, raw, entries)
+    if track and raw:
+        record_lexical_query(raw)
+    return {
+        "query": raw,
+        "count": len(results),
+        "results": results[:limit],
+        "resolution": {"from": raw, "to": resolved_to} if resolved_to else None,
+        "suggestions": suggestions,
+    }
 
 
 def dictionary_data_status() -> dict:
@@ -5343,7 +5477,10 @@ class App(BaseHTTPRequestHandler):
             if path == "/api/today":
                 return json_response(self, today_content(query.get("exam", [""])[0], query.get("mode", ["exam"])[0]))
             if path == "/api/lexicon/search":
-                return json_response(self, lexical_search(query.get("q", [""])[0]))
+                tracked = query.get("track", ["0"])[0].lower() in {"1", "true", "yes"}
+                return json_response(self, lexical_search(query.get("q", [""])[0], track=tracked))
+            if path == "/api/lexicon/history":
+                return json_response(self, lexical_query_history(query.get("limit", [30])[0]))
             if path == "/api/dictionary/status":
                 return json_response(self, dictionary_data_status())
             match = re.fullmatch(r"/api/lexicon/entries/(\d+)", path)
@@ -5511,6 +5648,10 @@ class App(BaseHTTPRequestHandler):
         path = parsed.path
         try:
             payload = read_json(self)
+            if path == "/api/lexicon/history/clear":
+                with db() as conn:
+                    conn.execute("DELETE FROM lexical_queries")
+                return json_response(self, {"cleared": True, "recent": [], "frequent": []})
             if path == "/api/backups":
                 backup = create_backup(DB_PATH, BACKUP_DIR, app_version(ROOT))
                 return json_response(self, {"backup": backup, "backups": list_backups(BACKUP_DIR)}, 201)

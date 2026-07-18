@@ -114,6 +114,17 @@ class ProfileUiContractTests(unittest.TestCase):
         self.assertIn("机器翻译不冒充出版词典释义", self.js)
         self.assertIn("item.contexts = (item.contexts || []).map", self.js)
 
+    def test_dictionary_query_workflow_has_correction_history_and_reference_actions(self):
+        for element_id in ("lexiconGuidance", "lexiconHistory", "clearLexiconHistoryBtn"):
+            self.assertIn(element_id, self.html + self.js)
+        for contract in (
+            'api("/api/lexicon/history")', "data-copy-lexical", "data-jump-lexical-section",
+            "dictionary.cambridge.org", "collinsdictionary.com", "merriam-webster.com",
+        ):
+            self.assertIn(contract, self.js)
+        self.assertIn(".dictionary-section-nav", self.css)
+        self.assertIn(".external-dictionaries", self.css)
+
     def test_content_center_uses_hubs_without_expanding_sidebar_sources(self):
         self.assertIn('id="articleHubFilter"', self.html)
         self.assertIn('api("/api/content-hubs")', self.js)
@@ -130,7 +141,7 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.22";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.22.1";', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
 
