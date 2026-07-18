@@ -9,6 +9,31 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.20] - 2026-07-18
+
+### Added
+
+- Added server-side active practice runs with quiz order, answers, confidence, flags, feedback, behavior evidence, position and elapsed time.
+- Added startup restore, a dashboard continue action, explicit abandonment and 15-second plus page-exit synchronization.
+- Added lifecycle linkage between active runs and completed practice-session history.
+- Added explainable prescriptions from accuracy, time, answer changes, hints and confidence calibration.
+- Added independent-question coverage and evidence-confidence labels so repeated attempts do not masquerade as broad evidence.
+- Added user-selectable 5-question and recommended-length prescription actions.
+- Added `backend/practice_state.py` and a formal `REVIEWS.md` evidence and self-review ledger.
+
+### Changed
+
+- Practice detail now returns behavior fields that were stored in `alpha.19` but omitted from its detail query.
+- Interest mode hides exam prescriptions, and disabling profile recommendations suppresses prescription actions.
+- Database schema version 3 introduces the practice-run lifecycle.
+
+### Known limits
+
+- Practice runs still use the single local learner key and do not provide account-based cloud sync.
+- Prescription weights and time references are transparent heuristics, not validated score predictions.
+- Concurrent edits from two browsers use last-write-wins; revision conflict detection is pending.
+- Full Playwright E2E and recommendation-outcome evidence are still missing.
+
 ## [0.8.0-alpha.19] - 2026-07-18
 
 ### Added

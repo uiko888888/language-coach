@@ -130,7 +130,7 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.19";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.20";', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
 
@@ -143,6 +143,24 @@ class ProfileUiContractTests(unittest.TestCase):
             self.assertIn(contract, self.js)
         for selector in (".option-analysis", ".location-signals", ".mastery-progress", ".quiz-hint-row"):
             self.assertIn(selector, self.css)
+
+    def test_server_practice_state_and_prescription_are_user_controlled(self):
+        for element_id in (
+            "resumePracticeBand", "resumePracticeTitle", "resumePracticeSummary",
+            "resumePracticeBtn", "abandonPracticeBtn", "prescriptionBand",
+            "prescriptionStatus", "prescriptionBody",
+        ):
+            self.assertIn(f'id="{element_id}"', self.html)
+        for contract in (
+            'api("/api/practice-runs/active")', 'api("/api/practice-runs"',
+            'api(`/api/practice/prescription?style=', "function practiceRunSnapshot()",
+            "async function restoreServerPracticeRun()", "function prescriptionHtml(",
+            'state.learnerSettings.recommendations_enabled === false',
+            '$("#prescriptionBand").hidden = interest',
+        ):
+            self.assertIn(contract, self.js)
+        self.assertIn(".resume-practice-band", self.css)
+        self.assertIn(".prescription-metrics", self.css)
 
 
 if __name__ == "__main__":

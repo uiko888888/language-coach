@@ -7,14 +7,14 @@ This is a product benchmark against established interaction patterns, not a live
 | Area | Current | Mature reference pattern | Main gap | Next leverage point |
 | --- | ---: | --- | --- | --- |
 | Real content to training | 7.5/10 | Read Frog, LUTE | Generated-question quality is still rule-limited | Evidence-aware AI generation with rejection rules |
-| Reading exam training | 6.5/10 | IELTS/TOEFL practice platforms | Formal scoring, timing and complete papers are incomplete | Finish official-format interaction models |
-| Learning profile | 6.5/10 | EF SET onboarding, adaptive learning apps | Weekly domain calibration exists; timing and hint evidence are missing | Add richer event evidence and recommendation feedback |
+| Reading exam training | 7.2/10 | IELTS/TOEFL practice platforms | Formal scoring and several complete-paper models remain incomplete | Validate prescriptions against next-set improvement |
+| Learning profile | 7.2/10 | EF SET onboarding, adaptive learning apps | Behavior evidence now drives prescriptions but not validated CEFR changes | Add prescription feedback and outcome evidence |
 | Dictionary and word chunks | 4.5/10 | Eudic, commercial learner dictionaries | Open coverage, frequency and bilingual examples are limited | Kaikki, Tatoeba and wordfreq layers |
 | Review scheduling | 3/10 | Anki/FSRS | Cards and mistakes exist without memory scheduling | Shared FSRS queue for words, mistakes and listening lines |
 | Listening and clip study | 2/10 | Eudic clips, asbplayer, Language Reactor | No timed subtitle player or repeat loop yet | User-authorized subtitle and media clip workspace |
 | Content discovery | 5/10 | News readers and Eudic daily content | Collections, event tracking and feedback are incomplete | Profile-aware collections and explicit feedback |
 | Universal delivery | 3/10 | Hosted PWA products | Current edition is local and single-user | Accounts, cloud database, worker queue and PWA |
-| Engineering operations | 5/10 | Production SaaS | Monolithic backend, partial E2E and no cloud observability | Module split, migrations, monitoring and backups |
+| Engineering operations | 6.5/10 | Production SaaS | Practice state is modularized, but HTTP/business code remains concentrated and browser E2E is partial | Continue domain extraction, conflict control and observability |
 
 ## Differentiation
 
@@ -31,6 +31,8 @@ legal article / webpage / subtitle
 ```
 
 Current strengths are source traceability, one-material-many-uses, evidence replay, contextual lookup and the browser extension intake. The product does not yet have a moat in dictionary coverage, adaptive modeling, listening interaction or public delivery.
+
+`alpha.20` adds a stronger adaptive candidate: an unfinished run survives refresh/browser changes, and the next prescription explains accuracy, time, answer changes, hints, confidence errors and independent-question coverage. This is more differentiated than a generic recommendation card because it remains connected to evidence replay, error diagnosis and immediate targeted practice. It is not yet a moat until real usage proves that following the prescription improves the next set.
 
 Interest and exam modes now use different home workflows: immersion and expression collection versus target, weakness and question-type prescription. They still share one profile so interest activity can later contribute domain evidence without masquerading as exam-score gains.
 

@@ -581,6 +581,68 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertTrue(analytics["skills"])
         self.assertTrue(analytics["recommendation"]["question_type"])
 
+    def test_active_practice_run_round_trip_and_explainable_prescription(self):
+        created, _ = self.request(
+            "/api/articles", "POST",
+            {"title": "Persistent TEM8 run", "body": server.SAMPLE_ARTICLE, "source": "manual"},
+        )
+        generated, _ = self.request(
+            f"/api/articles/{created['article']['id']}/quizzes", "POST",
+            {"mode": "reading", "style": "TEM8", "question_type": "inference"},
+        )
+        quiz = generated["quizzes"][0]
+        run_data, _ = self.request("/api/practice-runs", "POST", {
+            "article_id": created["article"]["id"], "style": "TEM8", "question_type": "inference",
+            "scope": "specialty", "session_mode": "practice", "quiz_ids": [quiz["id"]],
+            "answers": {str(quiz["id"]): "draft"}, "confidence": {str(quiz["id"]): 2},
+            "flagged": {str(quiz["id"]): True}, "answer_changes": {str(quiz["id"]): 1},
+            "hint_used": {str(quiz["id"]): True}, "feedback": {}, "active_index": 0,
+            "display_mode": "single", "elapsed_seconds": 37,
+        })
+        run = run_data["run"]
+        active, _ = self.request("/api/practice-runs/active")
+        self.assertEqual(active["run"]["id"], run["id"])
+        self.assertEqual(active["run"]["elapsed_seconds"], 37)
+        self.assertEqual(active["quizzes"][0]["id"], quiz["id"])
+        run["answers"] = {str(quiz["id"]): quiz["answer"]}
+        run["feedback"] = {str(quiz["id"]): {"correct": True}}
+        run["quiz_ids"] = [quiz["id"]]
+        updated, _ = self.request("/api/practice-runs", "POST", run)
+        self.assertTrue(updated["run"]["feedback"][str(quiz["id"])]["correct"])
+
+        wrong_answer = next(option for option in quiz["options"] if option != quiz["answer"])
+        attempt_ids = []
+        for answer, confidence, elapsed, changes, hint in (
+            (wrong_answer, 3, 130, 2, True),
+            (wrong_answer, 2, 110, 1, True),
+            (quiz["answer"], 2, 95, 1, False),
+        ):
+            attempt, _ = self.request("/api/attempts", "POST", {
+                "quiz_id": quiz["id"], "answer": answer, "confidence": confidence,
+                "elapsed_seconds": elapsed, "answer_changes": changes, "hint_used": hint,
+            })
+            attempt_ids.append(attempt["attempt_id"])
+        prescribed, _ = self.request("/api/practice/prescription?style=TEM8")
+        prescription = prescribed["prescription"]
+        self.assertEqual(prescription["status"], "ready")
+        self.assertEqual(prescription["question_type"], "inference")
+        self.assertEqual(prescription["sample_count"], 3)
+        self.assertEqual(prescription["metrics"]["accuracy"], 33)
+        self.assertEqual(prescription["unique_quiz_count"], 1)
+        self.assertEqual(prescription["evidence_confidence"], "low")
+        self.assertTrue(any("正确率" in reason for reason in prescription["reasons"]))
+
+        archived, _ = self.request("/api/practice-sessions/record", "POST", {
+            "attempt_ids": attempt_ids, "question_count": 3, "elapsed_seconds": 335,
+        })
+        completed, _ = self.request(f"/api/practice-runs/{run['id']}/complete", "POST", {
+            "practice_session_id": archived["session"]["id"],
+        })
+        self.assertEqual(completed["run"]["status"], "completed")
+        self.assertEqual(completed["run"]["practice_session_id"], archived["session"]["id"])
+        active_after, _ = self.request("/api/practice-runs/active")
+        self.assertIsNone(active_after["run"])
+
     def test_exam_resources_expose_rights_and_user_import_is_labeled(self):
         resources, _ = self.request("/api/exam-resources?exam=IELTS")
         self.assertTrue(resources["resources"])

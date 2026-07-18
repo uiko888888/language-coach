@@ -117,6 +117,10 @@
         </div>
         <button class="primary" id="modePrimaryAction">开始今日训练</button>
       </section>
+      <section class="resume-practice-band" id="resumePracticeBand" hidden>
+        <div><span class="eyebrow">Active practice</span><h2 id="resumePracticeTitle">继续上次训练</h2><p id="resumePracticeSummary"></p></div>
+        <div class="toolbar"><button class="primary" id="resumePracticeBtn">继续训练</button><button id="abandonPracticeBtn">放弃本轮</button></div>
+      </section>
       <section class="band learner-profile-band">
         <div class="band-head">
           <div><span class="eyebrow">Learning profile</span><h2>学习画像</h2></div>
@@ -252,6 +256,13 @@
             <button class="primary" id="saveLearnerSettingsBtn">保存计划</button>
           </div>
         </details>
+      </section>
+      <section class="band prescription-band" id="prescriptionBand">
+        <div class="band-head">
+          <div><span class="eyebrow">Training prescription</span><h2>个性化训练处方</h2></div>
+          <span class="profile-status" id="prescriptionStatus">建立基线中</span>
+        </div>
+        <div id="prescriptionBody"></div>
       </section>
       <div class="metric-grid">
         <div class="metric"><span>文章</span><strong id="statArticles">0</strong></div>

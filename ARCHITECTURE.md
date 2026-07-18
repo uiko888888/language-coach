@@ -29,6 +29,7 @@ Chrome / Edge 扩展（WXT + TypeScript）
 | `backend/versioning.py` | 应用、API、数据库目标版本 | `VERSION` 文件 |
 | `backend/migrations.py` | 有序、幂等、可追踪的 SQLite 升级 | SQLite，不依赖 HTTP 或产品界面 |
 | `backend/backups.py` | 限定目录内的备份、完整性检查和恢复 | SQLite、文件系统，不依赖业务服务 |
+| `backend/practice_state.py` | 活动训练生命周期与可解释训练处方 | SQLite，不依赖 HTTP 或界面 |
 | `backend/server.py` | 当前组合根、HTTP 路由和尚未抽离的业务 | 可依赖上述基础模块 |
 | `frontend/app.js` | 当前页面状态、渲染和 API 调用 | API v1；后续按服务和视图拆分 |
 | `browser-extension/` | 网页授权采集入口 | 公共本机 API，不直接访问 SQLite |

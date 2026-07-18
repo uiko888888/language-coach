@@ -95,9 +95,43 @@ def _training_loop_metrics(conn: sqlite3.Connection) -> None:
         _ensure_column(conn, "mistakes", column, definition)
 
 
+def _practice_run_state(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """CREATE TABLE IF NOT EXISTS practice_runs (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             learner_key TEXT NOT NULL DEFAULT 'local',
+             practice_session_id INTEGER,
+             article_id INTEGER,
+             style TEXT NOT NULL DEFAULT 'IELTS',
+             question_type TEXT NOT NULL DEFAULT '',
+             scope TEXT NOT NULL DEFAULT 'specialty',
+             session_mode TEXT NOT NULL DEFAULT 'practice',
+             status TEXT NOT NULL DEFAULT 'in_progress',
+             quiz_ids_json TEXT NOT NULL DEFAULT '[]',
+             answers_json TEXT NOT NULL DEFAULT '{}',
+             confidence_json TEXT NOT NULL DEFAULT '{}',
+             flagged_json TEXT NOT NULL DEFAULT '{}',
+             answer_changes_json TEXT NOT NULL DEFAULT '{}',
+             hint_used_json TEXT NOT NULL DEFAULT '{}',
+             feedback_json TEXT NOT NULL DEFAULT '{}',
+             active_index INTEGER NOT NULL DEFAULT 0,
+             display_mode TEXT NOT NULL DEFAULT 'single',
+             elapsed_seconds INTEGER NOT NULL DEFAULT 0,
+             started_at TEXT NOT NULL,
+             updated_at TEXT NOT NULL,
+             completed_at TEXT NOT NULL DEFAULT '',
+             FOREIGN KEY(article_id) REFERENCES articles(id),
+             FOREIGN KEY(practice_session_id) REFERENCES practice_sessions(id)
+           );
+           CREATE INDEX IF NOT EXISTS idx_practice_runs_active
+           ON practice_runs(learner_key, status, updated_at DESC);"""
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     (1, "consolidate legacy schema", _legacy_schema),
     (2, "add training loop metrics", _training_loop_metrics),
+    (3, "add server-side practice run state", _practice_run_state),
 )
 
 

@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.19";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.20";
 const SUPPORTED_API_VERSION = "1";
 
 const state = {
@@ -48,6 +48,9 @@ const state = {
   selectedPaper: null,
   practiceSessions: [],
   practiceAnalytics: null,
+  activePracticeData: null,
+  practiceRun: null,
+  prescription: null,
   selectedPracticeSession: null,
   evidenceReplay: "",
   showTranslation: false,
@@ -265,6 +268,114 @@ function restoreQuizDraft() {
     clearQuizDraft();
     return false;
   }
+}
+
+function practiceRunSnapshot() {
+  if (!state.quizzes.length || state.quizSession.submitted) return null;
+  const session = state.quizSession;
+  return {
+    id: state.practiceRun?.id || undefined,
+    article_id: state.selectedArticle?.id || null,
+    style: state.style,
+    question_type: state.quizzes[0]?.question_type || "mixed",
+    scope: $("#quizScope")?.value || "specialty",
+    session_mode: session.mode,
+    quiz_ids: state.quizzes.map(quiz => quiz.id),
+    answers: session.answers,
+    confidence: session.confidence,
+    flagged: session.flagged,
+    answer_changes: session.answerChanges,
+    hint_used: session.hintUsed,
+    feedback: state.answerFeedback,
+    active_index: session.activeIndex,
+    display_mode: session.display,
+    elapsed_seconds: quizElapsedSeconds(),
+    status: "in_progress",
+  };
+}
+
+let practiceRunSyncTimer;
+let practiceRunSyncChain = Promise.resolve();
+
+async function syncPracticeRunNow({ newRun = false } = {}) {
+  const snapshot = practiceRunSnapshot();
+  if (!snapshot) return null;
+  if (newRun) {
+    delete snapshot.id;
+    state.practiceRun = null;
+  }
+  const data = await api("/api/practice-runs", { method: "POST", body: JSON.stringify(snapshot) });
+  state.practiceRun = data.run;
+  state.activePracticeData = { run: data.run, quizzes: state.quizzes };
+  renderResumePractice();
+  return data.run;
+}
+
+function schedulePracticeRunSync() {
+  clearTimeout(practiceRunSyncTimer);
+  if (!state.quizzes.length || state.quizSession.submitted) return;
+  practiceRunSyncTimer = setTimeout(() => {
+    practiceRunSyncChain = practiceRunSyncChain
+      .then(() => syncPracticeRunNow())
+      .catch(error => toast(`训练进度暂未同步：${error.message}`));
+  }, 350);
+}
+
+async function loadActivePracticeData() {
+  try {
+    state.activePracticeData = await api("/api/practice-runs/active");
+  } catch (_error) {
+    state.activePracticeData = { run: null, quizzes: [] };
+  }
+  if (state.activePracticeData.run?.style) {
+    state.style = state.activePracticeData.run.style;
+    localStorage.setItem("lc-v2-style", state.style);
+    $("#globalStyle").value = state.style;
+  }
+}
+
+async function restoreServerPracticeRun() {
+  const data = state.activePracticeData;
+  if (!data?.run || !(data.quizzes || []).length) return false;
+  const run = data.run;
+  if (run.article_id && Number(state.selectedArticle?.id) !== Number(run.article_id)) {
+    const article = await api(`/api/articles/${run.article_id}?exam=${encodeURIComponent(run.style)}`);
+    state.selectedArticle = article.article;
+    state.analysis = article.analysis;
+  }
+  state.practiceRun = run;
+  state.quizzes = data.quizzes;
+  resetQuizSession();
+  state.quizSession.mode = run.session_mode === "mock" ? "mock" : "practice";
+  state.quizSession.display = run.display_mode === "all" ? "all" : "single";
+  state.quizSession.activeIndex = Number(run.active_index) || 0;
+  state.quizSession.answers = run.answers || {};
+  state.quizSession.confidence = run.confidence || {};
+  state.quizSession.flagged = run.flagged || {};
+  state.quizSession.answerChanges = run.answer_changes || {};
+  state.quizSession.committedAnswers = { ...(run.answers || {}) };
+  state.quizSession.hintUsed = run.hint_used || {};
+  state.quizSession.elapsedSeconds = Number(run.elapsed_seconds) || 0;
+  state.quizSession.startedAt = Date.now();
+  state.answerFeedback = run.feedback || {};
+  state.showAnswers = Object.keys(state.answerFeedback).length > 0;
+  if ($("#quizScope")?.querySelector(`option[value="${run.scope}"]`)) $("#quizScope").value = run.scope;
+  clearQuizDraft();
+  return true;
+}
+
+async function finishServerPracticeRun(action = "complete", practiceSessionId = null) {
+  clearTimeout(practiceRunSyncTimer);
+  if (!state.practiceRun?.id) return;
+  await practiceRunSyncChain.catch(() => null);
+  if (action === "complete" && practiceRunSnapshot()) await syncPracticeRunNow();
+  await api(`/api/practice-runs/${state.practiceRun.id}/${action}`, {
+    method: "POST",
+    body: JSON.stringify({ practice_session_id: practiceSessionId }),
+  });
+  state.practiceRun = null;
+  state.activePracticeData = { run: null, quizzes: [] };
+  renderResumePractice();
 }
 
 function setView(name, { pushHistory = true } = {}) {
@@ -563,9 +674,12 @@ function renderDashboard() {
   $("#modePrimaryAction").textContent = modeFocus.primary || (interest ? "开始轻松阅读" : "开始今日训练");
   $("#modeInsights").innerHTML = (modeFocus.signals || []).map(value => `<span>${escapeHtml(value)}</span>`).join("");
   $("#examReviewSection").hidden = interest;
+  $("#prescriptionBand").hidden = interest;
   $("#globalStyle").title = interest ? "兴趣素材生成题目时参照的考试难度" : "当前备考目标";
   $("#globalStyle").hidden = interest;
   renderDailyPlan();
+  renderResumePractice();
+  renderPrescription();
 
   $("#recentArticles").innerHTML = (state.today.lanes || []).map(lane => {
     const article = lane.article;
@@ -605,6 +719,56 @@ function renderDashboard() {
       </div>
     </div>
   `).join("") || `<div class="item muted">插件保存的划词、段落和正文会出现在这里。</div>`;
+}
+
+function renderResumePractice() {
+  const band = $("#resumePracticeBand");
+  if (!band) return;
+  const run = state.practiceRun || state.activePracticeData?.run;
+  band.hidden = !run;
+  if (!run) return;
+  const answers = run.answers || state.quizSession.answers || {};
+  const answered = Object.values(answers).filter(value => String(value || "").trim()).length;
+  const total = (run.quiz_ids || state.quizzes.map(quiz => quiz.id)).length;
+  $("#resumePracticeTitle").textContent = `继续 ${run.style} ${run.question_type || "综合"}训练`;
+  $("#resumePracticeSummary").textContent = `${answered}/${total} 题 · 已用 ${formatDuration(run.elapsed_seconds || 0)} · 上次保存 ${formatDateTime(run.updated_at)}`;
+}
+
+function prescriptionHtml(prescription, compact = false) {
+  if (!prescription) return `<p class="muted">正在分析最近训练证据。</p>`;
+  const metrics = prescription.metrics || {};
+  const metricItems = [
+    ["正确率", metrics.accuracy == null ? "待建立" : `${metrics.accuracy}%`],
+    ["平均用时", metrics.average_seconds == null ? "暂无" : `${metrics.average_seconds} 秒`],
+    ["平均改答", `${metrics.average_changes || 0} 次`],
+    ["提示使用", `${Math.round((metrics.hint_rate || 0) * 100)}%`],
+    ["确定但答错", `${Math.round((metrics.certain_wrong_rate || 0) * 100)}%`],
+  ];
+  return `
+    <div class="prescription-headline">
+      <div><strong>${escapeHtml(prescription.question_type || "基线训练")}</strong><span>${escapeHtml(prescription.skill || "阅读能力")}</span></div>
+      ${badge(`${prescription.sample_count || 0} 次 / ${prescription.unique_quiz_count || 0} 题`, prescription.evidence_confidence === "high" ? "teal" : "amber")}
+    </div>
+    ${compact ? "" : `<div class="prescription-metrics">${metricItems.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("")}</div>`}
+    <ul class="prescription-reasons">${(prescription.reasons || []).map(reason => `<li>${escapeHtml(reason)}</li>`).join("")}</ul>
+    <div class="toolbar prescription-actions">
+      <button data-start-prescription="5" data-prescription-type="${escapeHtml(prescription.question_type || "")}">练 5 题</button>
+      <button class="primary" data-start-prescription="${prescription.recommended_count || 10}" data-prescription-type="${escapeHtml(prescription.question_type || "")}">按建议练 ${prescription.recommended_count || 10} 题</button>
+    </div>
+    ${compact ? "" : `<p class="prescription-note">${escapeHtml(prescription.evidence_note || "")}</p>`}
+  `;
+}
+
+function renderPrescription() {
+  if (!$("#prescriptionBody")) return;
+  if (state.learnerSettings.recommendations_enabled === false) {
+    $("#prescriptionStatus").textContent = "已关闭";
+    $("#prescriptionBody").innerHTML = `<p class="muted">你已关闭画像推荐；作答记录仍保留，但系统不会安排训练处方。</p>`;
+    return;
+  }
+  const prescription = state.prescription;
+  $("#prescriptionStatus").textContent = prescription?.status === "ready" ? `优先级 ${prescription.priority_score}` : "建立基线中";
+  $("#prescriptionBody").innerHTML = prescriptionHtml(prescription);
 }
 
 function renderArticles() {
@@ -1340,8 +1504,7 @@ function renderPracticeHistory() {
     <div><span>正确率</span><strong>${summary.accuracy || 0}%</strong></div>
     <div><span>已记录训练</span><strong>${state.practiceSessions.length}</strong></div>
   `;
-  const recommendation = analytics.recommendation || {};
-  $("#historyRecommendation").innerHTML = `<strong>下一步建议</strong><p>${escapeHtml(recommendation.reason || "完成一次训练后生成建议。")}</p>${recommendation.question_type ? `<button data-history-next-type="${escapeHtml(recommendation.question_type)}">练习 ${escapeHtml(recommendation.question_type)}</button>` : ""}`;
+  $("#historyRecommendation").innerHTML = prescriptionHtml(state.prescription, true);
   $("#abilityTrendList").innerHTML = (analytics.skills || []).map(item => {
     const trend = item.trend;
     const trendText = trend === null || trend === undefined ? "样本积累中" : trend > 0 ? `近期 +${trend}` : trend < 0 ? `近期 ${trend}` : "近期持平";
@@ -1639,6 +1802,7 @@ async function applyQuizControlChange() {
   if (scope === "full-paper") {
     state.quizzes = state.selectedPaper ? flattenPaperQuizzes(state.selectedPaper) : [];
     resetQuizSession();
+    if (state.quizzes.length) await syncPracticeRunNow({ newRun: true });
     renderQuizzes();
     renderQuizSource();
     return;
@@ -1649,13 +1813,14 @@ async function applyQuizControlChange() {
     return toast("先选择一篇文章");
   }
   if (scope === "passage") {
-    await generateQuizzes(state.selectedArticle.id, { open: false });
+    await generateQuizzes(state.selectedArticle.id, { open: false, startRun: true });
     return;
   }
   await loadQuizzes();
   if (!state.quizzes.length) await generateQuizzes(state.selectedArticle.id, { open: false });
   else {
     resetQuizSession();
+    await syncPracticeRunNow({ newRun: true });
     renderQuizzes();
     renderQuizSource();
     toast(`已切换到 ${$("#quizPracticeType").selectedOptions[0]?.textContent || "当前题型"}`);
@@ -1680,6 +1845,7 @@ async function loadPaper(id) {
   const data = await api(`/api/exam-papers/${id}`);
   $("#quizScope").value = "full-paper";
   applyPaper(data.paper);
+  await syncPracticeRunNow({ newRun: true });
   setView("quiz");
   toast(`已载入 ${data.paper.question_count} 题整套模拟`);
 }
@@ -1691,6 +1857,7 @@ async function generateFullPaper() {
   });
   $("#quizScope").value = "full-paper";
   applyPaper(data.paper);
+  await syncPracticeRunNow({ newRun: true });
   await loadExamLibrary();
   setView("quiz");
   toast("已生成 3 篇 / 40 题 IELTS 模拟套题");
@@ -1807,6 +1974,11 @@ async function loadPracticeHistory({ selectFirst = false } = {}) {
   if (selectFirst && !state.selectedPracticeSession && state.practiceSessions[0]) {
     await selectPracticeSession(state.practiceSessions[0].id, { render: false });
   }
+}
+
+async function loadPracticePrescription() {
+  const data = await api(`/api/practice/prescription?style=${encodeURIComponent(state.style)}`);
+  state.prescription = data.prescription;
 }
 
 async function selectPracticeSession(id, { render = true } = {}) {
@@ -1950,7 +2122,7 @@ async function analyzeArticle() {
   toast("分析完成");
 }
 
-async function generateQuizzes(id = state.selectedArticle?.id, { open = true } = {}) {
+async function generateQuizzes(id = state.selectedArticle?.id, { open = true, startRun = open } = {}) {
   if (!id) return toast("先选文章");
   const mode = "mixed";
   const questionType = $("#quizScope")?.value === "passage"
@@ -1963,6 +2135,7 @@ async function generateQuizzes(id = state.selectedArticle?.id, { open = true } =
   state.quizzes = data.quizzes || [];
   clearQuizDraft();
   resetQuizSession();
+  if (startRun && state.quizzes.length) await syncPracticeRunNow({ newRun: true });
   if (open) setView("quiz");
   renderAll();
   toast("题目已生成");
@@ -2006,6 +2179,7 @@ async function submitAnswer(quizId, answer, button = null, confidence = state.qu
   renderMistakes();
   renderStats();
   renderDashboard();
+  await syncPracticeRunNow();
   const rewardText = data.points ? `，+${data.points} XP` : "（本题积分已结算）";
   if (data.mastery?.mastered) toast(`连续答对，原错题已掌握${rewardText}`);
   else if (data.mastery) toast(data.correct ? `同类题答对，连续 ${data.mastery.streak}/2` : "同类题答错，连续正确重新计算");
@@ -2018,6 +2192,7 @@ async function selectQuizAnswer(quizId, answer) {
   if (previous && previous !== answer) state.quizSession.answerChanges[quizId] = (state.quizSession.answerChanges[quizId] || 0) + 1;
   state.quizSession.committedAnswers[quizId] = answer;
   state.quizSession.answers[quizId] = answer;
+  schedulePracticeRunSync();
   if (state.quizSession.mode === "practice") {
     if (!state.quizSession.confidence[quizId]) return renderQuizzes();
     await submitAnswer(quizId, answer, null, state.quizSession.confidence[quizId]);
@@ -2115,10 +2290,11 @@ async function finishQuizSession() {
     }
   }
   session.elapsedSeconds = elapsedSeconds;
-  session.submitted = true;
   state.showAnswers = true;
   clearQuizDraft();
-  await Promise.all([loadPracticeHistory(), loadToday()]);
+  await finishServerPracticeRun("complete", session.result?.session?.id || null);
+  session.submitted = true;
+  await Promise.all([loadPracticeHistory(), loadPracticePrescription(), loadToday()]);
   renderPracticeHistory();
   renderDashboard();
   renderQuizzes();
@@ -2336,15 +2512,16 @@ async function generateSimilar(mistakeId) {
   toast(`已生成 ${state.similarByMistake[mistakeId].length} 道同类题`);
 }
 
-async function generateNextSet({ questionType = "", errorType = "" } = {}) {
+async function generateNextSet({ questionType = "", errorType = "", limit = 10 } = {}) {
   const data = await api("/api/practice/next-set", {
     method: "POST",
-    body: JSON.stringify({ style: state.style, limit: 10, question_type: questionType, error_type: errorType }),
+    body: JSON.stringify({ style: state.style, limit, question_type: questionType, error_type: errorType }),
   });
   if (!(data.quizzes || []).length) return toast("当前还没有足够的题目或错题生成下一组");
   state.quizzes = data.quizzes;
   state.selectedPaper = null;
   resetQuizSession();
+  await syncPracticeRunNow({ newRun: true });
   setView("quiz");
   renderQuizzes();
   renderQuizSource();
@@ -2389,6 +2566,7 @@ document.addEventListener("click", async event => {
     if (button.dataset.view === "quiz") {
       if (!state.quizzes.length) await loadQuizzes();
       if (!state.quizzes.length && state.selectedArticle) await generateQuizzes(state.selectedArticle.id, { open: false });
+      if (state.quizzes.length && !state.practiceRun) await syncPracticeRunNow({ newRun: true });
       renderQuizzes();
       renderQuizSource();
     }
@@ -2424,6 +2602,23 @@ document.addEventListener("click", async event => {
     if (button.id === "modePrimaryAction") {
       await startModeFocus();
     }
+    if (button.id === "resumePracticeBtn") {
+      setView("quiz");
+      renderQuizzes();
+      renderQuizSource();
+    }
+    if (button.id === "abandonPracticeBtn" && window.confirm("放弃当前未完成训练？已完成的单题作答记录不会删除。")) {
+      await finishServerPracticeRun("abandon");
+      clearQuizDraft();
+      resetQuizSession();
+      renderAll();
+    }
+    if (button.dataset.startPrescription) {
+      await generateNextSet({
+        questionType: button.dataset.prescriptionType || "",
+        limit: Number(button.dataset.startPrescription) || 5,
+      });
+    }
     if (button.id === "toggleTranslationBtn" || button.id === "quizTranslationBtn" || button.dataset.toggleTranslation) {
       state.showTranslation = !state.showTranslation;
       renderReader();
@@ -2455,6 +2650,7 @@ document.addEventListener("click", async event => {
     if (button.id === "loadPaperBtn") await loadPaper(Number($("#quizPaperSelect").value));
     if (button.id === "restartQuizSessionBtn" || button.dataset.retrySession) {
       resetQuizSession();
+      await syncPracticeRunNow({ newRun: true });
       renderQuizzes();
       toast("已重新开始本轮训练");
     }
@@ -2462,10 +2658,12 @@ document.addEventListener("click", async event => {
     if (button.dataset.quizDisplay) {
       state.quizSession.display = button.dataset.quizDisplay;
       localStorage.setItem("lc-v2-quiz-display", state.quizSession.display);
+      schedulePracticeRunSync();
       renderQuizzes();
     }
     if (button.dataset.quizNav !== undefined) {
       state.quizSession.activeIndex = Number(button.dataset.quizNav);
+      schedulePracticeRunSync();
       syncPaperSourceForQuestion();
       renderQuizzes();
       document.querySelector(`[data-quiz-card]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2473,11 +2671,13 @@ document.addEventListener("click", async event => {
     if (button.dataset.flagQuiz) {
       const quizId = Number(button.dataset.flagQuiz);
       state.quizSession.flagged[quizId] = !state.quizSession.flagged[quizId];
+      schedulePracticeRunSync();
       renderQuizzes();
     }
     if (button.dataset.toggleQuizHint) {
       const quizId = Number(button.dataset.toggleQuizHint);
       state.quizSession.hintUsed[quizId] = true;
+      schedulePracticeRunSync();
       renderQuizzes();
       return;
     }
@@ -2540,6 +2740,7 @@ document.addEventListener("click", async event => {
     }
     if (button.dataset.confidenceQuiz) {
       state.quizSession.confidence[Number(button.dataset.confidenceQuiz)] = normalizeConfidenceValue(button.dataset.confidence);
+      schedulePracticeRunSync();
       renderQuizzes();
       return;
     }
@@ -2590,7 +2791,7 @@ $("#globalStyle").addEventListener("change", async event => {
   localStorage.setItem("lc-v2-style", state.style);
   state.selectedPaper = null;
   state.selectedPracticeSession = null;
-  await Promise.all([loadArticles(), loadFeeds(), loadExamTypes(), loadExamLibrary(), loadToday(), loadPracticeHistory()]);
+  await Promise.all([loadArticles(), loadFeeds(), loadExamTypes(), loadExamLibrary(), loadToday(), loadPracticeHistory(), loadPracticePrescription()]);
   await applyQuizControlChange();
   renderAll();
   toast(`文章池已切换为 ${state.style} 来源`);
@@ -2613,10 +2814,11 @@ $("#epubBookSelect").addEventListener("change", async event => {
   await loadBook(Number(event.target.value));
 });
 
-$("#quizSessionMode").addEventListener("change", event => {
+$("#quizSessionMode").addEventListener("change", async event => {
   state.quizSession.mode = event.target.value === "mock" ? "mock" : "practice";
   localStorage.setItem("lc-v2-quiz-session-mode", state.quizSession.mode);
   resetQuizSession();
+  await syncPracticeRunNow({ newRun: true });
   renderQuizzes();
   toast(state.quizSession.mode === "mock" ? "模考模式：交卷后统一显示解析" : "训练模式：作答后立即讲解");
 });
@@ -2625,6 +2827,7 @@ document.addEventListener("input", event => {
   if (!event.target.matches("[data-typed-quiz]")) return;
   const quizId = Number(event.target.dataset.typedQuiz);
   state.quizSession.answers[quizId] = event.target.value;
+  schedulePracticeRunSync();
   const answered = state.quizzes.filter(quiz => String(state.quizSession.answers[quiz.id] || "").trim()).length;
   const progress = $("#quizSessionSummary")?.querySelectorAll("strong")[1];
   if (progress) progress.textContent = `${answered}/${state.quizzes.length}`;
@@ -2704,15 +2907,19 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 
 async function boot() {
   await loadHealth();
-  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadBridgeConfig(), loadBackups(), searchLexicon("", { open: false, history: false })]);
-  if (!state.selectedArticle && state.articles[0]) {
+  await loadActivePracticeData();
+  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadBridgeConfig(), loadBackups(), searchLexicon("", { open: false, history: false })]);
+  const restoredServerRun = await restoreServerPracticeRun();
+  if (!restoredServerRun && !state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);
     state.selectedArticle = data.article;
     state.analysis = data.analysis;
   }
-  await loadQuizzes();
-  if (!state.quizzes.length && state.selectedArticle) {
-    await generateQuizzes(state.selectedArticle.id, { open: false });
+  if (!restoredServerRun) {
+    await loadQuizzes();
+    if (!state.quizzes.length && state.selectedArticle) {
+      await generateQuizzes(state.selectedArticle.id, { open: false, startRun: false });
+    }
   }
   renderAll();
   if (!state.learnerProfile?.completed) openProfileDialog();
@@ -2731,6 +2938,23 @@ setInterval(() => {
   const timer = $("#quizTimer");
   if (timer) timer.textContent = formatDuration(quizElapsedSeconds());
 }, 1000);
+
+setInterval(() => {
+  if (state.practiceRun?.id && !state.quizSession.submitted) {
+    practiceRunSyncChain = practiceRunSyncChain.then(() => syncPracticeRunNow()).catch(() => null);
+  }
+}, 15000);
+
+window.addEventListener("pagehide", () => {
+  const snapshot = practiceRunSnapshot();
+  if (!snapshot || !state.practiceRun?.id) return;
+  fetch("/api/practice-runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(snapshot),
+    keepalive: true,
+  }).catch(() => null);
+});
 
 boot().catch(error => {
   $("#serverStatus").textContent = "后端未连接";

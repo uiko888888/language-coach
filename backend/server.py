@@ -28,10 +28,12 @@ from pathlib import Path
 try:
     from .backups import create_backup, list_backups, restore_backup
     from .migrations import run_migrations
+    from .practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
     from .versioning import SCHEMA_VERSION, app_version, version_payload
 except ImportError:
     from backups import create_backup, list_backups, restore_backup
     from migrations import run_migrations
+    from practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
     from versioning import SCHEMA_VERSION, app_version, version_payload
 
 
@@ -999,6 +1001,33 @@ def init_db() -> None:
               confidence_summary_json TEXT NOT NULL DEFAULT '{}',
               completed_at TEXT NOT NULL,
               FOREIGN KEY (article_id) REFERENCES articles(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS practice_runs (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              learner_key TEXT NOT NULL DEFAULT 'local',
+              practice_session_id INTEGER,
+              article_id INTEGER,
+              style TEXT NOT NULL DEFAULT 'IELTS',
+              question_type TEXT NOT NULL DEFAULT '',
+              scope TEXT NOT NULL DEFAULT 'specialty',
+              session_mode TEXT NOT NULL DEFAULT 'practice',
+              status TEXT NOT NULL DEFAULT 'in_progress',
+              quiz_ids_json TEXT NOT NULL DEFAULT '[]',
+              answers_json TEXT NOT NULL DEFAULT '{}',
+              confidence_json TEXT NOT NULL DEFAULT '{}',
+              flagged_json TEXT NOT NULL DEFAULT '{}',
+              answer_changes_json TEXT NOT NULL DEFAULT '{}',
+              hint_used_json TEXT NOT NULL DEFAULT '{}',
+              feedback_json TEXT NOT NULL DEFAULT '{}',
+              active_index INTEGER NOT NULL DEFAULT 0,
+              display_mode TEXT NOT NULL DEFAULT 'single',
+              elapsed_seconds INTEGER NOT NULL DEFAULT 0,
+              started_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              completed_at TEXT NOT NULL DEFAULT '',
+              FOREIGN KEY (article_id) REFERENCES articles(id),
+              FOREIGN KEY (practice_session_id) REFERENCES practice_sessions(id)
             );
 
             CREATE TABLE IF NOT EXISTS profile_calibrations (
@@ -4441,7 +4470,8 @@ def practice_session_detail(conn: sqlite3.Connection, session_id: int) -> dict |
         return None
     attempts = conn.execute(
         """
-        SELECT at.id AS attempt_id, at.user_answer, at.confidence, at.correct, at.error_type, at.created_at,
+        SELECT at.id AS attempt_id, at.user_answer, at.confidence, at.elapsed_seconds,
+               at.answer_changes, at.hint_used, at.correct, at.error_type, at.created_at,
                q.id AS quiz_id, q.prompt, q.answer, q.evidence, q.skill, q.question_type,
                q.difficulty, q.article_id, ar.title AS article_title
         FROM attempts at
@@ -5274,6 +5304,25 @@ class App(BaseHTTPRequestHandler):
                 if not paper:
                     return json_response(self, {"error": "Exam paper not found"}, 404)
                 return json_response(self, {"paper": paper})
+            if path == "/api/practice-runs/active":
+                with db() as conn:
+                    run = active_practice_run(conn)
+                    quizzes = []
+                    if run:
+                        quiz_ids = run.get("quiz_ids") or []
+                        if quiz_ids:
+                            placeholders = ",".join("?" for _ in quiz_ids)
+                            rows = conn.execute(f"SELECT * FROM quizzes WHERE id IN ({placeholders})", quiz_ids).fetchall()
+                            by_id = {row["id"]: quiz_payload(row) for row in rows}
+                            quizzes = [by_id[quiz_id] for quiz_id in quiz_ids if quiz_id in by_id]
+                return json_response(self, {"run": run, "quizzes": quizzes})
+            if path == "/api/practice/prescription":
+                style = query.get("style", ["IELTS"])[0]
+                configured = EXAM_QUESTION_TYPES.get(style, EXAM_QUESTION_TYPES["general"])
+                default_type = configured[0][0] if configured else ""
+                with db() as conn:
+                    prescription = training_prescription(conn, style, default_type)
+                return json_response(self, {"prescription": prescription})
             if path == "/api/practice-sessions":
                 style = query.get("style", [""])[0]
                 where = "WHERE s.style = ?" if style else ""
@@ -5373,6 +5422,25 @@ class App(BaseHTTPRequestHandler):
                 except (TypeError, ValueError) as exc:
                     return json_response(self, {"error": str(exc)}, 400)
                 return json_response(self, result)
+            if path == "/api/practice-runs":
+                try:
+                    with db() as conn:
+                        run = save_practice_run(conn, payload, utc_now())
+                except (TypeError, ValueError) as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, {"run": run}, 200 if payload.get("id") else 201)
+            match = re.fullmatch(r"/api/practice-runs/(\d+)/(complete|abandon)", path)
+            if match:
+                try:
+                    with db() as conn:
+                        run = finish_practice_run(
+                            conn, int(match.group(1)), utc_now(),
+                            "completed" if match.group(2) == "complete" else "abandoned",
+                            int(payload.get("practice_session_id")) if payload.get("practice_session_id") else None,
+                        )
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 404)
+                return json_response(self, {"run": run})
             if path == "/api/import/epub":
                 try:
                     book, created = import_epub(str(payload.get("path") or ""))
