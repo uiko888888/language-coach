@@ -1098,6 +1098,13 @@ label {
 .search-examples { display: flex; gap: 5px; margin: -2px 0 10px; overflow-x: auto; }
 .search-examples button { min-height: 28px; padding: 0 8px; border-color: transparent; background: var(--surface-2); color: var(--muted); font-size: 12px; white-space: nowrap; }
 .lexicon-layout .master-list { max-height: calc(100vh - 240px); }
+.lexical-data-status { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.lexical-data-status summary { cursor: pointer; color: var(--teal-dark); font-size: 12px; font-weight: 700; }
+.lexical-data-status > div { margin-top: 8px; }
+.lexical-layer-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 12px; }
+.lexical-layer-row span { color: var(--muted); }
+.lexical-layer-row.installed strong { color: var(--teal-dark); }
+.lexical-layer-row.missing strong { color: var(--amber); }
 
 .dictionary-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 17px; border-bottom: 1px solid var(--line); }
 .dictionary-hero h2 { margin: 10px 0 5px; font-family: Georgia, "Times New Roman", serif; font-size: 34px; }
@@ -1155,6 +1162,17 @@ label {
 .example-en { font-family: Georgia, "Times New Roman", serif; }
 .example-zh { margin-top: 5px !important; color: var(--muted); font-size: 13px; }
 .headword-translation { margin: 4px 0 10px; color: var(--accent-strong); font-size: 19px; font-weight: 700; }
+.lexical-frequency-panel { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 16px 0; border: 1px solid var(--line); background: var(--line); gap: 1px; }
+.lexical-frequency-panel > div { display: grid; gap: 4px; padding: 11px 13px; background: var(--surface-2); }
+.lexical-frequency-panel span, .lexical-frequency-panel small { color: var(--muted); font-size: 11px; }
+.lexical-frequency-panel strong { font-size: 15px; }
+.etymology-text { white-space: pre-line; color: var(--text); line-height: 1.7; }
+.attributed-example .context-source { line-height: 1.45; }
+.lexical-source-disclosure { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.lexical-source-disclosure summary { cursor: pointer; color: var(--teal-dark); font-weight: 700; }
+.lexical-source-disclosure ul { display: grid; gap: 8px; padding: 0; list-style: none; }
+.lexical-source-disclosure li { display: grid; grid-template-columns: minmax(150px, auto) auto minmax(0, 1fr); gap: 8px 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+.lexical-source-disclosure span, .lexical-source-disclosure small { color: var(--muted); }
 .query-highlight { padding: 0 2px; background: #fff0c9; color: #6f470f; font-weight: 800; }
 .lookup-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .lookup-heading h2 { margin-bottom: 3px; }
@@ -1225,6 +1243,8 @@ label {
   .article-pool-toolbar { align-items: stretch; flex-direction: column; }
   .article-view-preferences { flex-wrap: wrap; }
   .article-layout-grid .master-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lexical-frequency-panel { grid-template-columns: 1fr; }
+  .lexical-source-disclosure li { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 720px) {

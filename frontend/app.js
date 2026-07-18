@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.21";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.22";
 const SUPPORTED_API_VERSION = "1";
 
 const state = {
@@ -26,6 +26,7 @@ const state = {
   subscriptions: [],
   today: { lanes: [], subscription_count: 0 },
   lexiconResults: [],
+  lexicalDataStatus: { layers: [], sources: [], counts: {} },
   selectedLexicalItem: null,
   lexiconFilter: "all",
   progress: { xp: 0, level: 1, level_xp: 0, streak: 0 },
@@ -988,26 +989,27 @@ async function renderLookup(word) {
 }
 
 function lexicalLabel(item) {
-  return ["entry", "wordnet"].includes(item.type) ? item.headword : item.type === "query" ? item.term : item.form;
+  return ["entry", "wordnet", "open"].includes(item.type) ? item.headword : item.type === "query" ? item.term : item.form;
 }
 
 function lexicalSubtitle(item) {
   if (item.type === "entry") return `${item.pos} · ${item.meaning_zh}`;
   if (item.type === "wordnet") return `${item.pos} · ${item.meaning_zh || item.core_meaning}`;
+  if (item.type === "open") return `${item.pos} · ${item.meaning_zh || item.core_meaning}`;
   if (item.type === "query") return `${item.kind === "phrase" ? "短语" : "单词"} · ${item.translation_zh || (item.saved ? "已在生词本" : "待补充释义")}`;
   return `${item.kind} · ${item.meaning_zh}`;
 }
 
 function matchesLexiconFilter(item) {
   if (state.lexiconFilter === "all") return true;
-  if (state.lexiconFilter === "family") return ["entry", "wordnet"].includes(item.type);
+  if (state.lexiconFilter === "family") return ["entry", "wordnet", "open"].includes(item.type);
   if (state.lexiconFilter === "morpheme") return item.type === "morpheme";
   return item.type === "morpheme" && item.kind === state.lexiconFilter;
 }
 
 function termText(item) {
   if (typeof item === "string") return item.split("（")[0];
-  return item?.term || item?.phrase || "";
+  return item?.term || item?.phrase || item?.form || item?.word || "";
 }
 
 function termChinese(item) {
@@ -1061,6 +1063,30 @@ function contextExamples(contexts) {
   </article>`).join("");
 }
 
+function lexicalFrequencyPanel(item) {
+  const frequency = item.frequency || item.lexical_layers?.primary_frequency;
+  const corpus = item.corpus_frequency || {};
+  if (!frequency && !corpus.occurrence_count) return "";
+  return `
+    <section class="lexical-frequency-panel" aria-label="词汇常用度">
+      <div><span>通用常用度</span><strong>${frequency ? escapeHtml(frequency.frequency_band) : "待导入"}</strong><small>${frequency ? `Zipf ${Number(frequency.zipf_frequency).toFixed(2)} · ${escapeHtml(frequency.source_name || "wordfreq")}` : "尚未导入开放频率数据"}</small></div>
+      <div><span>你的内容池</span><strong>${corpus.occurrence_count || 0} 次</strong><small>${corpus.article_count || 0} 篇文章出现；不冒充通用词频</small></div>
+    </section>`;
+}
+
+function openExampleCards(examples, item) {
+  return (examples || []).map(example => `
+    <article class="example-item attributed-example">
+      <p class="example-zh">${escapeHtml(example.target_text)}</p>
+      <p class="example-en">${highlightLexicalText(example.source_text, item)}</p>
+      <p class="context-source">${escapeHtml(example.source_name || "Tatoeba")} · ${escapeHtml(example.license)} · ${escapeHtml(example.source_author || "署名缺失")}${example.target_author ? ` / ${escapeHtml(example.target_author)}` : ""}</p>
+    </article>`).join("");
+}
+
+function lexicalSources(sources) {
+  return (sources || []).map(source => `<li><strong>${source.url ? `<a href="${escapeHtml(source.url)}" target="_blank" rel="noreferrer">${escapeHtml(source.name)}</a>` : escapeHtml(source.name)}</strong><span>${escapeHtml(source.version || "")}</span><small>${escapeHtml(source.license)} · ${escapeHtml(source.attribution)}</small></li>`).join("");
+}
+
 function bilingualExamples(examples, item) {
   return (examples || []).map(example => {
     const current = typeof example === "string" ? { text: example, translation: "" } : example;
@@ -1100,6 +1126,27 @@ function renderLexicalDetail(item) {
     `;
     return;
   }
+  if (item.type === "open") {
+    const layers = item.lexical_layers || {};
+    const pronunciation = (layers.pronunciations || []).map(value => value.ipa || value.enpr || "").find(Boolean) || "";
+    detail.innerHTML = `
+      <div class="dictionary-hero">
+        <div><div class="badge-row">${badge(item.source_name || "开放词典", "teal")}${badge(item.pos || "词条")}${layers.primary_frequency ? badge(layers.primary_frequency.frequency_band, "amber") : ""}</div><h2>${escapeHtml(item.headword)}</h2><div class="pronunciation">${pronunciation ? `<span>${escapeHtml(pronunciation)}</span>` : ""}<button data-speak="${escapeHtml(item.headword)}" data-voice="en-US" title="播放发音">▶ US</button></div></div>
+        <div class="toolbar"><button class="primary" data-save-lookup="${escapeHtml(item.headword)}">加入生词本</button><a class="button-link" href="https://dict.eudic.net/dicts/en/${encodeURIComponent(item.headword)}" target="_blank" rel="noreferrer">在欧路中查看</a></div>
+      </div>
+      ${item.meaning_zh ? `<p class="headword-translation">${escapeHtml(item.meaning_zh)}</p>` : ""}
+      <p class="core-definition">${escapeHtml(item.core_meaning || "暂无英文概念释义")}</p>
+      ${lexicalFrequencyPanel(item)}
+      <div class="dictionary-columns">
+        <section class="dictionary-section"><h3>开放义项</h3><div class="sense-list">${(layers.entries || []).map(entry => `<article class="sense-item"><div class="sense-head"><strong>${escapeHtml(entry.pos || "词性未标")}</strong></div>${(entry.translations_zh || []).map(value => `<p class="sense-meaning">${escapeHtml(value)}</p>`).join("")}${(entry.glosses || []).map(value => `<p class="sense-definition-en">${escapeHtml(value)}</p>`).join("")}</article>`).join("")}</div></section>
+        <section class="dictionary-section"><h3>词形与派生</h3><div class="term-grid">${termButtons(layers.forms || [], "family")}</div></section>
+        <section class="dictionary-section"><h3>词源</h3>${(layers.etymologies || []).map(value => `<p class="etymology-text">${escapeHtml(value)}</p>`).join("") || `<div class="empty-state">当前开放词条没有词源记录</div>`}</section>
+        <section class="dictionary-section"><h3>开放双语例句</h3>${openExampleCards(layers.examples, item) || `<div class="empty-state">尚未导入匹配句对</div>`}</section>
+      </div>
+      <details class="lexical-source-disclosure"><summary>数据来源与许可证</summary><ul>${lexicalSources(layers.sources)}</ul></details>
+    `;
+    return;
+  }
   if (item.type === "wordnet") {
     const translated = state.lookupTranslations[item.headword.toLowerCase()] || item.meaning_zh || "";
     const relationSections = (item.semantic_relations || []).map(relation => `
@@ -1107,19 +1154,23 @@ function renderLexicalDetail(item) {
     `).join("");
     detail.innerHTML = `
       <div class="dictionary-hero">
-        <div><div class="badge-row">${badge("WordNet", "teal")}${badge(item.pos)}${badge(item.source_version || "2025")}</div><h2>${escapeHtml(item.headword)}</h2><div class="pronunciation">${item.ipa_uk ? `<span>${escapeHtml(item.ipa_uk)}</span>` : ""}<button data-speak="${escapeHtml(item.headword)}" data-voice="en-US" title="播放发音">▶ US</button></div></div>
+        <div><div class="badge-row">${badge("WordNet", "teal")}${badge(item.pos)}${badge(item.source_version || "2025")}${item.frequency ? badge(item.frequency.frequency_band, "amber") : ""}</div><h2>${escapeHtml(item.headword)}</h2><div class="pronunciation">${item.ipa_uk ? `<span>${escapeHtml(item.ipa_uk)}</span>` : ""}<button data-speak="${escapeHtml(item.headword)}" data-voice="en-US" title="播放发音">▶ US</button></div></div>
         <div class="toolbar"><button class="primary" data-save-lookup="${escapeHtml(item.headword)}">${item.saved ? "更新生词语境" : "加入生词本"}</button>${item.headword_translation_zh ? "" : `<button data-translate-wordnet="${item.id}">翻译中文义项</button>`}<a class="button-link" href="https://dict.eudic.net/dicts/en/${encodeURIComponent(item.headword)}" target="_blank" rel="noreferrer">在欧路中查看</a></div>
       </div>
       ${item.headword_translation_zh ? `<p class="headword-translation">${escapeHtml(item.headword_translation_zh)}</p>` : ""}
       <p class="core-definition">${escapeHtml(item.core_meaning || "")}</p>
       ${translated ? `<p class="zh-definition">${escapeHtml(translated)}</p>` : `<p class="muted">${state.bridge?.translation?.verified === false ? escapeHtml(state.bridge.translation.last_error || "中文翻译服务验证失败，请检查 API 配置。") : "WordNet 提供英文义项；中文确认可使用上方翻译，结果会缓存到本地。"}</p>`}
+      ${lexicalFrequencyPanel(item)}
       <div class="dictionary-columns">
         <section class="dictionary-section"><h3>义项与例句</h3><div class="sense-list">${(item.senses || []).map((sense, index) => `<article class="sense-item"><div class="sense-head"><strong>义项 ${index + 1}</strong>${sense.pos ? badge(sense.pos) : ""}</div>${(sense.definitions || []).map((definition, definitionIndex) => `${sense.definition_translations?.[definitionIndex] ? `<p class="sense-meaning">${escapeHtml(sense.definition_translations[definitionIndex])}</p>` : ""}<p class="sense-definition-en">${escapeHtml(definition)}</p>`).join("")}${(sense.examples || []).length ? `<div class="sense-examples">${(sense.examples || []).map((example, exampleIndex) => `<article>${sense.example_translations?.[exampleIndex] ? `<p class="example-zh">${escapeHtml(sense.example_translations[exampleIndex])}</p>` : ""}<p class="example-en">${searchableEnglish(example)}</p></article>`).join("")}</div>` : `<p class="muted">该义项暂无开放例句</p>`}</article>`).join("") || `<div class="empty-state">暂无义项</div>`}</div></section>
         <section class="dictionary-section"><h3>搭配（按个人语料排序）</h3><div class="phrase-list">${phraseCards(item.collocations) || `<div class="empty-state">个人语料中暂无可确认搭配；后续开放搭配词典会补充常见表达。</div>`}</div></section>
         <section class="dictionary-section"><h3>近义词</h3><div class="term-grid">${termButtons(item.synonyms, "synonym") || `<div class="empty-state">WordNet 未提供近义词</div>`}</div><h4>反义词</h4><div class="term-grid">${termButtons(item.antonyms, "antonym") || `<div class="empty-state">WordNet 未提供直接反义词</div>`}</div></section>
         <section class="dictionary-section"><h3>语义关系</h3>${relationSections || `<div class="empty-state">暂无关系数据</div>`}<p class="source-note">英文语义：${escapeHtml(item.source_name || "Open English WordNet")} · ${escapeHtml(item.license || "CC BY 4.0")}<br>中文：开放双语数据或本地翻译缓存；机器翻译不冒充出版词典释义。</p></section>
+        <section class="dictionary-section"><h3>词形与开放词源</h3><div class="term-grid">${termButtons(item.forms || [], "family")}</div>${item.origin ? `<p class="etymology-text">${escapeHtml(item.origin)}</p>` : `<p class="muted">导入 Kaikki 精选词条后显示词源与更多词形。</p>`}</section>
+        <section class="dictionary-section"><h3>开放双语例句</h3>${openExampleCards(item.open_examples, item) || `<div class="empty-state">导入 Tatoeba 英汉句对后显示署名例句。</div>`}</section>
       </div>
       ${item.contexts?.length ? `<section class="dictionary-section"><h3>真实语境 · ${item.contexts.length} 例</h3>${contextExamples(item.contexts)}</section>` : ""}
+      ${item.open_sources?.length ? `<details class="lexical-source-disclosure"><summary>数据来源与许可证</summary><ul>${lexicalSources(item.open_sources)}</ul></details>` : ""}
     `;
     return;
   }
@@ -1151,7 +1202,16 @@ function renderLexicon() {
     <button class="master-list-item ${item.type === state.selectedLexicalItem?.type && item.id === state.selectedLexicalItem?.id ? "active" : ""}" data-lexical-type="${item.type}" data-lexical-id="${item.id}">
       <span class="master-number">${String(index + 1).padStart(2, "0")}</span><span class="master-copy"><strong>${escapeHtml(lexicalLabel(item))}</strong><small>${escapeHtml(lexicalSubtitle(item))}</small><em>${escapeHtml(item.matched_by || "")}</em></span>
     </button>`).join("") || `<div class="empty-state">没有匹配结果，换一个词形或中文含义试试。</div>`;
+  $("#lexicalDataStatus").innerHTML = (state.lexicalDataStatus.layers || []).map(layer => `
+    <div class="lexical-layer-row ${layer.installed ? "installed" : "missing"}">
+      <span>${escapeHtml(layer.label)}</span><strong>${layer.installed ? Number(layer.count).toLocaleString("zh-CN") : "未导入"}</strong>
+    </div>`).join("");
   renderLexicalDetail(state.selectedLexicalItem);
+}
+
+async function loadDictionaryStatus() {
+  const data = await api("/api/dictionary/status");
+  state.lexicalDataStatus = data;
 }
 
 async function searchLexicon(query, { open = true, quick = false, history = true } = {}) {
@@ -2980,7 +3040,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 async function boot() {
   await loadHealth();
   await loadActivePracticeData();
-  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadBridgeConfig(), loadBackups(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadBridgeConfig(), loadBackups(), searchLexicon("", { open: false, history: false })]);
   const restoredServerRun = await restoreServerPracticeRun();
   if (!restoredServerRun && !state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);

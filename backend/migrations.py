@@ -4,6 +4,11 @@ import sqlite3
 from collections.abc import Callable
 from datetime import datetime, timezone
 
+try:
+    from .lexical_data import ensure_lexical_data_schema
+except ImportError:
+    from lexical_data import ensure_lexical_data_schema
+
 
 Migration = tuple[int, str, Callable[[sqlite3.Connection], None]]
 
@@ -139,11 +144,16 @@ def _article_visibility(conn: sqlite3.Connection) -> None:
     )
 
 
+def _open_lexical_layers(conn: sqlite3.Connection) -> None:
+    ensure_lexical_data_schema(conn)
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     (1, "consolidate legacy schema", _legacy_schema),
     (2, "add training loop metrics", _training_loop_metrics),
     (3, "add server-side practice run state", _practice_run_state),
     (4, "classify public and private article material", _article_visibility),
+    (5, "add layered open lexical data", _open_lexical_layers),
 )
 
 

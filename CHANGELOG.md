@@ -9,6 +9,29 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.22] - 2026-07-18
+
+### Added
+
+- Added schema 5 layered lexical storage for open entries, attributable bilingual examples and frequency records.
+- Added streaming Kaikki/Wiktionary JSONL, Tatoeba detailed-export and wordfreq-compatible TSV importers.
+- Added exact English and Chinese lookup across imported open entries.
+- Added commonness, local corpus occurrence, open etymology, forms, bilingual examples and source-license sections to dictionary results.
+- Added `/api/dictionary/status` and an in-app layer status panel showing actual installed counts.
+- Added `DICTIONARY_DATA.md` with source, license, import and verification operations.
+
+### Changed
+
+- WordNet results can now merge Kaikki, Tatoeba and frequency layers without replacing their original source attribution.
+- Personal article frequency and general Zipf frequency are displayed separately.
+- Tatoeba imports reject sentence pairs without both sentence authors.
+
+### Known limits
+
+- The real local database currently has Open English WordNet installed; Kaikki, Tatoeba and wordfreq remain uninstalled until their licensed source files are supplied.
+- Frequency does not rank individual WordNet senses, and imported Wiktionary translations still require representative quality review.
+- Commercial Oxford, Cambridge, Collins and Eudic data are not copied; only licensed APIs or external links may be used.
+
 ## [0.8.0-alpha.21] - 2026-07-18
 
 ### Added

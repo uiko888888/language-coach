@@ -27,11 +27,13 @@ from pathlib import Path
 
 try:
     from .backups import create_backup, list_backups, restore_backup
+    from .lexical_data import lookup_lexical_layers, search_open_entries
     from .migrations import run_migrations
     from .practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
     from .versioning import SCHEMA_VERSION, app_version, version_payload
 except ImportError:
     from backups import create_backup, list_backups, restore_backup
+    from lexical_data import lookup_lexical_layers, search_open_entries
     from migrations import run_migrations
     from practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
     from versioning import SCHEMA_VERSION, app_version, version_payload
@@ -3938,7 +3940,7 @@ def lexical_query_context(term: str, limit: int = 12) -> dict:
         ).fetchone()
         article_rows = conn.execute(
             """SELECT id, title, source, body FROM articles
-               WHERE lower(body) LIKE lower(?) ORDER BY updated_at DESC, id DESC LIMIT 20""",
+               WHERE lower(body) LIKE lower(?) ORDER BY updated_at DESC, id DESC""",
             (f"%{normalized}%",),
         ).fetchall()
 
@@ -3951,7 +3953,13 @@ def lexical_query_context(term: str, limit: int = 12) -> dict:
             "translation_zh": "",
         })
     pattern = re.compile(rf"(?<![A-Za-z]){re.escape(normalized)}(?![A-Za-z])", re.I)
+    article_count = 0
+    occurrence_count = 0
     for row in article_rows:
+        row_occurrences = len(pattern.findall(row["body"]))
+        if row_occurrences:
+            article_count += 1
+            occurrence_count += row_occurrences
         for context in (sentence for sentence in sentences(row["body"]) if pattern.search(sentence)):
             if any(item["text"] == context for item in contexts):
                 continue
@@ -3975,6 +3983,8 @@ def lexical_query_context(term: str, limit: int = 12) -> dict:
         "card_id": card["id"] if card else None,
         "card_status": card["status"] if card else "",
         "contexts": contexts[:limit],
+        "article_count": article_count,
+        "occurrence_count": occurrence_count,
     }
 
 
@@ -4099,6 +4109,7 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
         ).fetchall()
         if not rows:
             return []
+        lexical_layers = lookup_lexical_layers(conn, term)
         synset_ids = list(dict.fromkeys(row["synset_id"] for row in rows))
         placeholders = ",".join("?" for _ in synset_ids)
         relation_rows = conn.execute(
@@ -4126,6 +4137,18 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
 
     learning = lexical_query_context(term)
     collocations = contextual_collocations(term, learning["contexts"])
+    for phrase in lexical_layers["phrases"][:12]:
+        value = phrase.get("word") if isinstance(phrase, dict) else str(phrase)
+        if value and not any(item["phrase"].casefold() == value.casefold() for item in collocations):
+            collocations.append({
+                "phrase": value,
+                "meaning_zh": phrase.get("meaning_zh", "") if isinstance(phrase, dict) else "",
+                "source": "Kaikki / Wiktionary",
+                "observed_count": 0,
+                "contexts": [],
+                "synonyms": [],
+                "antonyms": [],
+            })
     source_segments = [term, *[item["phrase"] for item in collocations]]
     for row in rows:
         source_segments.extend(json.loads(row["definitions_json"] or "[]"))
@@ -4139,7 +4162,10 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
     for _, sense_rows in list(grouped.items())[:limit]:
         headword = sense_rows[0]["lemma"]
         pos_values = list(dict.fromkeys(row["pos"] for row in sense_rows if row["pos"]))
-        pronunciations = []
+        pronunciations = [
+            value.get("ipa") or value.get("enpr") if isinstance(value, dict) else str(value)
+            for value in lexical_layers["pronunciations"]
+        ]
         senses = []
         synonyms = []
         examples = []
@@ -4165,9 +4191,11 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
 
         unique = lambda values: list(dict.fromkeys(value for value in values if value))
         pronunciations = unique(pronunciations)
-        synonyms = unique(synonyms)
+        open_synonyms = [value.get("word", "") if isinstance(value, dict) else str(value) for value in lexical_layers["synonyms"]]
+        open_antonyms = [value.get("word", "") if isinstance(value, dict) else str(value) for value in lexical_layers["antonyms"]]
+        synonyms = unique([*synonyms, *open_synonyms])
         examples = unique(examples)
-        antonyms = unique(semantic_relations.get("antonym", []))
+        antonyms = unique([*semantic_relations.get("antonym", []), *open_antonyms])
         family = unique(
             semantic_relations.get("hypernym", [])
             + semantic_relations.get("hyponym", [])
@@ -4191,13 +4219,13 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
             "ipa_uk": pronunciations[0] if pronunciations else "",
             "ipa_us": pronunciations[0] if pronunciations else "",
             "core_meaning": next((definition for sense in senses for definition in sense["definitions"]), ""),
-            "meaning_zh": next((cached_zh.get(value, "") for sense in senses for value in sense["definitions"] if cached_zh.get(value)), learning["translation_zh"]),
+            "meaning_zh": next(iter(lexical_layers["translations_zh"]), next((cached_zh.get(value, "") for sense in senses for value in sense["definitions"] if cached_zh.get(value)), learning["translation_zh"])),
             "headword_translation_zh": cached_zh.get(headword, ""),
             "level": "",
             "register_label": "开放词典",
-            "origin": "",
+            "origin": "\n\n".join(lexical_layers["etymologies"][:3]),
             "breakdown": "",
-            "forms": [],
+            "forms": lexical_layers["forms"],
             "aliases": [],
             "family": [{"term": value, "meaning_zh": cached_zh.get(value, "")} for value in family[:24]],
             "collocations": [{**item, "meaning_zh": cached_zh.get(item["phrase"], "")} for item in collocations],
@@ -4219,6 +4247,14 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
             "saved": learning["saved"],
             "card_status": learning["card_status"],
             "contexts": learning["contexts"],
+            "corpus_frequency": {
+                "article_count": learning["article_count"],
+                "occurrence_count": learning["occurrence_count"],
+            },
+            "frequency": lexical_layers["primary_frequency"],
+            "open_examples": lexical_layers["examples"],
+            "open_sources": lexical_layers["sources"],
+            "open_entries": lexical_layers["entries"],
             "source_name": source["source_name"],
             "source_version": source["source_version"],
             "license": source["license"],
@@ -4286,6 +4322,23 @@ def lexical_search(query: str, limit: int = 30) -> dict:
     if wordnet_results:
         exact_lexical_match = True
         results.extend(wordnet_results)
+    with db() as conn:
+        open_results = search_open_entries(conn, raw) if raw else []
+    if open_results and not wordnet_results:
+        for item in open_results:
+            learning = lexical_query_context(item["headword"])
+            item.update({
+                "saved": learning["saved"],
+                "card_status": learning["card_status"],
+                "contexts": learning["contexts"],
+                "corpus_frequency": {
+                    "article_count": learning["article_count"],
+                    "occurrence_count": learning["occurrence_count"],
+                },
+                "frequency": item["lexical_layers"]["primary_frequency"],
+            })
+        exact_lexical_match = any(item["score"] >= 90 for item in open_results)
+        results.extend(open_results)
 
     is_english_term = bool(re.fullmatch(r"[A-Za-z][A-Za-z' -]{0,79}", raw)) and len(raw.split()) <= 6
     if is_english_term and not exact_lexical_match:
@@ -4304,6 +4357,30 @@ def lexical_search(query: str, limit: int = 30) -> dict:
 
     results.sort(key=lambda item: (-item["score"], item.get("headword", item.get("form", ""))))
     return {"query": raw, "count": len(results), "results": results[:limit]}
+
+
+def dictionary_data_status() -> dict:
+    with db() as conn:
+        sources = rows_to_dicts(conn.execute(
+            "SELECT * FROM dictionary_sources ORDER BY imported_at DESC, source_key"
+        ).fetchall())
+        counts = {
+            "wordnet_lemmas": conn.execute("SELECT COUNT(*) FROM wordnet_lemmas").fetchone()[0],
+            "open_entries": conn.execute("SELECT COUNT(*) FROM open_lexical_entries").fetchone()[0],
+            "bilingual_examples": conn.execute("SELECT COUNT(*) FROM open_bilingual_examples").fetchone()[0],
+            "frequencies": conn.execute("SELECT COUNT(*) FROM lexical_frequencies").fetchone()[0],
+            "curated_entries": conn.execute("SELECT COUNT(*) FROM dictionary_entries").fetchone()[0],
+        }
+    installed = {item["source_key"] for item in sources}
+    layers = [
+        {"id": "wordnet", "label": "英文语义", "source_key": "open-english-wordnet", "count": counts["wordnet_lemmas"]},
+        {"id": "kaikki", "label": "词形与词源", "source_key": "kaikki-english", "count": counts["open_entries"]},
+        {"id": "tatoeba", "label": "英汉例句", "source_key": "tatoeba-en-zh", "count": counts["bilingual_examples"]},
+        {"id": "wordfreq", "label": "通用频率", "source_key": "wordfreq", "count": counts["frequencies"]},
+    ]
+    for layer in layers:
+        layer["installed"] = layer["source_key"] in installed and layer["count"] > 0
+    return {"sources": sources, "layers": layers, "counts": counts}
 
 
 def progress_payload(conn: sqlite3.Connection) -> dict:
@@ -5267,6 +5344,8 @@ class App(BaseHTTPRequestHandler):
                 return json_response(self, today_content(query.get("exam", [""])[0], query.get("mode", ["exam"])[0]))
             if path == "/api/lexicon/search":
                 return json_response(self, lexical_search(query.get("q", [""])[0]))
+            if path == "/api/dictionary/status":
+                return json_response(self, dictionary_data_status())
             match = re.fullmatch(r"/api/lexicon/entries/(\d+)", path)
             if match:
                 with db() as conn:

@@ -130,7 +130,7 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.21";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.22";', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
 
@@ -175,6 +175,17 @@ class ProfileUiContractTests(unittest.TestCase):
             self.assertIn(contract, self.html + self.js)
         self.assertIn(".master-detail.article-layout-grid", self.css)
         self.assertIn("grid-template-columns: clamp(260px, 26vw, 320px) minmax(0, 1fr)", self.css)
+
+    def test_dictionary_exposes_frequency_attribution_and_layer_status(self):
+        self.assertIn('id="lexicalDataStatus"', self.html)
+        for contract in (
+            'api("/api/dictionary/status")', "function lexicalFrequencyPanel(item)",
+            "function openExampleCards(examples, item)", "通用常用度", "你的内容池",
+            "数据来源与许可证", 'item.type === "open"',
+        ):
+            self.assertIn(contract, self.html + self.js)
+        for selector in (".lexical-frequency-panel", ".lexical-source-disclosure", ".lexical-layer-row"):
+            self.assertIn(selector, self.css)
 
 
 if __name__ == "__main__":
