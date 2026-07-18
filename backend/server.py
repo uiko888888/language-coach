@@ -4111,6 +4111,35 @@ WORDNET_RELATION_LABELS = {
 }
 
 
+def resolve_pronunciations(open_values: list, generic_values: list[str] | None = None) -> dict[str, str]:
+    """Keep dialect labels when an open source provides them, with an honest generic fallback."""
+    generic_values = generic_values or []
+    uk = ""
+    us = ""
+    generic = ""
+    for value in open_values or []:
+        if isinstance(value, dict):
+            pronunciation = str(value.get("ipa") or value.get("enpr") or "").strip()
+            tags = {str(tag).strip().casefold() for tag in (value.get("tags") or [])}
+        else:
+            pronunciation = str(value).strip()
+            tags = set()
+        if not pronunciation:
+            continue
+        if tags.intersection({"uk", "british", "received pronunciation", "rp"}):
+            uk = uk or pronunciation
+        elif tags.intersection({"us", "american", "general american", "ga"}):
+            us = us or pronunciation
+        else:
+            generic = generic or pronunciation
+    generic = generic or next((str(value).strip() for value in generic_values if str(value).strip()), "")
+    return {
+        "ipa_uk": uk or generic,
+        "ipa_us": us or generic,
+        "pronunciation_scope": "dialect-specific" if uk or us else ("generic" if generic else "unavailable"),
+    }
+
+
 def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
     normalized = re.sub(r"\s+", " ", term).strip().casefold()
     if not normalized:
@@ -4183,16 +4212,13 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
     for _, sense_rows in list(grouped.items())[:limit]:
         headword = sense_rows[0]["lemma"]
         pos_values = list(dict.fromkeys(row["pos"] for row in sense_rows if row["pos"]))
-        pronunciations = [
-            value.get("ipa") or value.get("enpr") if isinstance(value, dict) else str(value)
-            for value in lexical_layers["pronunciations"]
-        ]
+        generic_pronunciations = []
         senses = []
         synonyms = []
         examples = []
         semantic_relations: dict[str, list[str]] = {}
         for row in sense_rows:
-            pronunciations.extend(json.loads(row["pronunciations_json"] or "[]"))
+            generic_pronunciations.extend(json.loads(row["pronunciations_json"] or "[]"))
             definitions = json.loads(row["definitions_json"] or "[]")
             sense_examples = json.loads(row["examples_json"] or "[]")
             members = json.loads(row["members_json"] or "[]")
@@ -4211,7 +4237,7 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
                 semantic_relations.setdefault(relation_type, []).extend(members)
 
         unique = lambda values: list(dict.fromkeys(value for value in values if value))
-        pronunciations = unique(pronunciations)
+        pronunciation = resolve_pronunciations(lexical_layers["pronunciations"], unique(generic_pronunciations))
         open_synonyms = [value.get("word", "") if isinstance(value, dict) else str(value) for value in lexical_layers["synonyms"]]
         open_antonyms = [value.get("word", "") if isinstance(value, dict) else str(value) for value in lexical_layers["antonyms"]]
         synonyms = unique([*synonyms, *open_synonyms])
@@ -4237,8 +4263,7 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
             "headword": headword,
             "pos": " / ".join(WORDNET_POS_LABELS.get(value, value) for value in pos_values),
             "parts_of_speech": [WORDNET_POS_LABELS.get(value, value) for value in pos_values],
-            "ipa_uk": pronunciations[0] if pronunciations else "",
-            "ipa_us": pronunciations[0] if pronunciations else "",
+            **pronunciation,
             "core_meaning": next((definition for sense in senses for definition in sense["definitions"]), ""),
             "meaning_zh": next(iter(lexical_layers["translations_zh"]), next((cached_zh.get(value, "") for sense in senses for value in sense["definitions"] if cached_zh.get(value)), learning["translation_zh"])),
             "headword_translation_zh": cached_zh.get(headword, ""),

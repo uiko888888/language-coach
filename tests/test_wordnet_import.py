@@ -100,6 +100,23 @@ class WordNetImportTests(unittest.TestCase):
         self.assertEqual({sense["pos"] for sense in results[0]["senses"]}, {"noun", "verb"})
         self.assertEqual(len(results[0]["examples"]), 2)
 
+    def test_generic_pronunciation_is_labeled_without_inventing_dialects(self):
+        result = server.lexical_search("test")["results"][0]
+        self.assertEqual(result["ipa_uk"], "/test/")
+        self.assertEqual(result["ipa_us"], "/test/")
+        self.assertEqual(result["pronunciation_scope"], "generic")
+
+    def test_tagged_open_pronunciations_keep_uk_and_us_distinct(self):
+        resolved = server.resolve_pronunciations([
+            {"ipa": "/kɑːst/", "tags": ["UK"]},
+            {"ipa": "/kæst/", "tags": ["US", "General American"]},
+        ], ["/kast/"])
+        self.assertEqual(resolved["ipa_uk"], "/kɑːst/")
+        self.assertEqual(resolved["ipa_us"], "/kæst/")
+        self.assertEqual(resolved["pronunciation_scope"], "dialect-specific")
+        australian = server.resolve_pronunciations([{"ipa": "/test/", "tags": ["Australian"]}])
+        self.assertEqual(australian["pronunciation_scope"], "generic")
+
     def test_cached_word_and_relation_translations_are_exposed(self):
         values = {"test": "测试", "concept": "概念"}
         with server.db() as conn:

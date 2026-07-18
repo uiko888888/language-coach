@@ -9,6 +9,21 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.23.0.1] - 2026-07-18
+
+### Fixed
+
+- Show cached or translated Chinese before each WordNet English definition and example without requiring a manual translation click.
+- Trigger translation when any sense definition or example is missing Chinese, not only when the headword is missing it.
+- Provide UK and US speech controls for query, open-dictionary, WordNet and curated entries.
+- Preserve dialect-tagged open IPA and label a shared WordNet fallback as generic instead of claiming dialect-specific transcription.
+- Place personal bilingual contexts beside the sense list and label them as supplemental, non-sense-aligned evidence.
+
+### Known limits
+
+- Open English WordNet does not include examples for every sense; this release does not invent missing examples.
+- Chinese is open bilingual data or locally cached machine translation, not copied commercial-dictionary content.
+
 ## [0.8.0-alpha.23.0] - 2026-07-18
 
 ### Added

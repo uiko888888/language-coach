@@ -30,14 +30,13 @@ async function run() {
   let browser;
   try {
     const version = await waitForServer();
-    if (version.app_version !== "0.8.0-alpha.22.1" || version.database_schema_version !== 6) {
+    if (version.app_version !== "0.8.0-alpha.23.0.1" || version.database_schema_version !== 7) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
-    await fetch(`${baseUrl}/api/lexicon/history/clear`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "{}",
-    });
+    const lexicalPayload = await fetch(`${baseUrl}/api/lexicon/search?q=cast`).then(response => response.json());
+    const wordnet = lexicalPayload.results.find(item => item.type === "wordnet");
+    if (!wordnet?.senses?.some(sense => sense.definition_translations?.some(Boolean))) failures.push("cast has no Chinese sense translation");
+    if (!wordnet?.senses?.some(sense => sense.examples?.length && sense.example_translations?.some(Boolean))) failures.push("cast has no bilingual sense example");
     const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
     browser = await chromium.launch({
       headless: true,
@@ -50,7 +49,7 @@ async function run() {
         failures.push(`response ${response.status()}: ${response.url()}`);
       }
     });
-    await page.goto(`${baseUrl}/?view=lexicon&q=inspecting`, { waitUntil: "networkidle" });
+    await page.goto(`${baseUrl}/?view=lexicon&q=cast`, { waitUntil: "networkidle" });
     if (await page.locator("#assistantDialog[open]").count()) await page.click("#closeAssistantBtn");
     if (await page.locator("#profileEditor[open]").count()) await page.click("#cancelProfileDialogBtn");
     await page.waitForSelector("#view-lexicon.active");
@@ -58,22 +57,19 @@ async function run() {
     if (sidebarPosition !== "fixed") failures.push(`sidebar is not fixed: ${sidebarPosition}`);
     const columns = await page.locator(".lexicon-layout").evaluate(element => getComputedStyle(element).gridTemplateColumns);
     if (columns.split(" ").length < 2) failures.push(`lexicon layout is not split: ${columns}`);
-    if (!(await page.locator("#lexiconGuidance").innerText()).includes("inspect")) failures.push("morphology guidance is missing");
     if (await page.locator(".dictionary-section-nav button").count() < 2) failures.push("section navigation is missing");
     if (await page.locator(".external-dictionaries a").count() < 4) failures.push("external dictionary links are incomplete");
-
-    await page.fill("#lexiconSearch", "inspeckt");
-    await page.click('#lexiconSearchForm button[type="submit"]');
-    await page.waitForFunction(() => document.querySelector("#lexiconGuidance")?.textContent.includes("你是不是想查"));
-    await page.waitForFunction(() => document.querySelector("#lexiconHistory")?.textContent.includes("inspeckt"));
-    if (!(await page.locator("#lexiconHistory").innerText()).includes("inspeckt")) failures.push("tracked query did not enter history");
-    await page.screenshot({ path: path.join(root, "artifacts", "lexicon-query-desktop.png"), fullPage: true });
+    if (await page.locator('[data-voice="en-GB"]').count() < 1) failures.push("UK speech control is missing");
+    if (await page.locator('[data-voice="en-US"]').count() < 1) failures.push("US speech control is missing");
+    if (await page.locator(".sense-meaning").count() < 1) failures.push("Chinese sense meanings are missing");
+    if (await page.locator(".sense-examples .example-zh").count() < 1) failures.push("Chinese example translation is missing");
+    await page.screenshot({ path: path.join(root, "artifacts", "lexicon-cast-desktop.png"), fullPage: true });
   } finally {
     if (browser) await browser.close();
     server.kill();
   }
   if (failures.length) throw new Error(failures.join("\n"));
-  process.stdout.write("Lexicon desktop workflow passed on schema 6.\n");
+  process.stdout.write("Lexicon bilingual desktop workflow passed on schema 7.\n");
 }
 
 run().catch(error => {

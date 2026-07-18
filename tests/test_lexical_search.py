@@ -155,6 +155,16 @@ class LexicalSearchTests(unittest.TestCase):
         self.assertEqual(history["recent"][0]["lookup_count"], 2)
         self.assertEqual(history["recent"][0]["query_kind"], "word")
 
+    def test_frontend_dictionary_contract_keeps_bilingual_senses_and_two_voices(self):
+        source = (Path(__file__).parents[1] / "frontend" / "app.js").read_text(encoding="utf-8")
+        self.assertIn('function pronunciationControls(', source)
+        self.assertIn('data-voice="en-GB"', source)
+        self.assertIn('data-voice="en-US"', source)
+        self.assertIn('function wordnetNeedsChinese(', source)
+        self.assertIn('sense.definition_translations?.[definitionIndex]', source)
+        self.assertIn('sense.example_translations?.[exampleIndex]', source)
+        self.assertIn('补充真实语境（未按义项归类）', source)
+
 
 if __name__ == "__main__":
     unittest.main()
