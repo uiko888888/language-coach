@@ -47,7 +47,7 @@ async function run() {
   const failures = [];
   try {
     const version = await waitForServer();
-    if (version.app_version !== "0.8.0-alpha.23.0.4" || version.database_schema_version !== 10) {
+    if (version.app_version !== "0.8.0-alpha.23.0.5" || version.database_schema_version !== 11) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const body = [
@@ -89,7 +89,10 @@ async function run() {
 
     await page.locator("#articleDetail .source-metadata summary").click();
     const metadata = await page.locator("#articleDetail .source-metadata").innerText();
-    for (const expected of ["SoRelle Wyckoff Gaynor", "J. Scott Applewhite/AP Photo", "conversation-rules-v2", "98%"] ) {
+    for (const expected of [
+      "SoRelle Wyckoff Gaynor", "J. Scott Applewhite/AP Photo", "conversation-rules-v2", "98%",
+      "人工校验", "分类器数据", "0/500",
+    ]) {
       if (!metadata.includes(expected)) failures.push(`missing source metadata: ${expected}`);
     }
     await page.click(`#articleDetail [data-extraction-feedback="correct"][data-article-id="${articleId}"]`);

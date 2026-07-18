@@ -28,6 +28,7 @@ from pathlib import Path
 
 try:
     from .backups import create_backup, list_backups, restore_backup
+    from .content_extraction import adapter_catalog, extract_source_content
     from .lexical_data import lookup_lexical_layers, search_open_entries
     from .migrations import run_migrations
     from .practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
@@ -35,6 +36,7 @@ try:
     from .versioning import SCHEMA_VERSION, app_version, version_payload
 except ImportError:
     from backups import create_backup, list_backups, restore_backup
+    from content_extraction import adapter_catalog, extract_source_content
     from lexical_data import lookup_lexical_layers, search_open_entries
     from migrations import run_migrations
     from practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
@@ -5305,17 +5307,6 @@ def feed_entry_text(entry: ET.Element, *names: str) -> str:
     return ""
 
 
-FEED_PHOTO_CREDIT_PATTERN = re.compile(
-    r"(?is)^\s*(.{20,1600}?(?:AP\s+Photo|Getty\s+Images?|Reuters|AFP|via\s+Wikimedia\s+Commons))\s+(?=[A-Z][A-Za-z])"
-)
-FEED_PHOTO_CREDIT_BLOCK_PATTERN = re.compile(
-    r"(?is)^\s*(.{20,1600}?(?:AP\s+Photo|Getty\s+Images?|Reuters|AFP|via\s+Wikimedia\s+Commons))(?:\s+(.+))?$"
-)
-FEED_DISCLOSURE_PATTERN = re.compile(
-    r"(?is)\n\s*\n([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’ .-]{2,100})\s+does not work for, consult, own shares in or receive funding from\b.*$"
-)
-
-
 def feed_entry_author(entry: ET.Element) -> str:
     author_node = next((node for node in entry.iter() if xml_local_name(node.tag) == "author"), None)
     if author_node is None:
@@ -5326,42 +5317,53 @@ def feed_entry_author(entry: ET.Element) -> str:
 
 
 def extract_article_semantic_blocks(text: str, source: str, author: str = "") -> dict:
-    body = (text or "").strip()
-    metadata = {
-        "author": author,
-        "image_caption": "",
-        "disclosure": "",
-        "extraction_version": "generic-blocks-v1",
-        "extraction_confidence": 0.75,
-        "removed_blocks": [],
+    return extract_source_content(text, source, author)
+
+
+def extraction_quality_report() -> dict:
+    with db() as conn:
+        rows = conn.execute(
+            """SELECT a.source, a.extraction_version, COUNT(DISTINCT a.id) AS article_count,
+                      COUNT(f.id) AS feedback_count,
+                      SUM(CASE WHEN f.verdict != 'correct' THEN 1 ELSE 0 END) AS issue_count
+               FROM articles a
+               LEFT JOIN article_extraction_feedback f ON f.article_id = a.id
+               WHERE a.source != ''
+               GROUP BY a.source, a.extraction_version
+               ORDER BY issue_count DESC, feedback_count DESC, article_count DESC"""
+        ).fetchall()
+        totals = conn.execute(
+            """SELECT COUNT(*) AS feedback_count,
+                      COUNT(DISTINCT article_id) AS reviewed_articles,
+                      SUM(CASE WHEN verdict != 'correct' THEN 1 ELSE 0 END) AS issue_count
+               FROM article_extraction_feedback"""
+        ).fetchone()
+        reviewed_sources = conn.execute(
+            """SELECT COUNT(DISTINCT a.source) FROM article_extraction_feedback f
+               JOIN articles a ON a.id = f.article_id"""
+        ).fetchone()[0]
+    reviewed_articles = int(totals["reviewed_articles"] or 0)
+    issue_count = int(totals["issue_count"] or 0)
+    thresholds = {"reviewed_articles": 100, "issue_examples": 25, "reviewed_sources": 3, "block_labels": 500}
+    observed = {
+        "reviewed_articles": reviewed_articles,
+        "issue_examples": issue_count,
+        "reviewed_sources": int(reviewed_sources or 0),
+        "block_labels": 0,
     }
-    if source not in {"The Conversation", "The Conversation Politics"}:
-        return {"body": body, **metadata}
-    metadata["extraction_version"] = "conversation-rules-v2"
-    kept = []
-    captions = []
-    for paragraph in re.split(r"\n\s*\n", body):
-        caption_match = FEED_PHOTO_CREDIT_BLOCK_PATTERN.match(paragraph.strip())
-        if not caption_match:
-            kept.append(paragraph.strip())
-            continue
-        captions.append(re.sub(
-            r"\bU\.\s+S\.(?=\s|$)", "U.S.", re.sub(r"\s+", " ", caption_match.group(1))
-        ).strip())
-        if caption_match.group(2):
-            kept.append(caption_match.group(2).strip())
-    if captions:
-        metadata["image_caption"] = "\n\n".join(dict.fromkeys(captions))
-        metadata["removed_blocks"].append("image_caption")
-        body = "\n\n".join(value for value in kept if value).strip()
-    disclosure_match = FEED_DISCLOSURE_PATTERN.search(body)
-    if disclosure_match:
-        metadata["author"] = metadata["author"] or re.sub(r"\s+", " ", disclosure_match.group(1)).strip()
-        metadata["disclosure"] = re.sub(r"\s+", " ", disclosure_match.group(0)).strip()
-        metadata["removed_blocks"].append("disclosure")
-        body = body[:disclosure_match.start()].rstrip()
-    metadata["extraction_confidence"] = 0.98 if metadata["image_caption"] and metadata["disclosure"] else 0.90 if metadata["image_caption"] or metadata["disclosure"] else 0.80
-    return {"body": body, **metadata}
+    unmet = [key for key, minimum in thresholds.items() if observed[key] < minimum]
+    return {
+        "adapters": adapter_catalog(),
+        "sources": [dict(row) for row in rows],
+        "feedback_count": int(totals["feedback_count"] or 0),
+        "classifier_readiness": {
+            "ready": not unmet,
+            "thresholds": thresholds,
+            "observed": observed,
+            "unmet": unmet,
+            "policy": "A classifier may label blocks but must not rewrite text or bypass deterministic quality gates.",
+        },
+    }
 
 
 def parse_feed_datetime(value: str) -> str:
@@ -5695,6 +5697,8 @@ class App(BaseHTTPRequestHandler):
                 return json_response(self, profile_calibration_status())
             if path == "/api/feeds/status":
                 return json_response(self, feed_refresh_status())
+            if path == "/api/extraction/quality":
+                return json_response(self, extraction_quality_report())
             if path == "/api/books":
                 with db() as conn:
                     books = [book_detail(conn, row["id"], include_chapters=False) for row in conn.execute(

@@ -256,6 +256,11 @@ class BrowserBridgeTests(unittest.TestCase):
                 "SELECT * FROM article_extraction_feedback WHERE id = ?", (payload["feedback"]["id"],)
             ).fetchone()
         self.assertEqual(stored["note"], "Opening photo credit remains.")
+        quality, _ = self.request("/api/extraction/quality")
+        self.assertTrue(any(item["key"] == "jstor" for item in quality["adapters"]))
+        self.assertGreaterEqual(quality["feedback_count"], 1)
+        self.assertFalse(quality["classifier_readiness"]["ready"])
+        self.assertIn("block_labels", quality["classifier_readiness"]["unmet"])
 
     def test_translation_cache_works_without_network(self):
         text = "A cached translation"

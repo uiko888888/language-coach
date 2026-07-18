@@ -122,6 +122,35 @@ class FeedRefreshTests(unittest.TestCase):
         self.assertEqual(payload["extraction_version"], "conversation-rules-v2")
         self.assertGreaterEqual(payload["extraction_confidence"], 0.9)
 
+    def test_guardian_adapter_cleans_prompt_but_keeps_summary_boundary(self):
+        entry = server.ET.fromstring(
+            """<item><title>Climate report</title><link>https://theguardian.com/example</link>
+            <description><![CDATA[A report explains the evidence. Sign up for the climate newsletter email
+            The reported conclusion remains. Continue reading...]]></description></item>"""
+        )
+        payload = server.feed_entry_payload(entry, {"name": "Guardian Environment"})
+        self.assertEqual(payload["content_status"], "summary")
+        self.assertEqual(payload["extraction_version"], "guardian-rss-v1")
+        self.assertNotIn("newsletter email", payload["body"])
+        self.assertNotIn("Continue reading", payload["body"])
+        self.assertIn("The reported conclusion remains.", payload["body"])
+
+    def test_jstor_adapter_cleans_feed_full_text_without_promoting_short_content(self):
+        paragraphs = "".join(
+            f"<p>Section {index} provides historical evidence and a carefully explained conclusion.</p>"
+            for index in range(40)
+        )
+        encoded = f"<article>{paragraphs}<div>Weekly Newsletter var gform; gform.initializeOnLoaded()</div></article>"
+        entry = server.ET.fromstring(
+            f"<item><title>Historical evidence</title><link>https://daily.jstor.org/example</link>"
+            f"<description>Short summary.</description><encoded xmlns='urn:test'><![CDATA[{encoded}]]></encoded></item>"
+        )
+        payload = server.feed_entry_payload(entry, {"name": "JSTOR Daily"})
+        self.assertEqual(payload["content_status"], "full")
+        self.assertEqual(payload["extraction_version"], "jstor-rss-v1")
+        self.assertNotIn("Weekly Newsletter", payload["body"])
+        self.assertNotIn("gform", payload["body"])
+
     def test_conditional_refresh_handles_not_modified(self):
         with server.db() as conn:
             conn.execute("UPDATE feeds SET etag = '\"feed-v1\"', last_modified = 'yesterday' WHERE name = 'Test Feed'")

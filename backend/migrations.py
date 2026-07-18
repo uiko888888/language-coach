@@ -8,9 +8,11 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 
 try:
+    from .content_extraction import extract_source_content
     from .lexical_data import ensure_lexical_data_schema
     from .review_scheduler import backfill_review_items
 except ImportError:
+    from content_extraction import extract_source_content
     from lexical_data import ensure_lexical_data_schema
     from review_scheduler import backfill_review_items
 
@@ -377,6 +379,55 @@ def _embedded_article_captions(conn: sqlite3.Connection) -> None:
         )
 
 
+def _source_adapter_backfill(conn: sqlite3.Connection) -> None:
+    required = {"body", "source", "author", "image_caption", "disclosure", "extraction_version"}
+    if not required.issubset(_columns(conn, "articles")):
+        return
+    sources = (
+        "BBC World", "BBC Business", "Guardian World", "Guardian Opinion",
+        "Guardian Science", "Guardian Environment", "JSTOR Daily",
+    )
+    placeholders = ",".join("?" for _ in sources)
+    rows = conn.execute(
+        f"""SELECT id, body, source, author, image_caption, disclosure, translation_zh
+            FROM articles WHERE source IN ({placeholders}) AND body != ''""",
+        sources,
+    ).fetchall()
+    for row in rows:
+        original = row[1] or ""
+        result = extract_source_content(original, row[2], row[3] or "")
+        body = result["body"]
+        body_changed = body != original
+        metadata = {
+            "adapter": result["adapter"],
+            "removed_blocks": result["removed_blocks"],
+            "review_status": "rule-reviewed" if body_changed else "adapter-registered",
+        }
+        if body_changed:
+            conn.execute(
+                """INSERT OR IGNORE INTO article_extraction_audits
+                   (article_id, extraction_version, original_body, extracted_body, metadata_json, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    row[0], result["extraction_version"], original, body,
+                    json.dumps(metadata, ensure_ascii=False), _utc_now(),
+                ),
+            )
+        conn.execute(
+            """UPDATE articles SET body = ?, author = ?, image_caption = ?, disclosure = ?,
+               extraction_version = ?, extraction_confidence = ?, extraction_notes_json = ?,
+               translation_zh = CASE WHEN ? THEN '' ELSE translation_zh END,
+               content_hash = CASE WHEN ? THEN ? ELSE content_hash END,
+               updated_at = CASE WHEN ? THEN ? ELSE updated_at END WHERE id = ?""",
+            (
+                body, result["author"], row[4] or result["image_caption"], row[5] or result["disclosure"],
+                result["extraction_version"], result["extraction_confidence"],
+                json.dumps(metadata, ensure_ascii=False), int(body_changed), int(body_changed),
+                hashlib.sha256(body.casefold().encode("utf-8")).hexdigest(), int(body_changed), _utc_now(), row[0],
+            ),
+        )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     (1, "consolidate legacy schema", _legacy_schema),
     (2, "add training loop metrics", _training_loop_metrics),
@@ -388,6 +439,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     (8, "remove embedded script noise from feed articles", _sanitize_feed_articles),
     (9, "separate article body from source metadata", _article_semantic_blocks),
     (10, "remove embedded image captions from article body", _embedded_article_captions),
+    (11, "apply registered source extraction adapters", _source_adapter_backfill),
 )
 
 

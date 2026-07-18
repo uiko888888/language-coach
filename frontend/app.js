@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.4";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.5";
 const SUPPORTED_API_VERSION = "1";
 
 const state = {
@@ -25,6 +25,7 @@ const state = {
   mistakes: [],
   feeds: [],
   feedStatus: null,
+  extractionQuality: { adapters: [], sources: [], classifier_readiness: null },
   runtime: null,
   backups: [],
   sourceCatalog: [],
@@ -815,12 +816,18 @@ function articleTrainingAction(article, label = "生成题") {
 
 function sourceMetadataHtml(article) {
   if (!article.author && !article.image_caption && !article.disclosure && !article.extraction_version) return "";
+  const sourceQuality = state.extractionQuality.sources.find(item =>
+    item.source === article.source && item.extraction_version === article.extraction_version
+  );
+  const readiness = state.extractionQuality.classifier_readiness;
   return `<details class="source-metadata">
     <summary>来源信息</summary>
     ${article.author ? `<p><strong>作者</strong><span>${escapeHtml(article.author)}</span></p>` : ""}
     ${article.image_caption ? `<p><strong>图片说明</strong><span>${escapeHtml(article.image_caption)}</span></p>` : ""}
     ${article.disclosure ? `<p><strong>披露声明</strong><span>${escapeHtml(article.disclosure)}</span></p>` : ""}
     <p><strong>正文提取</strong><span>${escapeHtml(article.extraction_version || "未记录")} · ${Math.round(Number(article.extraction_confidence || 0) * 100)}%</span></p>
+    ${sourceQuality ? `<p><strong>人工校验</strong><span>${sourceQuality.feedback_count} 条反馈 · ${sourceQuality.issue_count || 0} 条问题</span></p>` : ""}
+    ${readiness ? `<p><strong>分类器数据</strong><span>${readiness.observed.block_labels}/${readiness.thresholds.block_labels} 个区块标签 · ${readiness.ready ? "达到评估门槛" : "继续积累"}</span></p>` : ""}
     <div class="toolbar extraction-feedback">
       <button data-extraction-feedback="correct" data-article-id="${article.id}">准确</button>
       <button data-extraction-feedback="caption_in_body" data-article-id="${article.id}">图片说明混入</button>
@@ -2333,6 +2340,10 @@ async function loadFeedStatus() {
   state.feedStatus = await api("/api/feeds/status");
 }
 
+async function loadExtractionQuality() {
+  state.extractionQuality = await api("/api/extraction/quality");
+}
+
 async function loadSourceCatalog() {
   const data = await api("/api/source-catalog");
   state.sourceCatalog = data.sources || [];
@@ -2707,6 +2718,9 @@ async function saveExtractionFeedback(articleId, verdict) {
     method: "POST",
     body: JSON.stringify({ verdict }),
   });
+  await loadExtractionQuality();
+  renderArticles();
+  if (state.selectedArticle?.id === articleId && $("#view-reader").classList.contains("active")) renderReader();
   toast(verdict === "correct" ? "已记录正文准确" : "已记录正文混入问题");
 }
 
@@ -3306,7 +3320,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 async function boot() {
   await loadHealth();
   await loadActivePracticeData();
-  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), searchLexicon("", { open: false, history: false })]);
   const restoredServerRun = await restoreServerPracticeRun();
   if (!restoredServerRun && !state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);

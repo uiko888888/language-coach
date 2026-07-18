@@ -4,6 +4,10 @@
 
 ## 已可用
 
+- schema 11 注册 BBC、Guardian、JSTOR Daily 与 The Conversation 来源适配器，并审计所有正文变化
+- Guardian 摘要去除已知 newsletter/继续阅读提示但仍保持摘要边界；BBC 摘要不改写、不升级为正文
+- JSTOR Daily 正文在 newsletter 和 Gravity Forms 表单前结束，脚本不再进入阅读与出题
+- 提取质量 API 按来源和规则版本统计反馈，并用明确门槛阻止无标签分类器训练
 - schema 9/10 将 The Conversation 作者、首图与中段图片说明、披露声明从阅读正文中分离，并保留每次迁移前原文审计
 - 正文提取记录规则版本与置信度；文章页可反馈准确、图片说明混入或作者/披露混入
 - RSS HTML 保留段落区块，旧数据中的 `U. S.` 等断裂缩写可在迁移时修复

@@ -6,7 +6,13 @@ from pathlib import Path
 
 from backend import server
 from backend.backups import create_backup, list_backups, restore_backup
-from backend.migrations import _article_semantic_blocks, _embedded_article_captions, _sanitize_feed_articles, run_migrations
+from backend.migrations import (
+    _article_semantic_blocks,
+    _embedded_article_captions,
+    _sanitize_feed_articles,
+    _source_adapter_backfill,
+    run_migrations,
+)
 from backend.versioning import API_VERSION, SCHEMA_VERSION
 
 
@@ -31,13 +37,13 @@ class MaintenanceTests(unittest.TestCase):
             attempt_columns = {row[1] for row in conn.execute("PRAGMA table_info(attempts)")}
             mistake_columns = {row[1] for row in conn.execute("PRAGMA table_info(mistakes)")}
             practice_run_columns = {row[1] for row in conn.execute("PRAGMA table_info(practice_runs)")}
-            self.assertEqual(len(migrations), 10)
+            self.assertEqual(len(migrations), 11)
         self.assertIn("translation_zh", article_columns)
         self.assertIn("content_status", article_columns)
         self.assertTrue({"elapsed_seconds", "answer_changes", "hint_used"}.issubset(attempt_columns))
         self.assertTrue({"remedial_attempts", "remedial_correct_streak", "mastery_source"}.issubset(mistake_columns))
         self.assertIn("visibility", article_columns)
-        self.assertEqual(migrations[-1][1], "remove embedded image captions from article body")
+        self.assertEqual(migrations[-1][1], "apply registered source extraction adapters")
         self.assertTrue({"author", "image_caption", "disclosure", "extraction_version"}.issubset(article_columns))
         self.assertTrue({"quiz_ids_json", "feedback_json", "elapsed_seconds", "status"}.issubset(practice_run_columns))
 
@@ -126,6 +132,43 @@ class MaintenanceTests(unittest.TestCase):
         self.assertIn("Tom Brenner/AP Photo", article["image_caption"])
         self.assertEqual(article["extraction_version"], "conversation-rules-v2")
         self.assertEqual(audit["original_body"], paragraph)
+
+    def test_source_adapter_backfill_audits_jstor_cleanup(self):
+        with sqlite3.connect(":memory:") as conn:
+            conn.row_factory = sqlite3.Row
+            conn.executescript(
+                """
+                CREATE TABLE articles (
+                  id INTEGER PRIMARY KEY, title TEXT DEFAULT '', source TEXT, body TEXT DEFAULT '',
+                  language TEXT DEFAULT 'en', level TEXT DEFAULT 'B2', topic TEXT DEFAULT '',
+                  source_guid TEXT DEFAULT '', content_hash TEXT DEFAULT '', created_at TEXT DEFAULT '', updated_at TEXT DEFAULT ''
+                );
+                CREATE TABLE feeds (id INTEGER PRIMARY KEY);
+                CREATE TABLE mistakes (id INTEGER PRIMARY KEY);
+                CREATE TABLE quizzes (id INTEGER PRIMARY KEY);
+                CREATE TABLE attempts (id INTEGER PRIMARY KEY);
+                CREATE TABLE practice_sessions (id INTEGER PRIMARY KEY);
+                CREATE TABLE cards (id INTEGER PRIMARY KEY);
+                """
+            )
+            run_migrations(conn)
+            body = "A complete article closes with a clear finding.\n\nWeekly Newsletter var gform;"
+            cursor = conn.execute(
+                """INSERT INTO articles
+                   (title, source, body, language, level, topic, created_at, updated_at)
+                   VALUES ('JSTOR sample', 'JSTOR Daily', ?, 'en', 'B2', 'history', '', '')""",
+                (body,),
+            )
+            article_id = cursor.lastrowid
+            _source_adapter_backfill(conn)
+            article = conn.execute("SELECT * FROM articles WHERE id = ?", (article_id,)).fetchone()
+            audit = conn.execute(
+                "SELECT * FROM article_extraction_audits WHERE article_id = ? AND extraction_version = 'jstor-rss-v1'",
+                (article_id,),
+            ).fetchone()
+        self.assertEqual(article["body"], "A complete article closes with a clear finding.")
+        self.assertEqual(article["extraction_version"], "jstor-rss-v1")
+        self.assertEqual(audit["original_body"], body)
 
     def test_backup_round_trip_restores_database_and_creates_safety_copy(self):
         with tempfile.TemporaryDirectory() as temp_dir:

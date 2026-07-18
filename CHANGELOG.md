@@ -9,6 +9,25 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.23.0.5] - 2026-07-19
+
+### Added
+
+- Added a maintainable source-adapter registry for BBC, Guardian, JSTOR Daily and The Conversation.
+- Added extraction-quality reporting grouped by source and extractor version, with explicit classifier-readiness thresholds.
+- Added source-level feedback and block-label progress to the reader metadata panel.
+
+### Changed
+
+- Guardian RSS excerpts remove known newsletter prompts and `Continue reading...` boilerplate while remaining summaries.
+- JSTOR Daily content stops before newsletter forms and Gravity Forms scripts; cleaned originals remain in extraction audits.
+- BBC summaries receive a versioned adapter and confidence record without changing or promoting their text.
+
+### Known limits
+
+- Article-level feedback can prioritize adapters but is not sufficient training data for a block classifier.
+- Classifier evaluation remains disabled until reviewed articles, issue examples, source diversity and block-label thresholds are all met.
+
 ## [0.8.0-alpha.23.0.4] - 2026-07-18
 
 ### Added

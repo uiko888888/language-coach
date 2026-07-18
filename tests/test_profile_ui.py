@@ -141,7 +141,7 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.4";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.5";', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
 
@@ -186,7 +186,8 @@ class ProfileUiContractTests(unittest.TestCase):
         for contract in (
             "function sourceMetadataHtml(article)", "图片说明", "披露声明",
             'data-extraction-feedback="correct"', "/extraction-feedback",
-            "saveExtractionFeedback",
+            "saveExtractionFeedback", 'api("/api/extraction/quality")',
+            "分类器数据", "人工校验",
         ):
             self.assertIn(contract, self.js)
         self.assertIn(".source-metadata", self.css)
