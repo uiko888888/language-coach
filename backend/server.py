@@ -31,19 +31,21 @@ try:
     from .lexical_data import lookup_lexical_layers, search_open_entries
     from .migrations import run_migrations
     from .practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
+    from .review_scheduler import ensure_review_item, rate_review_item, review_queue, undo_last_review
     from .versioning import SCHEMA_VERSION, app_version, version_payload
 except ImportError:
     from backups import create_backup, list_backups, restore_backup
     from lexical_data import lookup_lexical_layers, search_open_entries
     from migrations import run_migrations
     from practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
+    from review_scheduler import ensure_review_item, rate_review_item, review_queue, undo_last_review
     from versioning import SCHEMA_VERSION, app_version, version_payload
 
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
 DATA = ROOT / "data"
-DB_PATH = DATA / "language_coach.sqlite"
+DB_PATH = Path(os.environ.get("LANGUAGE_COACH_DB_PATH", DATA / "language_coach.sqlite")).resolve()
 BACKUP_DIR = DATA / "backups"
 TRANSLATION_RUNTIME = {"verified": None, "last_error": "", "deepl_url": ""}
 
@@ -822,7 +824,13 @@ def materialize_book_chapter(conn: sqlite3.Connection, chapter_id: int) -> dict 
 
 
 def unique_cards_payload(conn: sqlite3.Connection) -> list[dict]:
-    rows = rows_to_dicts(conn.execute("SELECT * FROM cards ORDER BY updated_at DESC, id DESC").fetchall())
+    rows = rows_to_dicts(conn.execute(
+        """SELECT c.*, ri.state AS review_state, ri.due_at AS review_due_at,
+                  ri.repetitions AS review_repetitions, ri.lapses AS review_lapses
+           FROM cards c
+           LEFT JOIN review_items ri ON ri.item_type = 'card' AND ri.item_id = c.id AND ri.learner_key = 'local'
+           ORDER BY c.updated_at DESC, c.id DESC"""
+    ).fetchall())
     seen: set[str] = set()
     unique = []
     for item in rows:
@@ -3435,6 +3443,18 @@ def increment_daily_progress(conn: sqlite3.Connection, task: str, amount: int = 
     )
 
 
+def decrement_daily_progress(conn: sqlite3.Connection, task: str, amount: int = 1, day: str = "") -> None:
+    if task not in DAILY_PLAN_TASKS or amount <= 0:
+        return
+    target_day = day or current_plan_day()
+    conn.execute(
+        """UPDATE daily_plan_progress
+           SET completed_count = MAX(0, completed_count - ?), updated_at = ?
+           WHERE day = ? AND task = ?""",
+        (amount, utc_now(), target_day, task),
+    )
+
+
 def set_daily_progress(conn: sqlite3.Connection, task: str, completed_count: int, day: str = "") -> None:
     target_day = day or current_plan_day()
     conn.execute(
@@ -5509,6 +5529,15 @@ class App(BaseHTTPRequestHandler):
                 with db() as conn:
                     cards = unique_cards_payload(conn)
                 return json_response(self, {"cards": cards})
+            if path == "/api/reviews":
+                kind = query.get("kind", ["all"])[0]
+                try:
+                    limit = int(query.get("limit", [20])[0])
+                except (TypeError, ValueError):
+                    limit = 20
+                with db() as conn:
+                    payload = review_queue(conn, kind=kind, limit=limit)
+                return json_response(self, payload)
             if path == "/api/quizzes":
                 article_id = query.get("article_id", [""])[0]
                 style = query.get("style", [""])[0]
@@ -5648,6 +5677,27 @@ class App(BaseHTTPRequestHandler):
         path = parsed.path
         try:
             payload = read_json(self)
+            match = re.fullmatch(r"/api/reviews/(\d+)/rate", path)
+            if match:
+                try:
+                    with db() as conn:
+                        result = rate_review_item(conn, int(match.group(1)), str(payload.get("rating") or ""))
+                        increment_daily_progress(conn, "review", 1)
+                        queue = review_queue(conn, kind=str(payload.get("kind") or "all"), limit=20)
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, {**result, "queue": queue})
+            if path == "/api/reviews/undo":
+                try:
+                    with db() as conn:
+                        result = undo_last_review(conn)
+                        reviewed_day = datetime.fromisoformat(result["reviewed_at"]).astimezone().date().isoformat()
+                        if reviewed_day == current_plan_day():
+                            decrement_daily_progress(conn, "review", 1, reviewed_day)
+                        queue = review_queue(conn, kind=str(payload.get("kind") or "all"), limit=20)
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, {**result, "queue": queue})
             if path == "/api/lexicon/history/clear":
                 with db() as conn:
                     conn.execute("DELETE FROM lexical_queries")
@@ -6096,6 +6146,7 @@ class App(BaseHTTPRequestHandler):
                         created = True
                         increment_daily_progress(conn, "vocabulary", 1)
                     card = conn.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
+                    ensure_review_item(conn, "card", int(card_id), now)
                 return json_response(self, {"card": dict(card), "created": created}, 201 if created else 200)
             if path == "/api/attempts":
                 quiz_id = int(payload.get("quiz_id"))
@@ -6381,6 +6432,8 @@ class App(BaseHTTPRequestHandler):
                     if earns_reward:
                         conn.execute("UPDATE mistakes SET reward_claimed = 1 WHERE id = ?", (match.group(1),))
                         increment_daily_progress(conn, "review", 1)
+                    if becoming_solved:
+                        ensure_review_item(conn, "mistake", int(match.group(1)), utc_now())
                     progress = award_progress(conn, 5, reviewed=True) if earns_reward else progress_payload(conn)
                 return json_response(self, {"ok": True, "points": 5 if earns_reward else 0, "progress": progress})
             if path == "/api/feeds":

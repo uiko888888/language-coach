@@ -31,13 +31,13 @@ class MaintenanceTests(unittest.TestCase):
             attempt_columns = {row[1] for row in conn.execute("PRAGMA table_info(attempts)")}
             mistake_columns = {row[1] for row in conn.execute("PRAGMA table_info(mistakes)")}
             practice_run_columns = {row[1] for row in conn.execute("PRAGMA table_info(practice_runs)")}
-            self.assertEqual(len(migrations), 6)
+            self.assertEqual(len(migrations), 7)
         self.assertIn("translation_zh", article_columns)
         self.assertIn("content_status", article_columns)
         self.assertTrue({"elapsed_seconds", "answer_changes", "hint_used"}.issubset(attempt_columns))
         self.assertTrue({"remedial_attempts", "remedial_correct_streak", "mastery_source"}.issubset(mistake_columns))
         self.assertIn("visibility", article_columns)
-        self.assertEqual(migrations[-1][1], "add private lexical query history")
+        self.assertEqual(migrations[-1][1], "add unified review scheduling")
         self.assertTrue({"quiz_ids_json", "feedback_json", "elapsed_seconds", "status"}.issubset(practice_run_columns))
 
     def test_backup_round_trip_restores_database_and_creates_safety_copy(self):

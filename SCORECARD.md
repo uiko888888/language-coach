@@ -7,7 +7,7 @@ The goal is to raise every major product dimension above 6/10 through evidence, 
 | Dimension | Current | 6/10 acceptance gate | Planned release |
 | --- | ---: | --- | --- |
 | Dictionary and chunks | 5.9 | Import licensed Kaikki, Tatoeba and frequency subsets; pass polysemy, phrase, Chinese-query and attribution audit | alpha.22.2 |
-| Review scheduling | 3.0 | FSRS queue for words, phrases and mastered mistakes; due counts and rescheduling tests | alpha.23 |
+| Review scheduling | 5.8 | Replace the versioned baseline with validated FSRS; add retention target, suspension/reset and real-log calibration | alpha.23.1 |
 | Listening and clip study | 2.0 | Local media plus SRT/VTT, cue sync, loop, speed, bilingual cue and phrase capture | alpha.24 |
 | Interest and fun | 4.8 | Clip workflow, editable challenge intensity, meaningful mastery rewards and seven-day retention evidence | alpha.24 then validation |
 | Other exams | 4.5 | At least CET and Kaoyan have independent paper structures, validated answer rules and official-format boundaries | alpha.25 |
@@ -18,11 +18,12 @@ The goal is to raise every major product dimension above 6/10 through evidence, 
 
 1. alpha.22.1: mature dictionary query workflow without commercial-content copying.
 2. alpha.22.2: real open dictionary data and quality audit.
-3. alpha.23: FSRS review scheduling and due queue.
-4. alpha.24: subtitle clip workspace and interest-mode differentiation.
-5. alpha.25: CET/Kaoyan independent exam structures and question validation.
-6. alpha.26: accessibility, visual consistency and browser E2E baseline.
-7. v0.10.0: multi-user cloud delivery and security boundary.
+3. alpha.23.0: unified review data, due queue, recall, rating and undo baseline.
+4. alpha.23.1: validated FSRS adapter and retention controls.
+5. alpha.24: subtitle clip workspace and interest-mode differentiation.
+6. alpha.25: CET/Kaoyan independent exam structures and question validation.
+7. alpha.26: accessibility, visual consistency and browser E2E baseline.
+8. v0.10.0: multi-user cloud delivery and security boundary.
 
 ## Scoring Rules
 

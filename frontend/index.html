@@ -518,7 +518,26 @@
     </section>
 
     <section class="view" id="view-cards">
-      <div class="split">
+      <section class="band review-overview">
+        <div class="band-head">
+          <div><span class="eyebrow">Memory review</span><h2>今日复习</h2></div>
+          <div class="toolbar"><div class="review-kind-filter" id="reviewKindFilter">
+            <button class="active" data-review-kind="all">全部</button>
+            <button data-review-kind="word">单词</button>
+            <button data-review-kind="phrase">短语</button>
+            <button data-review-kind="mistake">错题</button>
+          </div><button id="undoReviewBtn" disabled>撤销上次评分</button></div>
+        </div>
+        <div class="review-summary" id="reviewSummary"></div>
+      </section>
+      <div class="master-detail review-workspace">
+        <aside class="band master-list-panel">
+          <div class="band-head"><h2>到期项目</h2><span class="result-count" id="reviewDueCount">0</span></div>
+          <div class="master-list" id="reviewQueue"></div>
+        </aside>
+        <section class="band master-content-panel" id="reviewDetail"></section>
+      </div>
+      <div class="split wordbook-management">
         <section class="band">
           <h2>添加单词或短语</h2>
           <label>词 / 词块</label>

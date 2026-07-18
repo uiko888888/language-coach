@@ -1,5 +1,7 @@
 # Deployment Architecture
 
+测试、预览或未来多环境部署可以通过 `LANGUAGE_COACH_DB_PATH` 指向独立 SQLite 文件；默认仍为 `data/language_coach.sqlite`。生产实例不得与 E2E 共用数据库。
+
 ## Product Form
 
 Language Coach should become a hosted Web/PWA for general users, with an optional local companion for private files and local-only integrations.

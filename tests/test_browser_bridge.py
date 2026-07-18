@@ -67,6 +67,50 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertTrue(cleared["cleared"])
         self.assertEqual(cleared["recent"], [])
 
+    def test_review_api_rates_and_undoes_with_daily_progress(self):
+        created, _ = self.request("/api/cards", "POST", {
+            "term": "review contract phrase", "kind": "phrase", "context": "A review contract should be reversible.",
+        })
+        with server.db() as conn:
+            review_item = conn.execute(
+                "SELECT * FROM review_items WHERE item_type = 'card' AND item_id = ?", (created["card"]["id"],)
+            ).fetchone()
+            baseline = conn.execute(
+                "SELECT completed_count FROM daily_plan_progress WHERE day = ? AND task = 'review'",
+                (server.current_plan_day(),),
+            ).fetchone()
+            baseline_count = baseline[0] if baseline else 0
+        queue, _ = self.request("/api/reviews?kind=phrase&limit=100")
+        self.assertTrue(any(item["id"] == review_item["id"] for item in queue["items"]))
+        self.assertFalse(queue["scheduler"]["fsrs"])
+
+        rated, _ = self.request(f"/api/reviews/{review_item['id']}/rate", "POST", {
+            "rating": "good", "kind": "phrase",
+        })
+        self.assertEqual(rated["interval"], "3 天")
+        with server.db() as conn:
+            scheduled = conn.execute("SELECT * FROM review_items WHERE id = ?", (review_item["id"],)).fetchone()
+            progress = conn.execute(
+                "SELECT completed_count FROM daily_plan_progress WHERE day = ? AND task = 'review'",
+                (server.current_plan_day(),),
+            ).fetchone()[0]
+        self.assertEqual(scheduled["state"], "review")
+        self.assertEqual(progress, baseline_count + 1)
+        cards, _ = self.request("/api/cards")
+        scheduled_card = next(item for item in cards["cards"] if item["id"] == created["card"]["id"])
+        self.assertEqual(scheduled_card["review_state"], "review")
+
+        undone, _ = self.request("/api/reviews/undo", "POST", {"kind": "phrase"})
+        self.assertEqual(undone["review_item_id"], review_item["id"])
+        with server.db() as conn:
+            restored = conn.execute("SELECT * FROM review_items WHERE id = ?", (review_item["id"],)).fetchone()
+            progress = conn.execute(
+                "SELECT completed_count FROM daily_plan_progress WHERE day = ? AND task = 'review'",
+                (server.current_plan_day(),),
+            ).fetchone()[0]
+        self.assertEqual(restored["state"], "new")
+        self.assertEqual(progress, baseline_count)
+
     def test_profile_api_supports_score_and_quick_test_paths(self):
         original = server.learner_settings()
         try:
@@ -347,6 +391,11 @@ class BrowserBridgeTests(unittest.TestCase):
         mistakes, _ = self.request("/api/mistakes")
         mistake = next(item for item in mistakes["mistakes"] if item["quiz_id"] == quiz["id"])
         first_solve, _ = self.request(f"/api/mistakes/{mistake['id']}/solve", "POST", {})
+        with server.db() as conn:
+            review_item = conn.execute(
+                "SELECT * FROM review_items WHERE item_type = 'mistake' AND item_id = ?", (mistake["id"],)
+            ).fetchone()
+        self.assertIsNotNone(review_item)
         second_solve, _ = self.request(f"/api/mistakes/{mistake['id']}/solve", "POST", {})
         self.assertEqual(first_solve["points"], 5)
         self.assertEqual(second_solve["points"], 0)

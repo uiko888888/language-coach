@@ -88,4 +88,4 @@ Invoke-RestMethod http://127.0.0.1:8766/api/version
 Invoke-RestMethod http://127.0.0.1:8766/api/dictionary/status
 ```
 
-Expected version compatibility for this release is schema 6. Query history remains private local data and must not be bundled with dictionary exports. Data quality must be checked with representative polysemous words, phrases, Chinese queries and uncommon terms before a source is declared production-ready.
+Expected application compatibility is currently schema 7. Query history and review history remain private local data and must not be bundled with dictionary exports. Data quality must be checked with representative polysemous words, phrases, Chinese queries and uncommon terms before a source is declared production-ready.

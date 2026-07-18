@@ -27,6 +27,7 @@ Chrome / Edge 扩展（WXT + TypeScript）
 | 模块 | 职责 | 允许依赖 |
 | --- | --- | --- |
 | `backend/versioning.py` | 应用、API、数据库目标版本 | `VERSION` 文件 |
+| `backend/review_scheduler.py` | 统一复习队列、评分状态、调度快照和撤销 | SQLite review tables |
 | `backend/migrations.py` | 有序、幂等、可追踪的 SQLite 升级 | SQLite，不依赖 HTTP 或产品界面 |
 | `backend/backups.py` | 限定目录内的备份、完整性检查和恢复 | SQLite、文件系统，不依赖业务服务 |
 | `backend/practice_state.py` | 活动训练生命周期与可解释训练处方 | SQLite，不依赖 HTTP 或界面 |

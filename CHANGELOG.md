@@ -9,6 +9,27 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.23.0] - 2026-07-18
+
+### Added
+
+- Added schema 7 unified review items and non-destructive snapshot logs for words, phrases and mastered mistakes.
+- Added a split due-queue/recall workspace with type filters, answer reveal, four ratings and predicted intervals.
+- Added server-side rating snapshots, ten-minute undo, lapse tracking and same-day plan-progress rollback.
+- Added an isolated review E2E database path and desktop workflow verification script.
+
+### Changed
+
+- Existing cards are backfilled into the review queue; new cards and newly mastered mistakes register automatically.
+- Card list status now reflects the scheduling state instead of remaining permanently `new`.
+- A valid review rating advances today's review target; repeated requests for a future item are rejected.
+
+### Known limits
+
+- The current scheduler is explicitly `adaptive-interval-v1`, not FSRS. Network policy prevented installing and validating `py-fsrs` in this release.
+- Scheduling parameters are global and have not been fitted to personal retention history.
+- Card answers currently rely on saved context and notes; audited bilingual senses remain dependent on dictionary data coverage.
+
 ## [0.8.0-alpha.22.1] - 2026-07-18
 
 ### Added

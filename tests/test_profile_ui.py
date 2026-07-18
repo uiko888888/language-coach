@@ -141,9 +141,23 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.22.1";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0";', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
+
+    def test_review_workspace_is_a_split_recall_rating_loop(self):
+        for element_id in (
+            "reviewKindFilter", "reviewSummary", "reviewDueCount", "reviewQueue",
+            "reviewDetail", "undoReviewBtn", "revealReviewAnswerBtn",
+        ):
+            self.assertIn(element_id, self.html + self.js)
+        for contract in (
+            'api(`/api/reviews?kind=', "data-select-review", "data-rate-review",
+            'api("/api/reviews/undo"', "function renderReviews()", "reviewAnswerRevealed",
+        ):
+            self.assertIn(contract, self.js)
+        for selector in (".review-workspace", ".review-rating-grid", ".review-kind-filter"):
+            self.assertIn(selector, self.css)
 
     def test_training_loop_exposes_deep_explanations_metrics_and_mastery(self):
         for contract in (

@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.22.1";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0";
 const SUPPORTED_API_VERSION = "1";
 
 const state = {
@@ -16,6 +16,11 @@ const state = {
   books: [],
   selectedBook: null,
   cards: [],
+  reviews: { items: [], summary: { due: 0 }, scheduler: {} },
+  reviewKind: "all",
+  selectedReviewId: null,
+  reviewAnswerRevealed: false,
+  canUndoReview: false,
   quizzes: [],
   mistakes: [],
   feeds: [],
@@ -106,7 +111,7 @@ const titles = {
   articles: ["文章池", "每日来源、个人导入和分级文章会进入这里。"],
   reader: ["阅读台", "一篇文章可以进入精读、查词、翻译和对应考试训练。"],
   quiz: ["题目", "先做题，再看证据和解析，错题会自动收集。"],
-  cards: ["生词本", "主动添加或从文章里点词添加，后面可做词块复习。"],
+  cards: ["记忆复习", "到期词块与已掌握错题在同一队列中主动回忆。"],
   mistakes: ["错题", "保存你的错误答案、正确答案和原文证据。"],
   history: ["训练记录", "查看单次训练详情、能力趋势和下一步建议。"],
   lexicon: ["词汇中心", "从单词、中文、词形或词源进入同一张词汇网络。"],
@@ -1585,13 +1590,56 @@ function renderQuizzes() {
 function renderCards() {
   $("#cardList").innerHTML = state.cards.map(card => `
     <div class="item">
-      <div class="badge-row">${badge(card.kind === "phrase" ? "短语" : "单词", card.kind === "phrase" ? "amber" : "teal")}${badge(card.status || "new")}</div>
+      <div class="badge-row">${badge(card.kind === "phrase" ? "短语" : "单词", card.kind === "phrase" ? "amber" : "teal")}${badge(reviewStateLabel(card.review_state || card.status || "new"))}</div>
       <h3><button class="card-term-link" data-search-query="${escapeHtml(card.term)}">${escapeHtml(card.term)}</button></h3>
       <p>${card.context ? searchableEnglish(card.context) : "尚未保存语境"}</p>
       ${card.note ? `<p>${escapeHtml(card.note)}</p>` : ""}
       <div class="toolbar"><button data-search-query="${escapeHtml(card.term)}" data-open-lexicon="true">查看查询</button>${card.source_article_id ? `<button data-open-article="${card.source_article_id}">回到原文</button>` : ""}<a class="button-link" href="https://dict.eudic.net/dicts/en/${encodeURIComponent(card.term)}" target="_blank" rel="noreferrer">欧路</a></div>
     </div>
   `).join("") || `<div class="item muted">暂无生词</div>`;
+}
+
+function reviewStateLabel(stateName) {
+  return { new: "新项目", learning: "学习中", review: "复习", relearning: "重学" }[stateName] || stateName;
+}
+
+function renderReviews() {
+  const data = state.reviews || { items: [], summary: {} };
+  const items = data.items || [];
+  const summary = data.summary || {};
+  document.querySelectorAll("[data-review-kind]").forEach(button => {
+    button.classList.toggle("active", button.dataset.reviewKind === state.reviewKind);
+  });
+  $("#reviewDueCount").textContent = summary.due || 0;
+  $("#undoReviewBtn").disabled = !state.canUndoReview;
+  $("#reviewSummary").innerHTML = `
+    <div><span>今日到期</span><strong>${summary.due || 0}</strong></div>
+    <div><span>新项目</span><strong>${summary.new || 0}</strong></div>
+    <div><span>学习 / 重学</span><strong>${(summary.learning || 0) + (summary.relearning || 0)}</strong></div>
+    <div><span>长期复习</span><strong>${summary.review || 0}</strong></div>`;
+  if (!items.some(item => item.id === state.selectedReviewId)) {
+    state.selectedReviewId = items[0]?.id || null;
+    state.reviewAnswerRevealed = false;
+  }
+  const selected = items.find(item => item.id === state.selectedReviewId);
+  $("#reviewQueue").innerHTML = items.map((item, index) => `
+    <button class="master-list-item ${item.id === state.selectedReviewId ? "active" : ""}" data-select-review="${item.id}">
+      <span class="master-number">${String(index + 1).padStart(2, "0")}</span>
+      <span class="master-copy"><strong>${escapeHtml(excerpt(item.front, 58))}</strong><small>${escapeHtml(item.kind === "mistake" ? "已掌握错题" : item.kind === "phrase" ? "短语" : "单词")} · ${escapeHtml(reviewStateLabel(item.state))}</small><em>${item.lapses ? `遗忘 ${item.lapses} 次` : item.repetitions ? `已复习 ${item.repetitions} 次` : "首次复习"}</em></span>
+    </button>`).join("") || `<div class="empty-state">当前没有到期项目</div>`;
+  const detail = $("#reviewDetail");
+  if (!selected) {
+    detail.innerHTML = `<div class="review-complete"><span class="eyebrow">Queue complete</span><h2>本轮复习完成</h2><p>${summary.next_due ? `下一项预计 ${escapeHtml(formatDateTime(summary.next_due))} 到期。` : "保存新的单词、短语或掌握错题后，它们会自动进入记忆队列。"}</p></div>`;
+    return;
+  }
+  detail.innerHTML = `
+    <div class="review-card-head"><div><div class="badge-row">${badge(selected.kind === "mistake" ? "错题" : selected.kind === "phrase" ? "短语" : "单词", selected.kind === "phrase" ? "amber" : "teal")}${badge(reviewStateLabel(selected.state))}</div><h2>${escapeHtml(selected.front)}</h2></div><span class="review-position">${items.findIndex(item => item.id === selected.id) + 1} / ${items.length}</span></div>
+    ${state.reviewAnswerRevealed ? `
+      <section class="review-answer"><span>答案与语境</span><p>${searchableEnglish(selected.answer, false)}</p>${selected.context && selected.context !== selected.answer ? `<blockquote>${searchableEnglish(selected.context, false)}</blockquote>` : ""}${selected.note ? `<small>${escapeHtml(selected.note)}</small>` : ""}</section>
+      <div class="review-rating-grid">${(selected.choices || []).map(choice => `<button class="review-rating ${choice.rating}" data-rate-review="${choice.rating}" data-review-id="${selected.id}"><strong>${escapeHtml(choice.label)}</strong><small>${escapeHtml(choice.interval)}</small></button>`).join("")}</div>
+      <div class="toolbar review-source-actions">${selected.kind === "mistake" ? "" : `<button data-search-query="${escapeHtml(selected.front)}" data-open-lexicon="true">查词</button>`}${selected.source_article_id ? `<button data-open-article="${selected.source_article_id}">回到原文</button>` : ""}</div>`
+      : `<div class="review-recall"><p>${selected.kind === "mistake" ? "先重新作答并回想原文证据。" : "回想含义、搭配和原句，再查看答案。"}</p><button class="primary" id="revealReviewAnswerBtn">显示答案</button></div>`}
+  `;
 }
 
 function remedialQuizHtml(quiz, index) {
@@ -1739,6 +1787,7 @@ function renderAll() {
   renderQuizzes();
   renderQuizSource();
   renderCards();
+  renderReviews();
   renderMistakes();
   renderPracticeHistory();
   renderLexicon();
@@ -2106,6 +2155,43 @@ async function loadArticleContentTypes() {
 async function loadCards() {
   const data = await api("/api/cards");
   state.cards = data.cards || [];
+}
+
+async function loadReviews() {
+  state.reviews = await api(`/api/reviews?kind=${encodeURIComponent(state.reviewKind)}&limit=30`);
+  state.canUndoReview = Boolean(state.reviews.undo?.available);
+}
+
+async function rateReview(reviewId, rating) {
+  const data = await api(`/api/reviews/${reviewId}/rate`, {
+    method: "POST",
+    body: JSON.stringify({ rating, kind: state.reviewKind }),
+  });
+  state.reviews = data.queue;
+  state.selectedReviewId = state.reviews.items?.[0]?.id || null;
+  state.reviewAnswerRevealed = false;
+  state.canUndoReview = Boolean(state.reviews.undo?.available);
+  await Promise.all([loadToday(), loadCards()]);
+  renderReviews();
+  renderCards();
+  renderDashboard();
+  toast(`${{ again: "忘记", hard: "困难", good: "记得", easy: "轻松" }[rating]} · ${data.interval}后复习`);
+}
+
+async function undoReview() {
+  const data = await api("/api/reviews/undo", {
+    method: "POST",
+    body: JSON.stringify({ kind: state.reviewKind }),
+  });
+  state.reviews = data.queue;
+  state.selectedReviewId = data.review_item_id;
+  state.reviewAnswerRevealed = true;
+  state.canUndoReview = Boolean(state.reviews.undo?.available);
+  await Promise.all([loadToday(), loadCards()]);
+  renderReviews();
+  renderCards();
+  renderDashboard();
+  toast("已恢复上次评分前的排期");
 }
 
 async function loadBridgeConfig() {
@@ -2577,9 +2663,10 @@ async function saveCard(term = $("#cardTerm").value.trim(), context = $("#cardCo
       source_article_id: belongsToSelectedArticle ? state.selectedArticle.id : null,
     }),
   });
-  state.cards = [data.card, ...state.cards.filter(card => card.id !== data.card.id)];
+  await Promise.all([loadCards(), loadReviews()]);
   if (data.created) await loadToday();
   renderCards();
+  renderReviews();
   renderLexicon();
   renderStats();
   renderDashboard();
@@ -2687,7 +2774,7 @@ async function refreshFeeds() {
 async function toggleMistake(id) {
   const data = await api(`/api/mistakes/${id}/solve`, { method: "POST", body: "{}" });
   if (data.progress) state.progress = data.progress;
-  await Promise.all([loadMistakes(), loadToday()]);
+  await Promise.all([loadMistakes(), loadToday(), loadReviews()]);
   renderAll();
   if (data.points) toast(`错题复盘完成，+${data.points} XP`);
 }
@@ -2891,9 +2978,27 @@ document.addEventListener("click", async event => {
     }
     if (button.id === "saveCardBtn") await saveCard();
     if (button.id === "loadCardsBtn") {
-      await loadCards();
+      await Promise.all([loadCards(), loadReviews()]);
       renderAll();
     }
+    if (button.dataset.reviewKind) {
+      state.reviewKind = button.dataset.reviewKind;
+      state.selectedReviewId = null;
+      state.reviewAnswerRevealed = false;
+      await loadReviews();
+      renderReviews();
+    }
+    if (button.dataset.selectReview) {
+      state.selectedReviewId = Number(button.dataset.selectReview);
+      state.reviewAnswerRevealed = false;
+      renderReviews();
+    }
+    if (button.id === "revealReviewAnswerBtn") {
+      state.reviewAnswerRevealed = true;
+      renderReviews();
+    }
+    if (button.dataset.rateReview) await rateReview(Number(button.dataset.reviewId), button.dataset.rateReview);
+    if (button.id === "undoReviewBtn") await undoReview();
     if (button.id === "copyBridgeTokenBtn") {
       await navigator.clipboard.writeText($("#bridgeToken").value);
       toast("连接令牌已复制");
@@ -3122,7 +3227,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 async function boot() {
   await loadHealth();
   await loadActivePracticeData();
-  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), searchLexicon("", { open: false, history: false })]);
   const restoredServerRun = await restoreServerPracticeRun();
   if (!restoredServerRun && !state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);

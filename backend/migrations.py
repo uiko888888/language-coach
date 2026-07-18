@@ -6,8 +6,10 @@ from datetime import datetime, timezone
 
 try:
     from .lexical_data import ensure_lexical_data_schema
+    from .review_scheduler import backfill_review_items
 except ImportError:
     from lexical_data import ensure_lexical_data_schema
+    from review_scheduler import backfill_review_items
 
 
 Migration = tuple[int, str, Callable[[sqlite3.Connection], None]]
@@ -165,6 +167,10 @@ def _lexical_query_history(conn: sqlite3.Connection) -> None:
     )
 
 
+def _review_schedule(conn: sqlite3.Connection) -> None:
+    backfill_review_items(conn, _utc_now())
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     (1, "consolidate legacy schema", _legacy_schema),
     (2, "add training loop metrics", _training_loop_metrics),
@@ -172,6 +178,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     (4, "classify public and private article material", _article_visibility),
     (5, "add layered open lexical data", _open_lexical_layers),
     (6, "add private lexical query history", _lexical_query_history),
+    (7, "add unified review scheduling", _review_schedule),
 )
 
 

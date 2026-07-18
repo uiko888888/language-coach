@@ -10,7 +10,7 @@ This is a product benchmark against established interaction patterns, not a live
 | Reading exam training | 7.2/10 | IELTS/TOEFL practice platforms | Formal scoring and several complete-paper models remain incomplete | Validate prescriptions against next-set improvement |
 | Learning profile | 7.2/10 | EF SET onboarding, adaptive learning apps | Behavior evidence now drives prescriptions but not validated CEFR changes | Add prescription feedback and outcome evidence |
 | Dictionary and word chunks | 5.9/10 | Eudic, Cambridge, Collins, Merriam-Webster | Query correction, history and navigation are usable, but the real database still lacks Kaikki, Tatoeba and wordfreq data | Import licensed subsets and validate polysemy, phrases and Chinese recall |
-| Review scheduling | 3/10 | Anki/FSRS | Cards and mistakes exist without memory scheduling | Shared FSRS queue for words, mistakes and listening lines |
+| Review scheduling | 5.8/10 | Anki/FSRS | Unified scheduling loop exists, but the current versioned baseline is not validated FSRS and has no retention fitting | Validated FSRS adapter, retention target and real-log calibration |
 | Listening and clip study | 2/10 | Eudic clips, asbplayer, Language Reactor | No timed subtitle player or repeat loop yet | User-authorized subtitle and media clip workspace |
 | Content discovery | 6.2/10 | News readers and Eudic daily content | Two layouts and public/private scopes exist; collections, reading state and feedback are incomplete | Persist filters, track reading state and add collections |
 | Universal delivery | 3/10 | Hosted PWA products | Current edition is local and single-user | Accounts, cloud database, worker queue and PWA |
@@ -39,6 +39,8 @@ Current strengths are source traceability, one-material-many-uses, evidence repl
 `alpha.22` changes the dictionary from a WordNet-specific page into a layered open-data system. It separates semantic definitions, etymology/forms, attributable examples, general frequency and personal corpus evidence. The architecture and learning presentation exceed the 6/10 threshold, but the actual dictionary product remains 5.8/10 until licensed real subsets are imported and quality-audited; importer fixtures are not coverage.
 
 `alpha.22.1` borrows mature query interaction patterns without copying commercial content: verified inflection recovery, bounded spelling candidates, private recent/repeated searches, section jumps, copy and external verification. Query usability improves, but content coverage only moves to 5.9/10 because navigation cannot replace missing Chinese senses, curated collocations or audited examples.
+
+`alpha.23.0` turns static saved material into an executable memory loop: words, phrases and mastered mistakes share a due queue, users recall before revealing, four ratings produce distinct intervals, lapses enter relearning, and a recent rating can be transactionally undone. This raises review maturity from 3.0 to 5.8. It does not cross 6 because `adaptive-interval-v1` is a conservative versioned baseline rather than validated FSRS, and no personal retention evidence has been fitted yet.
 
 Interest and exam modes now use different home workflows: immersion and expression collection versus target, weakness and question-type prescription. They still share one profile so interest activity can later contribute domain evidence without masquerading as exam-score gains.
 
