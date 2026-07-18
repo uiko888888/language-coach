@@ -974,6 +974,9 @@ def init_db() -> None:
               session_id INTEGER,
               user_answer TEXT NOT NULL,
               confidence INTEGER,
+              elapsed_seconds INTEGER NOT NULL DEFAULT 0,
+              answer_changes INTEGER NOT NULL DEFAULT 0,
+              hint_used INTEGER NOT NULL DEFAULT 0,
               correct INTEGER NOT NULL,
               error_type TEXT NOT NULL DEFAULT '',
               created_at TEXT NOT NULL,
@@ -1068,6 +1071,10 @@ def init_db() -> None:
               skill TEXT NOT NULL DEFAULT '',
               error_type TEXT NOT NULL DEFAULT '',
               explanation_json TEXT NOT NULL DEFAULT '{}',
+              remedial_attempts INTEGER NOT NULL DEFAULT 0,
+              remedial_correct_streak INTEGER NOT NULL DEFAULT 0,
+              mastered_at TEXT NOT NULL DEFAULT '',
+              mastery_source TEXT NOT NULL DEFAULT '',
               solved INTEGER NOT NULL DEFAULT 0,
               created_at TEXT NOT NULL,
               FOREIGN KEY (quiz_id) REFERENCES quizzes(id)
@@ -2763,7 +2770,7 @@ def explain_mistake(quiz: sqlite3.Row | dict, user_answer: str) -> dict:
             "method": ["先遮住目标词读完整句", "判断目标词在句中的词性和语义角色", "把选项逐一代回原句"],
         },
     }
-    guide = type_guides.get(quiz_type, type_guides["reading"])
+    guide = type_guides.get(question_type, type_guides.get(quiz_type, type_guides["reading"]))
 
     lower = selected.lower()
     if not selected:
@@ -2788,6 +2795,46 @@ def explain_mistake(quiz: sqlite3.Row | dict, user_answer: str) -> dict:
         trap = "语义相近但逻辑不等价"
         why_wrong = "你的答案与原文主题相关，但没有完整保留证据中的主体、范围、条件或逻辑关系。相似词不等于同义答案。"
 
+    raw_options = quiz.get("options")
+    if raw_options is None:
+        try:
+            raw_options = json.loads(quiz.get("options_json") or "[]")
+        except (TypeError, json.JSONDecodeError):
+            raw_options = []
+    options = [str(option) for option in raw_options or []]
+    generic_distractor = {
+        "tfng": "判断题不能凭语感选择；必须分别证明一致、矛盾或信息不足。",
+        "heading": "该选项可能碰到段落局部词汇，但需要检查能否覆盖整段功能。",
+        "matching-info": "出现相同单词不等于信息关系一致，主体、动作和限定条件必须同时对应。",
+        "gap-fill": "代回原句后至少需要重新核对词性、原文形式和字数限制。",
+        "main-idea": "该选项可能只覆盖局部细节，或把结论扩大到了全文之外。",
+        "inference": "该选项需要额外常识或多走了一步，超出了原文可支持的推断距离。",
+        "negative-factual": "EXCEPT 题必须为其余选项分别找到证据，不能只挑最陌生的一项。",
+        "simplification": "该改写需要检查是否丢失主干，或改变因果、转折、条件关系。",
+        "vocabulary": "该词义可能在其他语境成立，但需要代回当前句核对词性、语义和语域。",
+    }.get(question_type, "该选项与主题有关，但需要逐项核对主体、范围、条件和逻辑方向。")
+    option_analysis = []
+    for option in options:
+        if option.casefold() == answer.casefold():
+            option_analysis.append({"option": option, "status": "correct", "reason": guide["correct"]})
+        elif option.casefold() == selected.casefold():
+            option_analysis.append({"option": option, "status": "selected-wrong", "reason": why_wrong})
+        else:
+            reason = generic_distractor
+            if re.search(r"\b(all|only|always|never|entirely|must)\b", option, re.I):
+                reason = "该选项含有绝对化或范围强化表达，需要原文提供同等强度的明确证据。"
+            option_analysis.append({"option": option, "status": "distractor", "reason": reason})
+
+    stop_words = {"that", "this", "with", "from", "which", "their", "there", "about", "what", "when", "where", "have", "does", "were", "been", "into"}
+    prompt_terms = [word.lower() for word in re.findall(r"[A-Za-z]{4,}", str(quiz.get("prompt") or "")) if word.lower() not in stop_words]
+    evidence_terms = {word.lower() for word in re.findall(r"[A-Za-z]{4,}", evidence) if word.lower() not in stop_words}
+    shared_terms = list(dict.fromkeys(word for word in prompt_terms if word in evidence_terms))[:5]
+    location_signals = {
+        "shared_terms": shared_terms,
+        "locator": "、".join(shared_terms) if shared_terms else "题干与证据未直接复现明显关键词，需要按主体和关系定位。",
+        "paraphrase_check": guide["point"],
+    }
+
     return {
         "style": style,
         "question_type": question_type,
@@ -2801,6 +2848,8 @@ def explain_mistake(quiz: sqlite3.Row | dict, user_answer: str) -> dict:
         "steps": guide["method"],
         "retry": f"遮住答案，把“{answer}”换成自己的话复述一次，再重新作答。",
         "evidence": evidence,
+        "option_analysis": option_analysis,
+        "location_signals": location_signals,
     }
 
 
@@ -4226,6 +4275,9 @@ def record_quiz_attempt(
     answer: str,
     session_id: int | None = None,
     confidence: object = None,
+    elapsed_seconds: object = 0,
+    answer_changes: object = 0,
+    hint_used: object = False,
 ) -> dict:
     quiz_data = dict(quiz)
     selected = str(answer or "").strip()
@@ -4233,16 +4285,52 @@ def record_quiz_attempt(
     correct = selected.casefold() == str(quiz_data.get("answer") or "").strip().casefold()
     error_type = "" if correct else classify_answer_error(quiz_data, selected)
     explanation = explain_mistake(quiz_data, selected)
+    try:
+        elapsed = max(0, min(7200, int(elapsed_seconds or 0)))
+        changes = max(0, min(100, int(answer_changes or 0)))
+    except (TypeError, ValueError):
+        elapsed, changes = 0, 0
+    hint = 1 if hint_used else 0
+    try:
+        metadata = json.loads(quiz_data.get("metadata_json") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        metadata = {}
+    parent_mistake_id = int(metadata.get("parent_mistake_id") or 0)
     first_attempt = conn.execute(
         "SELECT COUNT(*) FROM attempts WHERE quiz_id = ?", (quiz_data["id"],)
     ).fetchone()[0] == 0
     now = utc_now()
     cursor = conn.execute(
-        """INSERT INTO attempts (quiz_id, session_id, user_answer, confidence, correct, error_type, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (quiz_data["id"], session_id, selected, confidence_score, 1 if correct else 0, error_type, now),
+        """INSERT INTO attempts
+           (quiz_id, session_id, user_answer, confidence, elapsed_seconds, answer_changes, hint_used, correct, error_type, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (quiz_data["id"], session_id, selected, confidence_score, elapsed, changes, hint, 1 if correct else 0, error_type, now),
     )
-    if not correct:
+    mastery = None
+    mastery_reward = 0
+    if parent_mistake_id:
+        parent = conn.execute(
+            "SELECT solved, reward_claimed, remedial_attempts, remedial_correct_streak FROM mistakes WHERE id = ?",
+            (parent_mistake_id,),
+        ).fetchone()
+        if parent:
+            streak = int(parent["remedial_correct_streak"] or 0) + 1 if correct else 0
+            attempts = int(parent["remedial_attempts"] or 0) + 1
+            mastered = bool(correct and streak >= 2)
+            conn.execute(
+                """UPDATE mistakes SET remedial_attempts = ?, remedial_correct_streak = ?,
+                   solved = CASE WHEN ? THEN 1 WHEN ? THEN 0 ELSE solved END,
+                   mastered_at = CASE WHEN ? THEN ? WHEN ? THEN '' ELSE mastered_at END,
+                   mastery_source = CASE WHEN ? THEN 'remedial-streak' WHEN ? THEN '' ELSE mastery_source END
+                   WHERE id = ?""",
+                (attempts, streak, mastered, not correct, mastered, now, not correct, mastered, not correct, parent_mistake_id),
+            )
+            if mastered and not bool(parent["reward_claimed"]):
+                conn.execute("UPDATE mistakes SET reward_claimed = 1 WHERE id = ?", (parent_mistake_id,))
+                increment_daily_progress(conn, "review", 1)
+                mastery_reward = 5
+            mastery = {"mistake_id": parent_mistake_id, "attempts": attempts, "streak": streak, "mastered": mastered}
+    if not correct and not parent_mistake_id:
         conn.execute(
             """
             INSERT INTO mistakes
@@ -4274,8 +4362,8 @@ def record_quiz_attempt(
                     (target_word, quiz_data.get("evidence") or "", quiz_data.get("article_id"), note, now, now),
                 )
                 increment_daily_progress(conn, "vocabulary", 1)
-    points = (10 if correct else 2) if first_attempt else 0
-    progress = award_progress(conn, points, correct=correct) if first_attempt else progress_payload(conn)
+    points = ((10 if correct else 2) if first_attempt else 0) + mastery_reward
+    progress = award_progress(conn, points, correct=correct, reviewed=bool(mastery and mastery["mastered"])) if points else progress_payload(conn)
     return {
         "attempt_id": cursor.lastrowid,
         "quiz_id": quiz_data["id"],
@@ -4287,6 +4375,10 @@ def record_quiz_attempt(
         "explanation": explanation,
         "skill": quiz_data.get("skill") or "阅读理解",
         "error_type": error_type,
+        "elapsed_seconds": elapsed,
+        "answer_changes": changes,
+        "hint_used": bool(hint),
+        "mastery": mastery,
         "points": points,
         "progress": progress,
     }
@@ -5212,7 +5304,7 @@ class App(BaseHTTPRequestHandler):
                 with db() as conn:
                     rows = conn.execute(
                         """
-                        SELECT m.*, q.style, q.type AS quiz_type, q.question_type,
+                        SELECT m.*, q.style, q.type AS quiz_type, q.question_type, q.options_json,
                                q.skill AS quiz_skill, q.difficulty, q.note AS quiz_note,
                                q.article_id, a.title AS article_title
                         FROM mistakes m
@@ -5225,10 +5317,13 @@ class App(BaseHTTPRequestHandler):
                     for row in rows:
                         item = dict(row)
                         item["skill"] = item.get("skill") or item.get("quiz_skill") or "阅读理解"
+                        fresh_explanation = explain_mistake(item, item["user_answer"])
                         try:
-                            item["explanation"] = json.loads(item.get("explanation_json") or "{}") or explain_mistake(item, item["user_answer"])
+                            item["explanation"] = json.loads(item.get("explanation_json") or "{}") or fresh_explanation
                         except json.JSONDecodeError:
-                            item["explanation"] = explain_mistake(item, item["user_answer"])
+                            item["explanation"] = fresh_explanation
+                        for key, value in fresh_explanation.items():
+                            item["explanation"].setdefault(key, value)
                         mistakes.append(item)
                 return json_response(self, {"mistakes": mistakes})
             if path == "/api/feeds":
@@ -5675,7 +5770,13 @@ class App(BaseHTTPRequestHandler):
                     quiz = conn.execute("SELECT * FROM quizzes WHERE id = ?", (quiz_id,)).fetchone()
                     if not quiz:
                         return json_response(self, {"error": "Quiz not found"}, 404)
-                    result = record_quiz_attempt(conn, quiz, answer, confidence=payload.get("confidence"))
+                    result = record_quiz_attempt(
+                        conn, quiz, answer,
+                        confidence=payload.get("confidence"),
+                        elapsed_seconds=payload.get("elapsed_seconds"),
+                        answer_changes=payload.get("answer_changes"),
+                        hint_used=payload.get("hint_used"),
+                    )
                 return json_response(self, result)
             if path == "/api/practice-sessions/record":
                 raw_ids = payload.get("attempt_ids") or []
@@ -5742,14 +5843,18 @@ class App(BaseHTTPRequestHandler):
                     return json_response(self, {"error": "At least one quiz answer is required"}, 400)
                 if len(raw_answers) > 50:
                     return json_response(self, {"error": "A practice session supports at most 50 questions"}, 400)
-                normalized: list[tuple[int, str, int | None]] = []
+                normalized: list[tuple[int, str, int | None, int, int, bool]] = []
                 seen: set[int] = set()
                 for item in raw_answers:
                     quiz_id = int(item.get("quiz_id") or 0)
                     if not quiz_id or quiz_id in seen:
                         return json_response(self, {"error": "Quiz answers must use unique valid ids"}, 400)
                     seen.add(quiz_id)
-                    normalized.append((quiz_id, str(item.get("answer") or "").strip(), normalize_confidence(item.get("confidence"))))
+                    normalized.append((
+                        quiz_id, str(item.get("answer") or "").strip(), normalize_confidence(item.get("confidence")),
+                        max(0, min(7200, int(item.get("elapsed_seconds") or 0))),
+                        max(0, min(100, int(item.get("answer_changes") or 0))), bool(item.get("hint_used")),
+                    ))
                 placeholders = ",".join("?" for _ in normalized)
                 with db() as conn:
                     rows = conn.execute(
@@ -5758,7 +5863,7 @@ class App(BaseHTTPRequestHandler):
                     by_id = {row["id"]: row for row in rows}
                     if len(by_id) != len(normalized):
                         return json_response(self, {"error": "One or more quizzes were not found"}, 404)
-                    quizzes = [by_id[quiz_id] for quiz_id, _, _ in normalized]
+                    quizzes = [by_id[item[0]] for item in normalized]
                     article_ids = {row["article_id"] for row in quizzes}
                     styles = {row["style"] for row in quizzes}
                     question_types = {row["question_type"] for row in quizzes}
@@ -5779,8 +5884,8 @@ class App(BaseHTTPRequestHandler):
                     )
                     session_id = cursor.lastrowid
                     results = [
-                        record_quiz_attempt(conn, by_id[quiz_id], answer, session_id, confidence)
-                        for quiz_id, answer, confidence in normalized
+                        record_quiz_attempt(conn, by_id[quiz_id], answer, session_id, confidence, elapsed, changes, hint)
+                        for quiz_id, answer, confidence, elapsed, changes, hint in normalized
                     ]
                     skill_summary: dict[str, dict[str, int]] = {}
                     error_summary: dict[str, int] = {}
@@ -5800,7 +5905,7 @@ class App(BaseHTTPRequestHandler):
                             stats["total"] += 1
                             stats["correct"] += 1 if result["correct"] else 0
                     correct_count = sum(1 for result in results if result["correct"])
-                    answered_count = sum(1 for _, answer, _ in normalized if answer)
+                    answered_count = sum(1 for item in normalized if item[1])
                     elapsed_seconds = max(0, min(21600, int(payload.get("elapsed_seconds") or 0)))
                     score = round(correct_count / len(results) * 100)
                     conn.execute(
@@ -5899,7 +6004,8 @@ class App(BaseHTTPRequestHandler):
                 with db() as conn:
                     original = conn.execute(
                         """
-                        SELECT m.id AS mistake_id, m.user_answer, q.id AS quiz_id,
+                        SELECT m.id AS mistake_id, m.user_answer, m.remedial_correct_streak,
+                               q.id AS quiz_id,
                                q.article_id, q.style, q.type, q.question_type, q.skill, q.difficulty,
                                q.prompt, q.answer, q.evidence, q.note, a.body AS article_body
                         FROM mistakes m
@@ -5917,6 +6023,8 @@ class App(BaseHTTPRequestHandler):
                     now = utc_now()
                     saved = []
                     for item in items:
+                        item["parent_mistake_id"] = int(original_item["mistake_id"])
+                        item["remedial_level"] = min(3, int(original_item.get("remedial_correct_streak") or 0) + 1)
                         saved.append(save_quiz_item(
                             conn, original_item["article_id"], original_item["style"] or "IELTS", "remedial", item, now
                         ))
@@ -5928,7 +6036,13 @@ class App(BaseHTTPRequestHandler):
                     if not current:
                         return json_response(self, {"error": "Mistake not found"}, 404)
                     becoming_solved = not bool(current["solved"])
-                    conn.execute("UPDATE mistakes SET solved = 1 - solved WHERE id = ?", (match.group(1),))
+                    conn.execute(
+                        """UPDATE mistakes SET solved = 1 - solved,
+                           mastered_at = CASE WHEN solved = 0 THEN ? ELSE '' END,
+                           mastery_source = CASE WHEN solved = 0 THEN 'self-confirmed' ELSE '' END
+                           WHERE id = ?""",
+                        (utc_now(), match.group(1)),
+                    )
                     earns_reward = becoming_solved and not bool(current["reward_claimed"])
                     if earns_reward:
                         conn.execute("UPDATE mistakes SET reward_claimed = 1 WHERE id = ?", (match.group(1),))

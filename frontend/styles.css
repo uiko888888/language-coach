@@ -1238,3 +1238,40 @@ label {
 
 .data-actions #restoreBackupBtn { grid-column: 1 / -1; }
 .data-note { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+
+.quiz-hint-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 8px 0;
+  min-height: 34px;
+}
+
+.quiz-hint-row button { min-height: 30px; padding: 3px 9px; }
+.quiz-hint-row span { color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+.option-analysis { margin-top: 14px; border-top: 1px solid var(--line); }
+.option-analysis summary { padding: 10px 0; cursor: pointer; color: var(--teal-dark); font-weight: 700; }
+.option-analysis-list { display: grid; gap: 8px; }
+.option-analysis-row { padding: 9px 11px; border-left: 3px solid var(--line); background: #f8f9f7; }
+.option-analysis-row.correct { border-left-color: var(--green); background: #f3faf5; }
+.option-analysis-row.selected-wrong { border-left-color: var(--red); background: #fff7f7; }
+.option-analysis-row strong, .option-analysis-row p { margin: 0; }
+.option-analysis-row p { margin-top: 4px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+
+.location-signals { margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--amber); background: #fffaf2; }
+.location-signals p { margin: 5px 0; }
+.location-signals small { color: var(--muted); }
+
+.mastery-progress {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  background: var(--line);
+}
+.mastery-progress div { padding: 10px; background: var(--surface); }
+.mastery-progress span, .mastery-progress strong { display: block; }
+.mastery-progress span { color: var(--muted); font-size: 11px; }
+.mastery-progress strong { margin-top: 4px; font-size: 14px; }

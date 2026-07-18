@@ -130,9 +130,19 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.18";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.19";', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
+
+    def test_training_loop_exposes_deep_explanations_metrics_and_mastery(self):
+        for contract in (
+            'class="option-analysis"', 'class="location-signals"',
+            'data-toggle-quiz-hint=', 'class="mastery-progress"',
+            'data-next-set-type-only=', 'answer_changes:', 'hint_used:',
+        ):
+            self.assertIn(contract, self.js)
+        for selector in (".option-analysis", ".location-signals", ".mastery-progress", ".quiz-hint-row"):
+            self.assertIn(selector, self.css)
 
 
 if __name__ == "__main__":

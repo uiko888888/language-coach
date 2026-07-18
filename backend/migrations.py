@@ -79,7 +79,26 @@ def _legacy_schema(conn: sqlite3.Connection) -> None:
     )
 
 
-MIGRATIONS: tuple[Migration, ...] = ((1, "consolidate legacy schema", _legacy_schema),)
+def _training_loop_metrics(conn: sqlite3.Connection) -> None:
+    for column, definition in {
+        "elapsed_seconds": "INTEGER NOT NULL DEFAULT 0",
+        "answer_changes": "INTEGER NOT NULL DEFAULT 0",
+        "hint_used": "INTEGER NOT NULL DEFAULT 0",
+    }.items():
+        _ensure_column(conn, "attempts", column, definition)
+    for column, definition in {
+        "remedial_attempts": "INTEGER NOT NULL DEFAULT 0",
+        "remedial_correct_streak": "INTEGER NOT NULL DEFAULT 0",
+        "mastered_at": "TEXT NOT NULL DEFAULT ''",
+        "mastery_source": "TEXT NOT NULL DEFAULT ''",
+    }.items():
+        _ensure_column(conn, "mistakes", column, definition)
+
+
+MIGRATIONS: tuple[Migration, ...] = (
+    (1, "consolidate legacy schema", _legacy_schema),
+    (2, "add training loop metrics", _training_loop_metrics),
+)
 
 
 def run_migrations(conn: sqlite3.Connection) -> int:

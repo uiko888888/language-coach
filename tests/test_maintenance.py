@@ -28,9 +28,13 @@ class MaintenanceTests(unittest.TestCase):
             self.assertEqual(run_migrations(conn), SCHEMA_VERSION)
             migrations = conn.execute("SELECT version, name FROM schema_migrations").fetchall()
             article_columns = {row[1] for row in conn.execute("PRAGMA table_info(articles)")}
-        self.assertEqual(len(migrations), 1)
+            attempt_columns = {row[1] for row in conn.execute("PRAGMA table_info(attempts)")}
+            mistake_columns = {row[1] for row in conn.execute("PRAGMA table_info(mistakes)")}
+        self.assertEqual(len(migrations), 2)
         self.assertIn("translation_zh", article_columns)
         self.assertIn("content_status", article_columns)
+        self.assertTrue({"elapsed_seconds", "answer_changes", "hint_used"}.issubset(attempt_columns))
+        self.assertTrue({"remedial_attempts", "remedial_correct_streak", "mastery_source"}.issubset(mistake_columns))
 
     def test_backup_round_trip_restores_database_and_creates_safety_copy(self):
         with tempfile.TemporaryDirectory() as temp_dir:

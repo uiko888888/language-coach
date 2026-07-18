@@ -9,6 +9,30 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.19] - 2026-07-18
+
+### Added
+
+- Added per-option explanations, including correct, selected-wrong and remaining distractor reasons.
+- Added rule-based location signals and paraphrase checkpoints between the prompt and evidence.
+- Added non-answer-revealing location hints during practice.
+- Added per-question elapsed time, answer-change count and hint-use evidence to attempts and practice history.
+- Added remedial attempt counts, correct streaks, mastery timestamps and mastery sources to mistakes.
+- Added automatic mastery after two consecutive correct remedial answers, while retaining explicit self-confirmation.
+- Added result actions for the same question type and the same diagnosed error.
+
+### Changed
+
+- Remedial questions retain their parent mistake and no longer create nested mistakes when answered incorrectly.
+- Existing mistakes receive the new explanation fields at read time without losing their saved historical explanation.
+- Content-source expansion is frozen while the core practice loop is hardened.
+
+### Known limits
+
+- Distractor analysis is rule-based and does not yet use an evidence-validated AI coach.
+- Interrupted work is still restored from local browser storage rather than a server-side training-run state machine.
+- Two consecutive remedial answers are an explainable initial mastery rule, not a full knowledge-tracing model.
+
 ## [0.8.0-alpha.18] - 2026-07-18
 
 ### Added

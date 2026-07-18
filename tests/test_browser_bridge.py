@@ -423,6 +423,8 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertTrue(similar["quizzes"])
         self.assertTrue(all(item["style"] == "TOEFL" for item in similar["quizzes"]))
         self.assertTrue(all(item["question_type"] == "simplification" for item in similar["quizzes"]))
+        self.assertTrue(all(item["parent_mistake_id"] == mistake["id"] for item in similar["quizzes"]))
+        self.assertTrue(all(item["remedial_level"] >= 1 for item in similar["quizzes"]))
 
     def test_toefl_advanced_types_are_exposed_and_support_remedial_flow(self):
         catalog, _ = self.request("/api/exam-types?style=TOEFL")

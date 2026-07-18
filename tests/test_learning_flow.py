@@ -29,6 +29,56 @@ class LearningFlowTests(unittest.TestCase):
         self.assertEqual(enriched["paragraph_count"], enriched["translation_paragraph_count"])
         self.assertTrue(enriched["translation_aligned"])
 
+    def test_explanation_covers_each_option_and_location_signals(self):
+        quiz = {
+            "type": "reading", "question_type": "factual", "style": "TOEFL",
+            "prompt": "What does the article state about smart devices?",
+            "answer": "They create a record of daily life.",
+            "options": ["They create a record of daily life.", "They never store information."],
+            "evidence": "Smart devices create a quiet record of daily life.",
+        }
+        explanation = server.explain_mistake(quiz, "They never store information.")
+        self.assertEqual(len(explanation["option_analysis"]), 2)
+        self.assertEqual(explanation["option_analysis"][0]["status"], "correct")
+        self.assertEqual(explanation["option_analysis"][1]["status"], "selected-wrong")
+        self.assertIn("devices", explanation["location_signals"]["shared_terms"])
+
+    def test_remedial_streak_tracks_metrics_and_mastery(self):
+        with server.db() as conn:
+            article_id = conn.execute("SELECT id FROM articles ORDER BY id LIMIT 1").fetchone()[0]
+            now = server.utc_now()
+            original = server.save_quiz_item(conn, article_id, "IELTS", "reading", {
+                "type": "reading", "question_type": "tfng", "skill": "证据判断", "difficulty": "B2",
+                "prompt": "Smart devices never record daily life.", "answer": "FALSE",
+                "options": ["TRUE", "FALSE", "NOT GIVEN"], "evidence": "Smart devices create a quiet record of daily life.",
+            }, now)
+            wrong = server.record_quiz_attempt(
+                conn, conn.execute("SELECT * FROM quizzes WHERE id = ?", (original["id"],)).fetchone(),
+                "TRUE", confidence=3, elapsed_seconds=42, answer_changes=2, hint_used=True,
+            )
+            mistake_id = conn.execute("SELECT id FROM mistakes WHERE quiz_id = ? ORDER BY id DESC", (original["id"],)).fetchone()[0]
+            remedial_rows = []
+            for index in range(2):
+                saved = server.save_quiz_item(conn, article_id, "IELTS", "remedial", {
+                    "type": "reading", "question_type": "tfng", "skill": "证据判断", "difficulty": "B2",
+                    "prompt": f"Remedial statement {index}", "answer": "TRUE",
+                    "options": ["TRUE", "FALSE", "NOT GIVEN"], "evidence": "The statement is directly supported.",
+                    "parent_mistake_id": mistake_id,
+                }, now)
+                remedial_rows.append(conn.execute("SELECT * FROM quizzes WHERE id = ?", (saved["id"],)).fetchone())
+            first = server.record_quiz_attempt(conn, remedial_rows[0], "TRUE")
+            second = server.record_quiz_attempt(conn, remedial_rows[1], "TRUE")
+            mistake = conn.execute("SELECT * FROM mistakes WHERE id = ?", (mistake_id,)).fetchone()
+            attempt = conn.execute("SELECT * FROM attempts WHERE id = ?", (wrong["attempt_id"],)).fetchone()
+        self.assertEqual(attempt["elapsed_seconds"], 42)
+        self.assertEqual(attempt["answer_changes"], 2)
+        self.assertEqual(attempt["hint_used"], 1)
+        self.assertFalse(first["mastery"]["mastered"])
+        self.assertTrue(second["mastery"]["mastered"])
+        self.assertEqual(mistake["remedial_correct_streak"], 2)
+        self.assertEqual(mistake["mastery_source"], "remedial-streak")
+        self.assertEqual(mistake["solved"], 1)
+
     def test_score_profile_validates_and_stays_separate_from_xp(self):
         original = server.learner_settings()
         try:
