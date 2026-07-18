@@ -4,7 +4,7 @@
 
 Language Coach 将文章阅读、词典查询、生词积累、一文多练、错题讲解和网页划词收集放在同一套学习流程中。当前版本优先强化英语，支持 IELTS、TOEFL、四级、六级、考研英语、专四、专八、GRE、GMAT 等训练风格；法语和西班牙语内容仍在后续规划中。
 
-> 当前版本：`0.8.0-alpha.17`。项目仍处于 Alpha 阶段，数据结构和交互可能继续调整。
+> 当前版本：`0.8.0-alpha.18`。项目仍处于 Alpha 阶段，数据结构和交互可能继续调整。
 
 ## 核心功能
 
@@ -256,7 +256,7 @@ python .\scripts\import_wordnet.py --download
 - 预发布版本：`vMAJOR.MINOR.PATCH-alpha.N`
 - 提交信息：遵循 Conventional Commits，例如 `feat:`、`fix:`、`docs:`、`test:`、`chore:`
 
-版本历史见 [`CHANGELOG.md`](CHANGELOG.md)，当前版本见 [`VERSION`](VERSION)。版本目标与验收见 [`PROJECT_PLAN.md`](PROJECT_PLAN.md)，未完成任务与打钩核对见 [`TASKS.md`](TASKS.md)；产品定位、路线图、真实完成状态、成熟度对照、关键决定和相关项目调研分别见 [`PRODUCT.md`](PRODUCT.md)、[`ROADMAP.md`](ROADMAP.md)、[`STATUS.md`](STATUS.md)、[`MATURITY.md`](MATURITY.md)、[`DECISIONS.md`](DECISIONS.md) 和 [`RESEARCH.md`](RESEARCH.md)。
+版本历史见 [`CHANGELOG.md`](CHANGELOG.md)，当前版本见 [`VERSION`](VERSION)。版本目标与验收见 [`PROJECT_PLAN.md`](PROJECT_PLAN.md)，未完成任务与打钩核对见 [`TASKS.md`](TASKS.md)；产品定位、架构边界、路线图、真实完成状态、成熟度对照、关键决定和相关项目调研分别见 [`PRODUCT.md`](PRODUCT.md)、[`ARCHITECTURE.md`](ARCHITECTURE.md)、[`ROADMAP.md`](ROADMAP.md)、[`STATUS.md`](STATUS.md)、[`MATURITY.md`](MATURITY.md)、[`DECISIONS.md`](DECISIONS.md) 和 [`RESEARCH.md`](RESEARCH.md)。
 
 ## 路线图
 

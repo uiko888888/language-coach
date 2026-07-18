@@ -8,6 +8,9 @@ const api = async (path, options = {}) => {
   return data;
 };
 
+const FRONTEND_APP_VERSION = "0.8.0-alpha.18";
+const SUPPORTED_API_VERSION = "1";
+
 const state = {
   articles: [],
   books: [],
@@ -17,6 +20,8 @@ const state = {
   mistakes: [],
   feeds: [],
   feedStatus: null,
+  runtime: null,
+  backups: [],
   sourceCatalog: [],
   subscriptions: [],
   today: { lanes: [], subscription_count: 0 },
@@ -1363,9 +1368,56 @@ function renderExamTypes() {
 
 async function loadHealth() {
   const data = await api("/api/health");
+  state.runtime = data;
   $("#serverStatus").textContent = "后端已连接";
   $("#serverStatus").classList.add("ok");
+  const backendVersion = String(data.app_version || "旧版后端");
+  const apiCompatible = String(data.api_version || "") === SUPPORTED_API_VERSION;
+  const compatible = apiCompatible && data.compatible !== false && backendVersion === FRONTEND_APP_VERSION;
+  $("#runtimeVersion").textContent = `${backendVersion} · API ${data.api_version || "未知"}`;
+  $("#compatibilityBanner").hidden = compatible;
+  if (!compatible) {
+    $("#compatibilityMessage").textContent = data.app_version
+      ? `页面 ${FRONTEND_APP_VERSION}，后端 ${backendVersion}。请重启后端后刷新页面。`
+      : "当前仍是旧版后端，请重启 Language Coach 后刷新页面。";
+  }
   return data;
+}
+
+function renderBackups() {
+  const select = $("#backupSelect");
+  if (!select) return;
+  select.innerHTML = state.backups.length
+    ? state.backups.map(item => `<option value="${escapeHtml(item.filename)}">${escapeHtml(item.created_at.replace("T", " "))} · ${Math.max(1, Math.round(item.size_bytes / 1024))} KB</option>`).join("")
+    : '<option value="">暂无备份</option>';
+  $("#restoreBackupBtn").disabled = !state.backups.length;
+  $("#backupStatus").textContent = state.backups.length
+    ? `本机已有 ${state.backups.length} 个备份，恢复前会自动再创建安全备份。`
+    : "备份仅保存在本机数据目录。";
+}
+
+async function loadBackups() {
+  try {
+    const data = await api("/api/backups");
+    state.backups = data.backups || [];
+  } catch (_error) {
+    state.backups = [];
+  }
+  renderBackups();
+}
+
+async function createDataBackup() {
+  const data = await api("/api/backups", { method: "POST", body: "{}" });
+  state.backups = data.backups || [];
+  renderBackups();
+  toast(`备份完成：${data.backup.filename}`);
+}
+
+async function restoreDataBackup() {
+  const filename = $("#backupSelect").value;
+  if (!filename || !window.confirm(`恢复 ${filename}？当前数据会先自动备份。`)) return;
+  await api("/api/backups/restore", { method: "POST", body: JSON.stringify({ filename }) });
+  window.location.reload();
 }
 
 async function loadProgress() {
@@ -2275,6 +2327,8 @@ document.addEventListener("click", async event => {
     }
     if (button.id === "refreshAllBtn") await boot();
     if (button.id === "saveLearnerSettingsBtn") await saveLearnerSettings();
+    if (button.id === "createBackupBtn") await createDataBackup();
+    if (button.id === "restoreBackupBtn") await restoreDataBackup();
     if (button.dataset.profileSource) setProfileSource(button.dataset.profileSource);
     if (button.id === "saveLearnerProfileBtn") await saveLearnerProfile();
     if (button.id === "loadQuickTestBtn") await loadQuickTest();
@@ -2567,7 +2621,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 
 async function boot() {
   await loadHealth();
-  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadBridgeConfig(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadBridgeConfig(), loadBackups(), searchLexicon("", { open: false, history: false })]);
   if (!state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);
     state.selectedArticle = data.article;

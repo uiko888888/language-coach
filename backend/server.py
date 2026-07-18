@@ -25,11 +25,21 @@ from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+try:
+    from .backups import create_backup, list_backups, restore_backup
+    from .migrations import run_migrations
+    from .versioning import SCHEMA_VERSION, app_version, version_payload
+except ImportError:
+    from backups import create_backup, list_backups, restore_backup
+    from migrations import run_migrations
+    from versioning import SCHEMA_VERSION, app_version, version_payload
+
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
 DATA = ROOT / "data"
 DB_PATH = DATA / "language_coach.sqlite"
+BACKUP_DIR = DATA / "backups"
 TRANSLATION_RUNTIME = {"verified": None, "last_error": "", "deepl_url": ""}
 
 
@@ -1217,33 +1227,7 @@ def init_db() -> None:
             """
         )
         ensure_wordnet_schema(conn)
-        article_columns = {row[1] for row in conn.execute("PRAGMA table_info(articles)")}
-        if "translation_zh" not in article_columns:
-            conn.execute("ALTER TABLE articles ADD COLUMN translation_zh TEXT NOT NULL DEFAULT ''")
-        if "content_status" not in article_columns:
-            conn.execute("ALTER TABLE articles ADD COLUMN content_status TEXT NOT NULL DEFAULT 'summary'")
-        if "content_type" not in article_columns:
-            conn.execute("ALTER TABLE articles ADD COLUMN content_type TEXT NOT NULL DEFAULT 'auto'")
-        for column in ("published_at", "source_guid", "content_hash"):
-            if column not in article_columns:
-                conn.execute(f"ALTER TABLE articles ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
-        feed_columns = {row[1] for row in conn.execute("PRAGMA table_info(feeds)")}
-        for column, definition in {
-            "etag": "TEXT NOT NULL DEFAULT ''",
-            "last_modified": "TEXT NOT NULL DEFAULT ''",
-            "last_attempt_at": "TEXT NOT NULL DEFAULT ''",
-            "last_success_at": "TEXT NOT NULL DEFAULT ''",
-            "consecutive_failures": "INTEGER NOT NULL DEFAULT 0",
-            "last_error": "TEXT NOT NULL DEFAULT ''",
-        }.items():
-            if column not in feed_columns:
-                conn.execute(f"ALTER TABLE feeds ADD COLUMN {column} {definition}")
-        conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_source_guid ON articles(source, source_guid) WHERE source_guid != ''"
-        )
-        conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_articles_content_hash ON articles(source, content_hash) WHERE content_hash != ''"
-        )
+        run_migrations(conn)
         conn.execute("UPDATE articles SET translation_zh = ? WHERE source = 'seed'", (SAMPLE_TRANSLATION,))
         conn.execute("UPDATE articles SET content_status = 'full' WHERE source IN ('seed', 'manual')")
         for source, (_, content_type) in SOURCE_CLASSIFICATION.items():
@@ -1273,39 +1257,6 @@ def init_db() -> None:
         )
         if not conn.execute("SELECT 1 FROM settings WHERE key = 'browser_bridge_token'").fetchone():
             conn.execute("INSERT INTO settings (key, value) VALUES ('browser_bridge_token', ?)", (secrets.token_urlsafe(24),))
-        mistake_columns = {row[1] for row in conn.execute("PRAGMA table_info(mistakes)")}
-        if "reward_claimed" not in mistake_columns:
-            conn.execute("ALTER TABLE mistakes ADD COLUMN reward_claimed INTEGER NOT NULL DEFAULT 0")
-        if "skill" not in mistake_columns:
-            conn.execute("ALTER TABLE mistakes ADD COLUMN skill TEXT NOT NULL DEFAULT ''")
-        if "error_type" not in mistake_columns:
-            conn.execute("ALTER TABLE mistakes ADD COLUMN error_type TEXT NOT NULL DEFAULT ''")
-        if "explanation_json" not in mistake_columns:
-            conn.execute("ALTER TABLE mistakes ADD COLUMN explanation_json TEXT NOT NULL DEFAULT '{}'")
-        quiz_columns = {row[1] for row in conn.execute("PRAGMA table_info(quizzes)")}
-        for column, definition in {
-            "question_type": "TEXT NOT NULL DEFAULT ''",
-            "skill": "TEXT NOT NULL DEFAULT ''",
-            "difficulty": "TEXT NOT NULL DEFAULT 'B2'",
-            "validation_json": "TEXT NOT NULL DEFAULT '{}'",
-            "generation_source": "TEXT NOT NULL DEFAULT 'legacy'",
-            "metadata_json": "TEXT NOT NULL DEFAULT '{}'",
-        }.items():
-            if column not in quiz_columns:
-                conn.execute(f"ALTER TABLE quizzes ADD COLUMN {column} {definition}")
-        attempt_columns = {row[1] for row in conn.execute("PRAGMA table_info(attempts)")}
-        if "error_type" not in attempt_columns:
-            conn.execute("ALTER TABLE attempts ADD COLUMN error_type TEXT NOT NULL DEFAULT ''")
-        if "session_id" not in attempt_columns:
-            conn.execute("ALTER TABLE attempts ADD COLUMN session_id INTEGER")
-        if "confidence" not in attempt_columns:
-            conn.execute("ALTER TABLE attempts ADD COLUMN confidence INTEGER")
-        session_columns = {row[1] for row in conn.execute("PRAGMA table_info(practice_sessions)")}
-        if "confidence_summary_json" not in session_columns:
-            conn.execute("ALTER TABLE practice_sessions ADD COLUMN confidence_summary_json TEXT NOT NULL DEFAULT '{}'")
-        card_columns = {row[1] for row in conn.execute("PRAGMA table_info(cards)")}
-        if "kind" not in card_columns:
-            conn.execute("ALTER TABLE cards ADD COLUMN kind TEXT NOT NULL DEFAULT 'word'")
         conn.execute("UPDATE cards SET kind = 'phrase' WHERE instr(trim(term), ' ') > 0")
         article_count = conn.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
         if article_count == 0:
@@ -1371,6 +1322,15 @@ def init_db() -> None:
              for form, kind, meaning, origin, note, examples in MORPHEME_SEEDS],
         )
         conn.execute("DELETE FROM morphemes WHERE form = '-ion'")
+
+
+def runtime_metadata() -> dict:
+    payload = version_payload(ROOT)
+    with db() as conn:
+        row = conn.execute("SELECT COALESCE(MAX(version), 0) FROM schema_migrations").fetchone()
+    payload["database_schema_version"] = int(row[0])
+    payload["compatible"] = payload["database_schema_version"] == SCHEMA_VERSION
+    return payload
 
 
 def json_response(handler: BaseHTTPRequestHandler, payload: object, status: int = 200) -> None:
@@ -5073,7 +5033,13 @@ class App(BaseHTTPRequestHandler):
         query = urllib.parse.parse_qs(parsed.query)
         try:
             if path == "/api/health":
-                return json_response(self, {"ok": True, "database": str(DB_PATH), "time": utc_now()})
+                return json_response(self, {
+                    "ok": True, "database": str(DB_PATH), "time": utc_now(), **runtime_metadata(),
+                })
+            if path == "/api/version":
+                return json_response(self, runtime_metadata())
+            if path == "/api/backups":
+                return json_response(self, {"backups": list_backups(BACKUP_DIR)})
             if path == "/api/progress":
                 with db() as conn:
                     return json_response(self, {"progress": progress_payload(conn)})
@@ -5282,6 +5248,18 @@ class App(BaseHTTPRequestHandler):
         path = parsed.path
         try:
             payload = read_json(self)
+            if path == "/api/backups":
+                backup = create_backup(DB_PATH, BACKUP_DIR, app_version(ROOT))
+                return json_response(self, {"backup": backup, "backups": list_backups(BACKUP_DIR)}, 201)
+            if path == "/api/backups/restore":
+                try:
+                    result = restore_backup(
+                        DB_PATH, BACKUP_DIR, str(payload.get("filename") or ""), app_version(ROOT),
+                    )
+                    init_db()
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, {**result, "version": runtime_metadata()})
             if path == "/api/learner-settings":
                 try:
                     settings = update_learner_settings(payload)

@@ -9,6 +9,28 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.18] - 2026-07-18
+
+### Added
+
+- Added application, API, target schema and live database schema metadata to `/api/version` and `/api/health`.
+- Added a registered SQLite migration runner with an auditable `schema_migrations` table.
+- Added local SQLite backup listing, creation, integrity checks and restore with an automatic pre-restore safety backup.
+- Added user-center backup controls and a visible frontend/backend compatibility banner.
+- Added `ARCHITECTURE.md` with current boundaries, dependency rules, extraction order and quality gates.
+- Added migration, backup, path-boundary, runtime-version and frontend-contract tests.
+
+### Changed
+
+- Consolidated scattered legacy `ALTER TABLE` checks into the migration module.
+- The frontend now reports an old backend process explicitly instead of silently running mismatched code.
+
+### Known limits
+
+- Business domains and frontend views are still concentrated in `backend/server.py` and `frontend/app.js`; gradual extraction remains scheduled.
+- Local backup is not export, encrypted cloud sync, account isolation or disaster recovery.
+- Core browser E2E, accessibility, visual regression and performance coverage are still incomplete.
+
 ## [0.8.0-alpha.17] - 2026-07-18
 
 ### Added

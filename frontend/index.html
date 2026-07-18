@@ -36,6 +36,10 @@
   </aside>
 
   <main class="app">
+    <div class="compatibility-banner" id="compatibilityBanner" role="alert" hidden>
+      <strong>前后端版本不一致</strong>
+      <span id="compatibilityMessage">请重启 Language Coach 后端后刷新页面。</span>
+    </div>
     <header class="topbar">
       <div>
         <h1 id="viewTitle">今日训练</h1>
@@ -310,7 +314,14 @@
               <div><span>数据位置</span><strong>本机 SQLite</strong></div>
               <div><span>画像更新</span><strong>用户设置 + 七天分项校准</strong></div>
               <div><span>推荐权限</span><strong id="userRecommendationStatus">已开启</strong></div>
+              <div><span>运行版本</span><strong id="runtimeVersion">检查中</strong></div>
             </div>
+            <div class="data-actions">
+              <button class="primary" id="createBackupBtn">立即备份</button>
+              <select id="backupSelect" aria-label="选择数据备份"><option value="">暂无备份</option></select>
+              <button id="restoreBackupBtn" disabled>恢复所选备份</button>
+            </div>
+            <p class="data-note" id="backupStatus">备份仅保存在本机数据目录。</p>
           </section>
         </aside>
       </div>

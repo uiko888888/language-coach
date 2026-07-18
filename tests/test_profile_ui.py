@@ -124,6 +124,16 @@ class ProfileUiContractTests(unittest.TestCase):
         self.assertNotIn('data-view="Reuters"', self.html)
         self.assertNotIn('data-view="The Economist"', self.html)
 
+    def test_runtime_compatibility_and_backup_controls_are_visible(self):
+        for element_id in (
+            "compatibilityBanner", "compatibilityMessage", "runtimeVersion",
+            "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
+        ):
+            self.assertIn(f'id="{element_id}"', self.html)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.18";', self.js)
+        self.assertIn('api("/api/backups"', self.js)
+        self.assertIn(".compatibility-banner", self.css)
+
 
 if __name__ == "__main__":
     unittest.main()
