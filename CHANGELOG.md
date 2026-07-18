@@ -9,6 +9,25 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.23.0.4] - 2026-07-18
+
+### Added
+
+- Added schema 9 extraction audits and source metadata fields, plus schema 10 cleanup for image captions embedded later in an article.
+- Added article extraction feedback for correct output, caption leakage and author/disclosure leakage.
+- Added source metadata panels in article detail and reader views without changing the fixed sidebar or split layout.
+
+### Changed
+
+- RSS HTML parsing now preserves readable block boundaries instead of flattening every node into one line.
+- The Conversation rules remove photo credits and author disclosures from the learning body and repair broken abbreviations.
+- Automatic full articles without a recorded extractor or with low confidence lose content-quality points before training.
+
+### Known limits
+
+- Source adapters currently cover the evidenced The Conversation pattern; other publishers still use generic block extraction.
+- No model has been trained yet. Feedback labels must first reach a reviewable sample size and any classifier output must still pass deterministic quality gates.
+
 ## [0.8.0-alpha.23.0.3] - 2026-07-18
 
 ### Added

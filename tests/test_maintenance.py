@@ -6,7 +6,7 @@ from pathlib import Path
 
 from backend import server
 from backend.backups import create_backup, list_backups, restore_backup
-from backend.migrations import _sanitize_feed_articles, run_migrations
+from backend.migrations import _article_semantic_blocks, _embedded_article_captions, _sanitize_feed_articles, run_migrations
 from backend.versioning import API_VERSION, SCHEMA_VERSION
 
 
@@ -31,13 +31,14 @@ class MaintenanceTests(unittest.TestCase):
             attempt_columns = {row[1] for row in conn.execute("PRAGMA table_info(attempts)")}
             mistake_columns = {row[1] for row in conn.execute("PRAGMA table_info(mistakes)")}
             practice_run_columns = {row[1] for row in conn.execute("PRAGMA table_info(practice_runs)")}
-            self.assertEqual(len(migrations), 8)
+            self.assertEqual(len(migrations), 10)
         self.assertIn("translation_zh", article_columns)
         self.assertIn("content_status", article_columns)
         self.assertTrue({"elapsed_seconds", "answer_changes", "hint_used"}.issubset(attempt_columns))
         self.assertTrue({"remedial_attempts", "remedial_correct_streak", "mastery_source"}.issubset(mistake_columns))
         self.assertIn("visibility", article_columns)
-        self.assertEqual(migrations[-1][1], "remove embedded script noise from feed articles")
+        self.assertEqual(migrations[-1][1], "remove embedded image captions from article body")
+        self.assertTrue({"author", "image_caption", "disclosure", "extraction_version"}.issubset(article_columns))
         self.assertTrue({"quiz_ids_json", "feedback_json", "elapsed_seconds", "status"}.issubset(practice_run_columns))
 
     def test_script_noise_repair_is_audited_and_clears_misaligned_translation(self):
@@ -57,6 +58,74 @@ class MaintenanceTests(unittest.TestCase):
         self.assertNotIn("GF_AJAX_POSTBACK", article[1])
         self.assertEqual(article[2], "")
         self.assertIn("GF_AJAX_POSTBACK", repair[2])
+
+    def test_conversation_migration_preserves_original_and_repairs_semantic_blocks(self):
+        caption = (
+            "Republican Rep. Ralph Norman discusses the Save America Act. "
+            "The act is stuck between the U.\n\nS. House and Senate. J.\n\nScott Applewhite/AP Photo"
+        )
+        opening = "President Donald Trump’s obsession with election rules has returned to Congress."
+        disclosure = (
+            "SoRelle Wyckoff Gaynor does not work for, consult, own shares in or receive funding from "
+            "any company or organization that would benefit from this article."
+        )
+        original = f"{caption} {opening}\n\nA second paragraph explains the proposal.\n\n{disclosure}"
+        with sqlite3.connect(":memory:") as conn:
+            conn.row_factory = sqlite3.Row
+            conn.execute(
+                """CREATE TABLE articles (
+                     id INTEGER PRIMARY KEY, source TEXT NOT NULL, body TEXT NOT NULL,
+                     translation_zh TEXT NOT NULL DEFAULT '', content_hash TEXT NOT NULL DEFAULT '',
+                     updated_at TEXT NOT NULL DEFAULT ''
+                   )"""
+            )
+            conn.execute(
+                "INSERT INTO articles (id, source, body, translation_zh) VALUES (235, 'The Conversation Politics', ?, 'old')",
+                (original,),
+            )
+            _article_semantic_blocks(conn)
+            article = conn.execute("SELECT * FROM articles WHERE id = 235").fetchone()
+            audit = conn.execute("SELECT * FROM article_extraction_audits WHERE article_id = 235").fetchone()
+        self.assertTrue(article["body"].startswith(opening))
+        self.assertNotIn("AP Photo", article["body"])
+        self.assertNotIn("does not work for, consult", article["body"])
+        self.assertEqual(article["author"], "SoRelle Wyckoff Gaynor")
+        self.assertIn("U.S. House and Senate", article["image_caption"])
+        self.assertEqual(article["translation_zh"], "")
+        self.assertEqual(audit["original_body"], original)
+        self.assertEqual(audit["extracted_body"], article["body"])
+
+    def test_embedded_caption_migration_keeps_following_heading_and_body(self):
+        caption = "House Majority Leader Steve Scalise speaks to reporters. Tom Brenner/AP Photo"
+        paragraph = f"{caption} Legal and logistical hurdles The proposal would be expensive to implement."
+        with sqlite3.connect(":memory:") as conn:
+            conn.row_factory = sqlite3.Row
+            conn.executescript(
+                """CREATE TABLE articles (
+                     id INTEGER PRIMARY KEY, source TEXT NOT NULL, body TEXT NOT NULL,
+                     image_caption TEXT NOT NULL DEFAULT '', extraction_version TEXT NOT NULL DEFAULT '',
+                     extraction_confidence REAL NOT NULL DEFAULT 0, extraction_notes_json TEXT NOT NULL DEFAULT '{}',
+                     translation_zh TEXT NOT NULL DEFAULT '', content_hash TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT ''
+                   );
+                   CREATE TABLE article_extraction_audits (
+                     id INTEGER PRIMARY KEY AUTOINCREMENT, article_id INTEGER NOT NULL, extraction_version TEXT NOT NULL,
+                     original_body TEXT NOT NULL, extracted_body TEXT NOT NULL, metadata_json TEXT NOT NULL DEFAULT '{}',
+                     created_at TEXT NOT NULL, UNIQUE(article_id, extraction_version)
+                   );"""
+            )
+            conn.execute(
+                "INSERT INTO articles (id, source, body, image_caption) VALUES (235, 'The Conversation Politics', ?, 'Opening caption')",
+                (paragraph,),
+            )
+            _embedded_article_captions(conn)
+            article = conn.execute("SELECT * FROM articles WHERE id = 235").fetchone()
+            audit = conn.execute("SELECT * FROM article_extraction_audits WHERE article_id = 235").fetchone()
+        self.assertEqual(article["body"], "Legal and logistical hurdles The proposal would be expensive to implement.")
+        self.assertNotIn("AP Photo", article["body"])
+        self.assertIn("Opening caption", article["image_caption"])
+        self.assertIn("Tom Brenner/AP Photo", article["image_caption"])
+        self.assertEqual(article["extraction_version"], "conversation-rules-v2")
+        self.assertEqual(audit["original_body"], paragraph)
 
     def test_backup_round_trip_restores_database_and_creates_safety_copy(self):
         with tempfile.TemporaryDirectory() as temp_dir:

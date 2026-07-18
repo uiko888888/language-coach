@@ -17,6 +17,12 @@ RSS = b"""<?xml version="1.0" encoding="utf-8"?>
   <description>A public report explains how careful evidence can improve policy decisions for communities.</description>
 </item></channel></rss>"""
 
+CONVERSATION_BODY = """<figure><figcaption>Republican Rep. Ralph Norman speaks about the Save America Act. The act is stuck in limbo between the U.S. House and Senate. J. Scott Applewhite/AP Photo</figcaption></figure>
+<p>President Donald Trump’s obsession with election rules has returned to Congress.</p>
+<figure><figcaption>House Majority Leader Steve Scalise speaks to reporters. Tom Brenner/AP Photo</figcaption></figure>
+<p>The proposal faces procedural and political obstacles in the Senate.</p>
+<p>SoRelle Wyckoff Gaynor does not work for, consult, own shares in or receive funding from any company or organization that would benefit from this article.</p>"""
+
 
 class MockResponse:
     def __init__(self, body=b"", status=200, headers=None):
@@ -92,6 +98,29 @@ class FeedRefreshTests(unittest.TestCase):
         self.assertIn("Evidence helps communities", payload["body"])
         self.assertNotIn("GF_AJAX_POSTBACK", payload["body"])
         self.assertNotIn("gf_submitting", payload["body"])
+
+    def test_conversation_feed_separates_caption_author_and_disclosure_from_body(self):
+        encoded = CONVERSATION_BODY + "".join(
+            f"<p>Section {index} adds evidence about the congressional process and its political context.</p>"
+            for index in range(40)
+        )
+        entry = server.ET.fromstring(
+            f"<item><title>Republicans control Congress</title><link>https://theconversation.com/example</link>"
+            f"<author>SoRelle Wyckoff Gaynor</author><description>Short summary.</description>"
+            f"<encoded xmlns='urn:test'><![CDATA[{encoded}]]></encoded></item>"
+        )
+        payload = server.feed_entry_payload(entry, {"name": "The Conversation Politics"})
+        self.assertEqual(payload["content_status"], "full")
+        self.assertTrue(payload["body"].startswith("President Donald Trump’s obsession"))
+        self.assertNotIn("Scott Applewhite/AP Photo", payload["body"])
+        self.assertNotIn("Tom Brenner/AP Photo", payload["body"])
+        self.assertNotIn("does not work for, consult", payload["body"])
+        self.assertEqual(payload["author"], "SoRelle Wyckoff Gaynor")
+        self.assertIn("U.S. House and Senate", payload["image_caption"])
+        self.assertIn("Tom Brenner/AP Photo", payload["image_caption"])
+        self.assertIn("does not work for, consult", payload["disclosure"])
+        self.assertEqual(payload["extraction_version"], "conversation-rules-v2")
+        self.assertGreaterEqual(payload["extraction_confidence"], 0.9)
 
     def test_conditional_refresh_handles_not_modified(self):
         with server.db() as conn:

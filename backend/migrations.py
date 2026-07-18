@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import hashlib
+import json
 import re
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -227,6 +228,155 @@ def _sanitize_feed_articles(conn: sqlite3.Connection) -> None:
         conn.execute(f"UPDATE articles SET {', '.join(assignments)} WHERE id = ?", params)
 
 
+PHOTO_CREDIT_PATTERN = re.compile(
+    r"(?is)^\s*(.{20,1600}?(?:AP\s+Photo|Getty\s+Images?|Reuters|AFP|via\s+Wikimedia\s+Commons))\s+(?=[A-Z][A-Za-z])"
+)
+PHOTO_CREDIT_BLOCK_PATTERN = re.compile(
+    r"(?is)^\s*(.{20,1600}?(?:AP\s+Photo|Getty\s+Images?|Reuters|AFP|via\s+Wikimedia\s+Commons))(?:\s+(.+))?$"
+)
+DISCLOSURE_PATTERN = re.compile(
+    r"(?is)\n\s*\n([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’ .-]{2,100})\s+does not work for, consult, own shares in or receive funding from\b.*$"
+)
+
+
+def _repair_abbreviation_paragraphs(text: str) -> str:
+    text = re.sub(r"\bU\.\s+S\.(?=\s|$)", "U.S.", text)
+    text = re.sub(r"\b([A-Z])\.\s*\n\s*\n\s*([A-Z])\.\s*", r"\1.\2. ", text)
+    text = re.sub(r"\b(Sen|Rep|Dr|Mr|Mrs|Ms|Prof)\.\s*\n\s*\n\s*", r"\1. ", text)
+    text = re.sub(r"\b([A-Z])\.\s*\n\s*\n\s*([A-Z][a-z])", r"\1. \2", text)
+    return text.strip()
+
+
+def _article_semantic_blocks(conn: sqlite3.Connection) -> None:
+    for column, definition in {
+        "author": "TEXT NOT NULL DEFAULT ''",
+        "image_caption": "TEXT NOT NULL DEFAULT ''",
+        "disclosure": "TEXT NOT NULL DEFAULT ''",
+        "extraction_version": "TEXT NOT NULL DEFAULT ''",
+        "extraction_confidence": "REAL NOT NULL DEFAULT 0",
+        "extraction_notes_json": "TEXT NOT NULL DEFAULT '{}'",
+    }.items():
+        _ensure_column(conn, "articles", column, definition)
+    conn.executescript(
+        """CREATE TABLE IF NOT EXISTS article_extraction_audits (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             article_id INTEGER NOT NULL,
+             extraction_version TEXT NOT NULL,
+             original_body TEXT NOT NULL,
+             extracted_body TEXT NOT NULL,
+             metadata_json TEXT NOT NULL DEFAULT '{}',
+             created_at TEXT NOT NULL,
+             UNIQUE(article_id, extraction_version),
+             FOREIGN KEY(article_id) REFERENCES articles(id)
+           );
+           CREATE TABLE IF NOT EXISTS article_extraction_feedback (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             article_id INTEGER NOT NULL,
+             verdict TEXT NOT NULL,
+             note TEXT NOT NULL DEFAULT '',
+             extraction_version TEXT NOT NULL DEFAULT '',
+             created_at TEXT NOT NULL,
+             FOREIGN KEY(article_id) REFERENCES articles(id)
+           );
+           CREATE INDEX IF NOT EXISTS idx_article_extraction_feedback_article
+           ON article_extraction_feedback(article_id, created_at DESC);"""
+    )
+    if "body" not in _columns(conn, "articles"):
+        return
+    rows = conn.execute(
+        """SELECT id, body, author, image_caption, disclosure
+           FROM articles WHERE source IN ('The Conversation', 'The Conversation Politics') AND body != ''"""
+    ).fetchall()
+    version = "conversation-rules-v1"
+    for row in rows:
+        original = row[1] or ""
+        body = original
+        author = row[2] or ""
+        caption = row[3] or ""
+        disclosure = row[4] or ""
+        removed = []
+
+        caption_match = PHOTO_CREDIT_PATTERN.match(body)
+        if caption_match and not caption:
+            caption = re.sub(r"\s+", " ", _repair_abbreviation_paragraphs(caption_match.group(1))).strip()
+            body = body[caption_match.end():].lstrip()
+            removed.append("image_caption")
+
+        disclosure_match = DISCLOSURE_PATTERN.search(body)
+        if disclosure_match:
+            author = author or re.sub(r"\s+", " ", disclosure_match.group(1)).strip()
+            disclosure = disclosure or re.sub(r"\s+", " ", _repair_abbreviation_paragraphs(disclosure_match.group(0))).strip()
+            body = body[:disclosure_match.start()].rstrip()
+            removed.append("disclosure")
+
+        body = _repair_abbreviation_paragraphs(body)
+        if body == original and not any((author, caption, disclosure)):
+            continue
+        metadata = {"author": author, "image_caption": caption, "disclosure": disclosure, "removed_blocks": removed}
+        conn.execute(
+            """INSERT OR IGNORE INTO article_extraction_audits
+               (article_id, extraction_version, original_body, extracted_body, metadata_json, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (row[0], version, original, body, json.dumps(metadata, ensure_ascii=False), _utc_now()),
+        )
+        conn.execute(
+            """UPDATE articles SET body = ?, author = ?, image_caption = ?, disclosure = ?,
+               extraction_version = ?, extraction_confidence = ?, extraction_notes_json = ?,
+               translation_zh = '', content_hash = ?, updated_at = ? WHERE id = ?""",
+            (
+                body, author, caption, disclosure, version,
+                0.98 if caption and disclosure else 0.85 if caption or disclosure else 0.70,
+                json.dumps({"removed_blocks": removed, "review_status": "rule-reviewed"}, ensure_ascii=False),
+                hashlib.sha256(body.casefold().encode("utf-8")).hexdigest(), _utc_now(), row[0],
+            ),
+        )
+
+
+def _embedded_article_captions(conn: sqlite3.Connection) -> None:
+    if not {"body", "source", "image_caption"}.issubset(_columns(conn, "articles")):
+        return
+    rows = conn.execute(
+        """SELECT id, body, image_caption FROM articles
+           WHERE source IN ('The Conversation', 'The Conversation Politics') AND body != ''"""
+    ).fetchall()
+    version = "conversation-rules-v2"
+    for row in rows:
+        original = row[1] or ""
+        kept = []
+        captions = []
+        for paragraph in re.split(r"\n\s*\n", original):
+            match = PHOTO_CREDIT_BLOCK_PATTERN.match(paragraph.strip())
+            if not match:
+                kept.append(paragraph.strip())
+                continue
+            captions.append(re.sub(r"\s+", " ", _repair_abbreviation_paragraphs(match.group(1))).strip())
+            if match.group(2):
+                kept.append(match.group(2).strip())
+        if not captions:
+            continue
+        body = "\n\n".join(value for value in kept if value).strip()
+        prior_caption = (row[2] or "").strip()
+        all_captions = [prior_caption, *captions] if prior_caption else captions
+        image_caption = "\n\n".join(dict.fromkeys(value for value in all_captions if value))
+        metadata = {"image_captions": captions, "removed_blocks": ["embedded_image_caption"]}
+        conn.execute(
+            """INSERT OR IGNORE INTO article_extraction_audits
+               (article_id, extraction_version, original_body, extracted_body, metadata_json, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (row[0], version, original, body, json.dumps(metadata, ensure_ascii=False), _utc_now()),
+        )
+        conn.execute(
+            """UPDATE articles SET body = ?, image_caption = ?, extraction_version = ?,
+               extraction_confidence = 0.98, extraction_notes_json = ?, translation_zh = '',
+               content_hash = ?, updated_at = ? WHERE id = ?""",
+            (
+                body, image_caption, version,
+                json.dumps({"removed_blocks": ["embedded_image_caption"], "review_status": "rule-reviewed"}, ensure_ascii=False),
+                hashlib.sha256(body.casefold().encode("utf-8")).hexdigest(), _utc_now(), row[0],
+            ),
+        )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     (1, "consolidate legacy schema", _legacy_schema),
     (2, "add training loop metrics", _training_loop_metrics),
@@ -236,6 +386,8 @@ MIGRATIONS: tuple[Migration, ...] = (
     (6, "add private lexical query history", _lexical_query_history),
     (7, "add unified review scheduling", _review_schedule),
     (8, "remove embedded script noise from feed articles", _sanitize_feed_articles),
+    (9, "separate article body from source metadata", _article_semantic_blocks),
+    (10, "remove embedded image captions from article body", _embedded_article_captions),
 )
 
 

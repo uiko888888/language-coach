@@ -206,9 +206,14 @@ def content_hub_for(source: str, content_type: str = "") -> str:
     }.get(content_type, "culture-life")
 
 
-def normalize_article_text(title: str, body: str) -> str:
-    text = re.sub(r"\s+", " ", body or "").strip()
+def normalize_article_text(title: str, body: str, preserve_blocks: bool = False) -> str:
+    raw_paragraphs = [re.sub(r"[ \t\r\f\v]+", " ", value).strip() for value in re.split(r"\n\s*\n", body or "") if value.strip()]
     clean_title = re.sub(r"\s+", " ", title or "").strip()
+    if preserve_blocks and len(raw_paragraphs) > 1:
+        if clean_title and raw_paragraphs[0].casefold() == clean_title.casefold():
+            raw_paragraphs = raw_paragraphs[1:]
+        return "\n\n".join(raw_paragraphs)
+    text = re.sub(r"\s+", " ", " ".join(raw_paragraphs)).strip()
     if clean_title and text.lower().startswith(clean_title.lower()):
         text = text[len(clean_title):].lstrip(" .:;-—")
     if not text:
@@ -1410,23 +1415,43 @@ def text_response(handler: BaseHTTPRequestHandler, content: bytes, content_type:
 
 class ReadableHTMLParser(HTMLParser):
     ignored_tags = {"script", "style", "svg", "noscript", "template"}
+    block_tags = {"p", "div", "li", "blockquote", "figcaption", "h1", "h2", "h3", "h4", "section", "article"}
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
-        self.parts: list[str] = []
+        self.blocks: list[str] = []
+        self.current: list[str] = []
         self.ignored_depth = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag.casefold() in self.ignored_tags:
+        tag = tag.casefold()
+        if tag in self.ignored_tags:
             self.ignored_depth += 1
+        elif not self.ignored_depth and tag in self.block_tags:
+            self.flush()
+        elif not self.ignored_depth and tag == "br":
+            self.current.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
-        if tag.casefold() in self.ignored_tags and self.ignored_depth:
+        tag = tag.casefold()
+        if tag in self.ignored_tags and self.ignored_depth:
             self.ignored_depth -= 1
+        elif not self.ignored_depth and tag in self.block_tags:
+            self.flush()
 
     def handle_data(self, data: str) -> None:
         if not self.ignored_depth:
-            self.parts.append(data)
+            self.current.append(data)
+
+    def flush(self) -> None:
+        value = re.sub(r"\s+", " ", " ".join(self.current)).strip()
+        if value and (not self.blocks or self.blocks[-1] != value):
+            self.blocks.append(value)
+        self.current = []
+
+    def text(self) -> str:
+        self.flush()
+        return "\n\n".join(self.blocks)
 
 
 EMBEDDED_SCRIPT_NOISE = re.compile(
@@ -1444,8 +1469,8 @@ def clean_html(value: str) -> str:
     parser = ReadableHTMLParser()
     parser.feed(value or "")
     parser.close()
-    text = strip_embedded_script_noise(" ".join(parser.parts))
-    return re.sub(r"\s+", " ", html.unescape(text)).strip()
+    text = strip_embedded_script_noise(parser.text())
+    return re.sub(r"[ \t\r\f\v]+", " ", html.unescape(text)).strip()
 
 
 def sentences(text: str) -> list[str]:
@@ -3687,6 +3712,14 @@ def article_quality_profile(article: dict, exam: str = "") -> dict:
     if duplicate_count:
         score -= min(25, duplicate_count * 5)
         issues.append("存在重复段落")
+    if status == "full" and article.get("source") not in USER_CONTROLLED_SOURCES:
+        confidence = float(article.get("extraction_confidence") or 0)
+        if not article.get("extraction_version"):
+            score -= 15
+            issues.append("尚未记录正文区块提取版本")
+        elif confidence < 0.70:
+            score -= 15
+            issues.append("正文区块提取置信度偏低")
     if length_status == "short":
         issues.append(f"低于 {requested_exam} 建议下限 {minimum} 词")
     elif length_status == "long":
@@ -5272,6 +5305,65 @@ def feed_entry_text(entry: ET.Element, *names: str) -> str:
     return ""
 
 
+FEED_PHOTO_CREDIT_PATTERN = re.compile(
+    r"(?is)^\s*(.{20,1600}?(?:AP\s+Photo|Getty\s+Images?|Reuters|AFP|via\s+Wikimedia\s+Commons))\s+(?=[A-Z][A-Za-z])"
+)
+FEED_PHOTO_CREDIT_BLOCK_PATTERN = re.compile(
+    r"(?is)^\s*(.{20,1600}?(?:AP\s+Photo|Getty\s+Images?|Reuters|AFP|via\s+Wikimedia\s+Commons))(?:\s+(.+))?$"
+)
+FEED_DISCLOSURE_PATTERN = re.compile(
+    r"(?is)\n\s*\n([A-Z][A-Za-zÀ-ÖØ-öø-ÿ'’ .-]{2,100})\s+does not work for, consult, own shares in or receive funding from\b.*$"
+)
+
+
+def feed_entry_author(entry: ET.Element) -> str:
+    author_node = next((node for node in entry.iter() if xml_local_name(node.tag) == "author"), None)
+    if author_node is None:
+        return ""
+    name_node = next((node for node in author_node.iter() if xml_local_name(node.tag) == "name"), None)
+    value = "".join((name_node or author_node).itertext())
+    return re.sub(r"\s+", " ", html.unescape(value)).strip()
+
+
+def extract_article_semantic_blocks(text: str, source: str, author: str = "") -> dict:
+    body = (text or "").strip()
+    metadata = {
+        "author": author,
+        "image_caption": "",
+        "disclosure": "",
+        "extraction_version": "generic-blocks-v1",
+        "extraction_confidence": 0.75,
+        "removed_blocks": [],
+    }
+    if source not in {"The Conversation", "The Conversation Politics"}:
+        return {"body": body, **metadata}
+    metadata["extraction_version"] = "conversation-rules-v2"
+    kept = []
+    captions = []
+    for paragraph in re.split(r"\n\s*\n", body):
+        caption_match = FEED_PHOTO_CREDIT_BLOCK_PATTERN.match(paragraph.strip())
+        if not caption_match:
+            kept.append(paragraph.strip())
+            continue
+        captions.append(re.sub(
+            r"\bU\.\s+S\.(?=\s|$)", "U.S.", re.sub(r"\s+", " ", caption_match.group(1))
+        ).strip())
+        if caption_match.group(2):
+            kept.append(caption_match.group(2).strip())
+    if captions:
+        metadata["image_caption"] = "\n\n".join(dict.fromkeys(captions))
+        metadata["removed_blocks"].append("image_caption")
+        body = "\n\n".join(value for value in kept if value).strip()
+    disclosure_match = FEED_DISCLOSURE_PATTERN.search(body)
+    if disclosure_match:
+        metadata["author"] = metadata["author"] or re.sub(r"\s+", " ", disclosure_match.group(1)).strip()
+        metadata["disclosure"] = re.sub(r"\s+", " ", disclosure_match.group(0)).strip()
+        metadata["removed_blocks"].append("disclosure")
+        body = body[:disclosure_match.start()].rstrip()
+    metadata["extraction_confidence"] = 0.98 if metadata["image_caption"] and metadata["disclosure"] else 0.90 if metadata["image_caption"] or metadata["disclosure"] else 0.80
+    return {"body": body, **metadata}
+
+
 def parse_feed_datetime(value: str) -> str:
     raw = (value or "").strip()
     if not raw:
@@ -5306,7 +5398,8 @@ def feed_entry_payload(entry: ET.Element, feed: dict) -> dict:
     summary_text = clean_html(summary)
     encoded_text = clean_html(encoded)
     use_full = len(words(encoded_text)) >= 250 and len(encoded_text) > len(summary_text)
-    body = normalize_article_text(title, encoded_text if use_full else summary_text)
+    semantic = extract_article_semantic_blocks(encoded_text if use_full else summary_text, feed["name"], feed_entry_author(entry))
+    body = normalize_article_text(title, semantic["body"], preserve_blocks=True)
     published_at = parse_feed_datetime(feed_entry_text(entry, "pubDate", "published", "updated"))
     return {
         "title": title,
@@ -5317,10 +5410,21 @@ def feed_entry_payload(entry: ET.Element, feed: dict) -> dict:
         "content_status": "full" if use_full else "summary",
         "content_type": infer_content_type({"source": feed["name"], "title": title, "body": body}),
         "published_at": published_at,
+        "author": semantic["author"],
+        "image_caption": semantic["image_caption"],
+        "disclosure": semantic["disclosure"],
+        "extraction_version": semantic["extraction_version"],
+        "extraction_confidence": semantic["extraction_confidence"],
+        "extraction_notes_json": json.dumps({"removed_blocks": semantic["removed_blocks"], "review_status": "automatic"}, ensure_ascii=False),
     }
 
 
 def upsert_feed_article(conn: sqlite3.Connection, feed: dict, item: dict, now: str) -> str:
+    item = {
+        "author": "", "image_caption": "", "disclosure": "",
+        "extraction_version": "legacy-feed", "extraction_confidence": 0,
+        "extraction_notes_json": "{}", **item,
+    }
     conditions = []
     params: list[object] = []
     if item["link"]:
@@ -5339,29 +5443,37 @@ def upsert_feed_article(conn: sqlite3.Connection, feed: dict, item: dict, now: s
         conn.execute(
             """INSERT INTO articles
                (title, language, level, topic, source, source_url, content_status, content_type,
-                body, published_at, source_guid, content_hash, created_at, updated_at)
-               VALUES (?, ?, ?, 'feed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                body, author, image_caption, disclosure, extraction_version, extraction_confidence,
+                extraction_notes_json, published_at, source_guid, content_hash, created_at, updated_at)
+               VALUES (?, ?, ?, 'feed', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (item["title"], feed["language"], feed["level_hint"], feed["name"], item["link"],
-             item["content_status"], item["content_type"], item["body"], item["published_at"],
+             item["content_status"], item["content_type"], item["body"], item["author"], item["image_caption"],
+             item["disclosure"], item["extraction_version"], item["extraction_confidence"], item["extraction_notes_json"], item["published_at"],
              item["guid"], item["content_hash"], now, now),
         )
         return "imported"
-    body = item["body"] if len(item["body"]) > len(existing["body"]) else existing["body"]
+    body = item["body"] if item.get("extraction_version") or len(item["body"]) > len(existing["body"]) else existing["body"]
+    body_changed = body != existing["body"]
     status = "full" if item["content_status"] == "full" or existing["content_status"] == "full" else "summary"
     changed = any([
         item["title"] != existing["title"], body != existing["body"], status != existing["content_status"],
-        item["content_type"] != existing["content_type"],
+        item["content_type"] != existing["content_type"], body_changed,
+        item["author"] != existing["author"], item["image_caption"] != existing["image_caption"],
+        item["disclosure"] != existing["disclosure"], item["extraction_version"] != existing["extraction_version"],
         bool(item["published_at"] and item["published_at"] != existing["published_at"]),
     ])
     if not changed:
         return "unchanged"
     conn.execute(
         """UPDATE articles SET title = ?, source_url = CASE WHEN source_url = '' THEN ? ELSE source_url END,
-           content_status = ?, content_type = ?, body = ?,
+           content_status = ?, content_type = ?, body = ?, author = ?, image_caption = ?, disclosure = ?,
+           extraction_version = ?, extraction_confidence = ?, extraction_notes_json = ?,
+           translation_zh = CASE WHEN ? THEN '' ELSE translation_zh END,
            published_at = CASE WHEN ? != '' THEN ? ELSE published_at END,
            source_guid = CASE WHEN source_guid = '' THEN ? ELSE source_guid END,
            content_hash = ?, updated_at = ? WHERE id = ?""",
-        (item["title"], item["link"], status, item["content_type"], body,
+        (item["title"], item["link"], status, item["content_type"], body, item["author"], item["image_caption"],
+         item["disclosure"], item["extraction_version"], item["extraction_confidence"], item["extraction_notes_json"], int(body_changed),
          item["published_at"], item["published_at"], item["guid"], item["content_hash"], now, existing["id"]),
     )
     return "updated"
@@ -6240,6 +6352,24 @@ class App(BaseHTTPRequestHandler):
                     for item in items:
                         saved.append(save_quiz_item(conn, article_id, style, mode, item, now))
                 return json_response(self, {"quizzes": saved}, 201)
+            match = re.fullmatch(r"/api/articles/(\d+)/extraction-feedback", path)
+            if match:
+                verdict = str(payload.get("verdict") or "").strip()
+                allowed = {"correct", "caption_in_body", "author_disclosure_in_body", "other"}
+                if verdict not in allowed:
+                    return json_response(self, {"error": "Unsupported extraction feedback"}, 400)
+                with db() as conn:
+                    article = conn.execute("SELECT id, extraction_version FROM articles WHERE id = ?", (match.group(1),)).fetchone()
+                    if not article:
+                        return json_response(self, {"error": "Article not found"}, 404)
+                    cursor = conn.execute(
+                        """INSERT INTO article_extraction_feedback
+                           (article_id, verdict, note, extraction_version, created_at)
+                           VALUES (?, ?, ?, ?, ?)""",
+                        (article["id"], verdict, str(payload.get("note") or "").strip()[:500], article["extraction_version"], utc_now()),
+                    )
+                    feedback = conn.execute("SELECT * FROM article_extraction_feedback WHERE id = ?", (cursor.lastrowid,)).fetchone()
+                return json_response(self, {"feedback": dict(feedback)}, 201)
             if path == "/api/cards":
                 term = (payload.get("term") or "").strip()
                 if not term:

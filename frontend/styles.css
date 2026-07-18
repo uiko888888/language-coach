@@ -1035,6 +1035,13 @@ label {
 
 .article-detail-body p { color: var(--text); }
 .source-link { display: inline-block; margin-top: 8px; color: var(--teal-dark); }
+.article-byline { margin: 5px 0 0; color: var(--muted); }
+.source-metadata { margin: 14px 0; padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.source-metadata summary { color: var(--teal-dark); font-weight: 800; cursor: pointer; }
+.source-metadata p { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 12px; margin: 10px 0; line-height: 1.55; }
+.source-metadata p strong { color: var(--ink); }
+.source-metadata p span { color: var(--muted); min-width: 0; }
+.extraction-feedback { margin-top: 10px; }
 
 .source-drawer,
 .import-drawer {

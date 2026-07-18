@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.3";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.4";
 const SUPPORTED_API_VERSION = "1";
 
 const state = {
@@ -813,6 +813,22 @@ function articleTrainingAction(article, label = "生成题") {
     : `<button disabled title="${escapeHtml(article.training_block_reason || "素材暂不符合训练要求")}">${article.content_status === "full" ? "暂不适合出题" : "摘要不可出题"}</button>`;
 }
 
+function sourceMetadataHtml(article) {
+  if (!article.author && !article.image_caption && !article.disclosure && !article.extraction_version) return "";
+  return `<details class="source-metadata">
+    <summary>来源信息</summary>
+    ${article.author ? `<p><strong>作者</strong><span>${escapeHtml(article.author)}</span></p>` : ""}
+    ${article.image_caption ? `<p><strong>图片说明</strong><span>${escapeHtml(article.image_caption)}</span></p>` : ""}
+    ${article.disclosure ? `<p><strong>披露声明</strong><span>${escapeHtml(article.disclosure)}</span></p>` : ""}
+    <p><strong>正文提取</strong><span>${escapeHtml(article.extraction_version || "未记录")} · ${Math.round(Number(article.extraction_confidence || 0) * 100)}%</span></p>
+    <div class="toolbar extraction-feedback">
+      <button data-extraction-feedback="correct" data-article-id="${article.id}">准确</button>
+      <button data-extraction-feedback="caption_in_body" data-article-id="${article.id}">图片说明混入</button>
+      <button data-extraction-feedback="author_disclosure_in_body" data-article-id="${article.id}">作者/披露混入</button>
+    </div>
+  </details>`;
+}
+
 function renderArticles() {
   const list = $("#articleTitleList");
   const detail = $("#articleDetail");
@@ -874,6 +890,7 @@ function renderArticles() {
             ${selected.exam_fit ? badge(`${state.style} 匹配 ${selected.exam_fit}%`, selected.exam_fit >= 90 ? "amber" : "") : ""}
           </div>
           <h2>${escapeHtml(selected.title)}</h2>
+          ${selected.author ? `<p class="article-byline">作者：${escapeHtml(selected.author)}</p>` : ""}
           ${selected.published_at ? `<p class="muted">发布于 ${formatDateTime(selected.published_at)}</p>` : ""}
         </div>
         <div class="toolbar">
@@ -888,6 +905,7 @@ function renderArticles() {
       ${selected.content_status !== "full" ? `<div class="content-notice"><div><strong>当前保存的是 RSS 摘要</strong><span>阅读器已经显示全部本地内容，完整文章需要打开原始来源或补充正文。</span></div>${selected.source_url ? `<a href="${escapeHtml(selected.source_url)}" target="_blank" rel="noreferrer">打开完整原文</a>` : ""}</div>` : ""}
       ${selected.theme_tags?.length ? `<div class="article-themes"><span>文章主题</span>${selected.theme_tags.map(theme => badge(theme, "amber")).join("")}</div>` : ""}
       ${selected.source_topics?.length ? `<div class="source-topics"><span class="topic-label">来源领域</span>${selected.source_topics.map(topic => badge(topic)).join("")}</div>` : ""}
+      ${sourceMetadataHtml(selected)}
       <article class="article-detail-body">${bilingualParagraphs(selected.body, selected.translation_zh, state.showTranslation)}</article>
       ${selected.source_url ? `<a class="source-link" href="${escapeHtml(selected.source_url)}" target="_blank" rel="noreferrer">打开原始来源</a>` : ""}
       <details class="content-editor"><summary>${selected.content_status === "full" ? "编辑完整正文" : "补充完整正文"}</summary><textarea id="articleContentInput">${escapeHtml(selected.body)}</textarea><button class="primary" data-save-article-content="${selected.id}">保存为完整正文</button></details>
@@ -930,7 +948,7 @@ function renderReader() {
   }
   $("#readerTitle").textContent = `${article.content_status === "full" ? "" : "来源摘要 · "}${article.title}`;
   $("#readerMeta").innerHTML = `${badge(article.level, "teal")}${badge(article.content_type_label || "学术解释", article.content_type === "opinion" ? "amber" : "teal")}${badge(article.content_status === "full" ? `完整正文 · ${article.content_word_count}词` : `RSS摘要 · ${article.content_word_count}词`, article.content_status === "full" ? "teal" : "amber")}${badge(`${article.exam_length_label} · ${state.style} ${article.exam_word_min}-${article.exam_word_max}词`, article.exam_length_status === "matched" ? "teal" : "amber")}${badge(`质量 ${article.content_quality_score}`)}${(article.theme_tags || []).map(theme => badge(theme, "amber")).join("")}${badge(article.source || "manual")}`;
-  $("#readerContentNotice").innerHTML = article.content_status !== "full" ? `<div class="content-notice compact"><div><strong>这是来源摘要，不是原文</strong><span>受版权与 feed 范围限制，系统只保存来源主动提供的摘要。可打开原站，或通过插件带回你有权使用的正文。</span></div>${article.source_url ? `<a href="${escapeHtml(article.source_url)}" target="_blank" rel="noreferrer">打开原文</a>` : ""}</div>` : article.training_eligible ? "" : `<div class="content-notice compact"><div><strong>暂不适合考试出题</strong><span>${escapeHtml(article.training_block_reason)}</span></div></div>`;
+  $("#readerContentNotice").innerHTML = `${article.content_status !== "full" ? `<div class="content-notice compact"><div><strong>这是来源摘要，不是原文</strong><span>受版权与 feed 范围限制，系统只保存来源主动提供的摘要。可打开原站，或通过插件带回你有权使用的正文。</span></div>${article.source_url ? `<a href="${escapeHtml(article.source_url)}" target="_blank" rel="noreferrer">打开原文</a>` : ""}</div>` : article.training_eligible ? "" : `<div class="content-notice compact"><div><strong>暂不适合考试出题</strong><span>${escapeHtml(article.training_block_reason)}</span></div></div>`}${sourceMetadataHtml(article)}`;
   $("#readerBody").innerHTML = state.evidenceReplay
     ? evidenceBilingualParagraphs(article.body, article.translation_zh, state.showTranslation, state.evidenceReplay)
     : bilingualParagraphs(article.body, article.translation_zh, state.showTranslation);
@@ -2684,6 +2702,14 @@ async function saveArticleContent(id) {
   toast("已保存完整正文");
 }
 
+async function saveExtractionFeedback(articleId, verdict) {
+  await api(`/api/articles/${articleId}/extraction-feedback`, {
+    method: "POST",
+    body: JSON.stringify({ verdict }),
+  });
+  toast(verdict === "correct" ? "已记录正文准确" : "已记录正文混入问题");
+}
+
 async function saveArticle() {
   const body = $("#newArticleBody").value.trim();
   if (!body) return toast("正文不能为空");
@@ -2971,6 +2997,7 @@ document.addEventListener("click", async event => {
     if (button.id === "saveTranslationBtn") await saveTranslation();
     if (button.id === "translateArticleBtn") await translateArticle();
     if (button.dataset.translateArticle) await translateArticle(Number(button.dataset.translateArticle));
+    if (button.dataset.extractionFeedback) await saveExtractionFeedback(Number(button.dataset.articleId), button.dataset.extractionFeedback);
     if (button.dataset.saveArticleContent) await saveArticleContent(Number(button.dataset.saveArticleContent));
     if (button.id === "searchArticlesBtn") {
       await loadArticles($("#articleSearch").value.trim());

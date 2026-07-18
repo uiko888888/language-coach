@@ -141,7 +141,7 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.3";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.4";', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
 
@@ -181,6 +181,15 @@ class ProfileUiContractTests(unittest.TestCase):
         self.assertIn("摘要不可出题", self.js)
         self.assertIn("这是来源摘要，不是原文", self.js)
         self.assertIn('$("#generateQuizBtn").disabled = !article.training_eligible', self.js)
+
+    def test_reader_keeps_source_metadata_outside_article_body_and_collects_feedback(self):
+        for contract in (
+            "function sourceMetadataHtml(article)", "图片说明", "披露声明",
+            'data-extraction-feedback="correct"', "/extraction-feedback",
+            "saveExtractionFeedback",
+        ):
+            self.assertIn(contract, self.js)
+        self.assertIn(".source-metadata", self.css)
 
     def test_server_practice_state_and_prescription_are_user_controlled(self):
         for element_id in (

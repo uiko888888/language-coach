@@ -231,6 +231,32 @@ class BrowserBridgeTests(unittest.TestCase):
         else:
             self.fail("Summary article bypassed the server training gate")
 
+    def test_article_extraction_feedback_records_verdict_and_extractor_version(self):
+        now = server.utc_now()
+        with server.db() as conn:
+            cursor = conn.execute(
+                """INSERT INTO articles
+                   (title, language, level, topic, source, content_status, content_type, body,
+                    extraction_version, extraction_confidence, created_at, updated_at)
+                   VALUES ('Reviewed article', 'en', 'B2', 'politics', 'The Conversation Politics',
+                           'full', 'report', 'A clean article body.', 'conversation-rules-v1', 0.98, ?, ?)""",
+                (now, now),
+            )
+            article_id = cursor.lastrowid
+        payload, _ = self.request(
+            f"/api/articles/{article_id}/extraction-feedback",
+            "POST",
+            {"verdict": "caption_in_body", "note": "Opening photo credit remains."},
+        )
+        self.assertEqual(payload["feedback"]["article_id"], article_id)
+        self.assertEqual(payload["feedback"]["verdict"], "caption_in_body")
+        self.assertEqual(payload["feedback"]["extraction_version"], "conversation-rules-v1")
+        with server.db() as conn:
+            stored = conn.execute(
+                "SELECT * FROM article_extraction_feedback WHERE id = ?", (payload["feedback"]["id"],)
+            ).fetchone()
+        self.assertEqual(stored["note"], "Opening photo credit remains.")
+
     def test_translation_cache_works_without_network(self):
         text = "A cached translation"
         digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
