@@ -4,6 +4,9 @@
 
 ## 已可用
 
+- schema 12 保存正文区块人工标签、建议标签、来源、提取版本和稳定区块哈希
+- 来源信息可打开左右区块标注台，逐块标为正文、作者、图片说明、披露、订阅噪声或不确定
+- 标签点击后立即保存并进入下一未标区块，分类器门槛只统计非“不确定”的真实标签
 - schema 11 注册 BBC、Guardian、JSTOR Daily 与 The Conversation 来源适配器，并审计所有正文变化
 - Guardian 摘要去除已知 newsletter/继续阅读提示但仍保持摘要边界；BBC 摘要不改写、不升级为正文
 - JSTOR Daily 正文在 newsletter 和 Gravity Forms 表单前结束，脚本不再进入阅读与出题

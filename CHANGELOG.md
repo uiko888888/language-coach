@@ -9,6 +9,24 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
+## [0.8.0-alpha.23.0.6] - 2026-07-19
+
+### Added
+
+- Added schema 12 persistent human labels for article extraction blocks.
+- Added annotation APIs that derive stable candidates from audited source text and preserve source/extractor provenance.
+- Added a desktop split annotation workspace for body, author, image caption, disclosure, boilerplate and unsure labels.
+
+### Changed
+
+- Classifier readiness now counts real usable block labels instead of a fixed placeholder.
+- Long body and boilerplate regions are bounded into reviewable blocks without changing the stored article.
+
+### Known limits
+
+- Suggested blocks are deterministic review candidates, not ground truth and not automatic article edits.
+- The real database starts with zero labels; classifier training remains disabled until the documented evidence thresholds are met.
+
 ## [0.8.0-alpha.23.0.5] - 2026-07-19
 
 ### Added

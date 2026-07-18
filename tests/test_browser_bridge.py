@@ -262,6 +262,19 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertFalse(quality["classifier_readiness"]["ready"])
         self.assertIn("block_labels", quality["classifier_readiness"]["unmet"])
 
+        annotation, _ = self.request(f"/api/articles/{article_id}/extraction-blocks")
+        body_block = next(item for item in annotation["blocks"] if item["suggested_label"] == "body")
+        self.assertEqual(annotation["summary"]["labeled"], 0)
+        saved, _ = self.request(
+            f"/api/articles/{article_id}/extraction-block-labels",
+            "POST",
+            {"block_hash": body_block["block_hash"], "label": "body"},
+        )
+        self.assertEqual(saved["summary"]["labeled"], 1)
+        self.assertEqual(saved["summary"]["usable"], 1)
+        quality, _ = self.request("/api/extraction/quality")
+        self.assertGreaterEqual(quality["classifier_readiness"]["observed"]["block_labels"], 1)
+
     def test_translation_cache_works_without_network(self):
         text = "A cached translation"
         digest = hashlib.sha256(text.encode("utf-8")).hexdigest()

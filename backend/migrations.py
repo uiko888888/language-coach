@@ -428,6 +428,30 @@ def _source_adapter_backfill(conn: sqlite3.Connection) -> None:
         )
 
 
+def _article_extraction_block_labels(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """CREATE TABLE IF NOT EXISTS article_extraction_block_labels (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             article_id INTEGER NOT NULL,
+             block_hash TEXT NOT NULL,
+             block_index INTEGER NOT NULL,
+             block_text TEXT NOT NULL,
+             suggested_label TEXT NOT NULL,
+             label TEXT NOT NULL,
+             source TEXT NOT NULL DEFAULT '',
+             extraction_version TEXT NOT NULL DEFAULT '',
+             created_at TEXT NOT NULL,
+             updated_at TEXT NOT NULL,
+             UNIQUE(article_id, block_hash),
+             FOREIGN KEY(article_id) REFERENCES articles(id)
+           );
+           CREATE INDEX IF NOT EXISTS idx_article_block_labels_source
+           ON article_extraction_block_labels(source, label, updated_at DESC);
+           CREATE INDEX IF NOT EXISTS idx_article_block_labels_article
+           ON article_extraction_block_labels(article_id, block_index);"""
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     (1, "consolidate legacy schema", _legacy_schema),
     (2, "add training loop metrics", _training_loop_metrics),
@@ -440,6 +464,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     (9, "separate article body from source metadata", _article_semantic_blocks),
     (10, "remove embedded image captions from article body", _embedded_article_captions),
     (11, "apply registered source extraction adapters", _source_adapter_backfill),
+    (12, "add human article block labels", _article_extraction_block_labels),
 )
 
 

@@ -1,6 +1,6 @@
 import unittest
 
-from backend.content_extraction import adapter_catalog, extract_source_content
+from backend.content_extraction import adapter_catalog, extract_source_content, suggest_annotation_blocks
 
 
 class ContentExtractionTests(unittest.TestCase):
@@ -38,6 +38,21 @@ class ContentExtractionTests(unittest.TestCase):
         self.assertTrue({"conversation", "bbc", "guardian", "jstor"}.issubset(catalog))
         self.assertIn("BBC World", catalog["bbc"]["sources"])
         self.assertIn("JSTOR Daily", catalog["jstor"]["sources"])
+
+    def test_annotation_candidates_separate_body_and_guardian_boilerplate(self):
+        text = "A useful report remains available. Continue reading..."
+        blocks = suggest_annotation_blocks(text, "Guardian World")
+        self.assertEqual([item["suggested_label"] for item in blocks], ["body", "boilerplate"])
+        self.assertEqual(blocks[0]["text"], "A useful report remains available.")
+        self.assertEqual(blocks[1]["text"], "Continue reading...")
+        self.assertTrue(all(len(item["block_hash"]) == 64 for item in blocks))
+
+    def test_annotation_candidates_bound_long_jstor_noise_blocks(self):
+        text = "A complete article.\n\nWeekly Newsletter " + ("var gform; " * 500)
+        blocks = suggest_annotation_blocks(text, "JSTOR Daily")
+        noise = [item for item in blocks if item["suggested_label"] == "boilerplate"]
+        self.assertGreater(len(noise), 1)
+        self.assertTrue(all(len(item["text"]) <= 1200 for item in noise))
 
 
 if __name__ == "__main__":

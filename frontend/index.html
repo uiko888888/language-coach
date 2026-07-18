@@ -595,6 +595,28 @@
     </section>
   </main>
 
+  <dialog class="extraction-label-dialog" id="extractionLabelDialog" aria-labelledby="extractionLabelTitle">
+    <div class="dialog-head">
+      <div><span class="eyebrow">Content review</span><h2 id="extractionLabelTitle">正文区块标注</h2></div>
+      <button type="button" id="closeExtractionLabelBtn" aria-label="关闭区块标注">关闭</button>
+    </div>
+    <div class="extraction-label-status">
+      <div id="extractionLabelMeta"></div>
+      <strong id="extractionLabelProgress">0 / 0</strong>
+    </div>
+    <div class="extraction-label-workspace">
+      <aside class="extraction-block-list" id="extractionBlockList"></aside>
+      <section class="extraction-block-detail" id="extractionBlockDetail"></section>
+    </div>
+    <div class="extraction-label-footer">
+      <span id="extractionUsableCount">可用标签 0</span>
+      <div class="toolbar">
+        <button type="button" id="previousExtractionBlockBtn" aria-label="上一个区块">←</button>
+        <button type="button" id="nextExtractionBlockBtn" aria-label="下一个区块">→</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog class="assistant-dialog" id="assistantDialog" aria-labelledby="assistantDialogTitle">
     <div class="dialog-head">
       <div><span class="eyebrow">Quick start</span><h2 id="assistantDialogTitle">学习助手</h2></div>

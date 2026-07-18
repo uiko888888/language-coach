@@ -141,7 +141,7 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.5";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.6";', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
 
@@ -191,6 +191,22 @@ class ProfileUiContractTests(unittest.TestCase):
         ):
             self.assertIn(contract, self.js)
         self.assertIn(".source-metadata", self.css)
+
+    def test_extraction_annotation_workspace_is_split_and_persists_real_block_labels(self):
+        for element_id in (
+            "extractionLabelDialog", "extractionLabelMeta", "extractionLabelProgress",
+            "extractionBlockList", "extractionBlockDetail", "extractionUsableCount",
+            "previousExtractionBlockBtn", "nextExtractionBlockBtn",
+        ):
+            self.assertIn(f'id="{element_id}"', self.html)
+        for contract in (
+            "data-open-extraction-labeler", "function renderExtractionLabeler()",
+            "async function openExtractionLabeler(", "async function saveExtractionBlockLabel(",
+            "/extraction-blocks", "/extraction-block-labels", "data-save-extraction-label",
+        ):
+            self.assertIn(contract, self.js)
+        self.assertIn(".extraction-label-workspace", self.css)
+        self.assertIn("grid-template-columns: 290px minmax(0, 1fr)", self.css)
 
     def test_server_practice_state_and_prescription_are_user_controlled(self):
         for element_id in (

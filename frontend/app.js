@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.5";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.6";
 const SUPPORTED_API_VERSION = "1";
 
 const state = {
@@ -26,6 +26,8 @@ const state = {
   feeds: [],
   feedStatus: null,
   extractionQuality: { adapters: [], sources: [], classifier_readiness: null },
+  extractionAnnotation: null,
+  extractionBlockIndex: 0,
   runtime: null,
   backups: [],
   sourceCatalog: [],
@@ -829,6 +831,7 @@ function sourceMetadataHtml(article) {
     ${sourceQuality ? `<p><strong>人工校验</strong><span>${sourceQuality.feedback_count} 条反馈 · ${sourceQuality.issue_count || 0} 条问题</span></p>` : ""}
     ${readiness ? `<p><strong>分类器数据</strong><span>${readiness.observed.block_labels}/${readiness.thresholds.block_labels} 个区块标签 · ${readiness.ready ? "达到评估门槛" : "继续积累"}</span></p>` : ""}
     <div class="toolbar extraction-feedback">
+      <button data-open-extraction-labeler="${article.id}">区块标注</button>
       <button data-extraction-feedback="correct" data-article-id="${article.id}">准确</button>
       <button data-extraction-feedback="caption_in_body" data-article-id="${article.id}">图片说明混入</button>
       <button data-extraction-feedback="author_disclosure_in_body" data-article-id="${article.id}">作者/披露混入</button>
@@ -2724,6 +2727,64 @@ async function saveExtractionFeedback(articleId, verdict) {
   toast(verdict === "correct" ? "已记录正文准确" : "已记录正文混入问题");
 }
 
+function renderExtractionLabeler() {
+  const data = state.extractionAnnotation;
+  if (!data) return;
+  const blocks = data.blocks || [];
+  const current = blocks[state.extractionBlockIndex];
+  $("#extractionLabelTitle").textContent = data.article.title;
+  $("#extractionLabelMeta").textContent = `${data.article.source} · ${data.article.extraction_version || "未记录规则"}`;
+  $("#extractionLabelProgress").textContent = `${data.summary.labeled} / ${data.summary.total}`;
+  $("#extractionUsableCount").textContent = `可用标签 ${data.summary.usable}`;
+  $("#previousExtractionBlockBtn").disabled = state.extractionBlockIndex <= 0;
+  $("#nextExtractionBlockBtn").disabled = state.extractionBlockIndex >= blocks.length - 1;
+  $("#extractionBlockList").innerHTML = blocks.map((block, index) => `
+    <button class="extraction-block-item ${index === state.extractionBlockIndex ? "active" : ""}" data-extraction-block-index="${index}">
+      <strong>${String(index + 1).padStart(2, "0")}</strong>
+      <span><b>${escapeHtml(block.label ? `已标：${data.labels.find(item => item.id === block.label)?.label || block.label}` : `建议：${data.labels.find(item => item.id === block.suggested_label)?.label || block.suggested_label}`)}</b><small>${escapeHtml(block.text)}</small></span>
+    </button>`).join("");
+  if (!current) {
+    $("#extractionBlockDetail").innerHTML = `<div class="empty-state">没有可标注区块</div>`;
+    return;
+  }
+  const suggestedName = data.labels.find(item => item.id === current.suggested_label)?.label || current.suggested_label;
+  $("#extractionBlockDetail").innerHTML = `
+    <div class="extraction-block-detail-head">
+      <div><span class="eyebrow">区块 ${state.extractionBlockIndex + 1}</span><h3>建议：${escapeHtml(suggestedName)}</h3></div>
+      ${badge(`${Math.round(Number(current.suggestion_confidence || 0) * 100)}%`)}
+    </div>
+    <div class="extraction-block-text">${escapeHtml(current.text)}</div>
+    <div class="extraction-label-options" role="group" aria-label="区块标签">
+      ${data.labels.map(item => `<button class="${current.label === item.id ? "active" : ""}" data-save-extraction-label="${item.id}" data-block-hash="${current.block_hash}">${escapeHtml(item.label)}</button>`).join("")}
+    </div>`;
+  $("#extractionBlockList").querySelector(".active")?.scrollIntoView({ block: "nearest" });
+}
+
+async function openExtractionLabeler(articleId) {
+  state.extractionAnnotation = await api(`/api/articles/${articleId}/extraction-blocks`);
+  const firstRemaining = state.extractionAnnotation.blocks.findIndex(block => !block.label);
+  state.extractionBlockIndex = firstRemaining >= 0 ? firstRemaining : 0;
+  renderExtractionLabeler();
+  const dialog = $("#extractionLabelDialog");
+  if (!dialog.open) dialog.showModal();
+}
+
+async function saveExtractionBlockLabel(blockHash, label) {
+  const articleId = state.extractionAnnotation?.article?.id;
+  if (!articleId) return;
+  const currentIndex = state.extractionBlockIndex;
+  state.extractionAnnotation = await api(`/api/articles/${articleId}/extraction-block-labels`, {
+    method: "POST",
+    body: JSON.stringify({ block_hash: blockHash, label }),
+  });
+  await loadExtractionQuality();
+  const blocks = state.extractionAnnotation.blocks;
+  const nextRemaining = blocks.findIndex((block, index) => index > currentIndex && !block.label);
+  state.extractionBlockIndex = nextRemaining >= 0 ? nextRemaining : currentIndex;
+  renderExtractionLabeler();
+  toast("区块标签已保存");
+}
+
 async function saveArticle() {
   const body = $("#newArticleBody").value.trim();
   if (!body) return toast("正文不能为空");
@@ -3011,6 +3072,21 @@ document.addEventListener("click", async event => {
     if (button.id === "saveTranslationBtn") await saveTranslation();
     if (button.id === "translateArticleBtn") await translateArticle();
     if (button.dataset.translateArticle) await translateArticle(Number(button.dataset.translateArticle));
+    if (button.dataset.openExtractionLabeler) await openExtractionLabeler(Number(button.dataset.openExtractionLabeler));
+    if (button.dataset.extractionBlockIndex !== undefined) {
+      state.extractionBlockIndex = Number(button.dataset.extractionBlockIndex);
+      renderExtractionLabeler();
+    }
+    if (button.dataset.saveExtractionLabel) await saveExtractionBlockLabel(button.dataset.blockHash, button.dataset.saveExtractionLabel);
+    if (button.id === "closeExtractionLabelBtn") $("#extractionLabelDialog").close();
+    if (button.id === "previousExtractionBlockBtn" && state.extractionBlockIndex > 0) {
+      state.extractionBlockIndex -= 1;
+      renderExtractionLabeler();
+    }
+    if (button.id === "nextExtractionBlockBtn" && state.extractionBlockIndex < (state.extractionAnnotation?.blocks.length || 1) - 1) {
+      state.extractionBlockIndex += 1;
+      renderExtractionLabeler();
+    }
     if (button.dataset.extractionFeedback) await saveExtractionFeedback(Number(button.dataset.articleId), button.dataset.extractionFeedback);
     if (button.dataset.saveArticleContent) await saveArticleContent(Number(button.dataset.saveArticleContent));
     if (button.id === "searchArticlesBtn") {

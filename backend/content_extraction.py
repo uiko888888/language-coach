@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ JSTOR_SCRIPT_PATTERN = re.compile(
     r"\bGF_AJAX_POSTBACK\b|\bvar\s+form_content\b|\bis_postback\b|"
     r"\bStudent\s+Undergraduate\s+Student\s+Graduate\s+Student\s+Instructor/Faculty\s+Librarian\s+Researcher\b)"
 )
+BLOCK_LABELS = ("body", "author", "image_caption", "disclosure", "boilerplate", "unsure")
 
 
 @dataclass(frozen=True)
@@ -138,3 +140,87 @@ def adapter_catalog() -> list[dict]:
         }
         for adapter in ADAPTERS
     ]
+
+
+def _block_hash(text: str) -> str:
+    normalized = re.sub(r"\s+", " ", text).strip().casefold()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _body_chunks(text: str, limit: int = 1200) -> list[str]:
+    chunks = []
+    for paragraph in re.split(r"\n\s*\n", text or ""):
+        paragraph = re.sub(r"[ \t\r\f\v]+", " ", paragraph).strip()
+        if not paragraph:
+            continue
+        if len(paragraph) <= limit:
+            chunks.append(paragraph)
+            continue
+        sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z])", paragraph)
+        current = ""
+        for sentence in sentences:
+            if len(sentence) > limit:
+                if current:
+                    chunks.append(current)
+                    current = ""
+                chunks.extend(sentence[index:index + limit].strip() for index in range(0, len(sentence), limit))
+                continue
+            candidate = f"{current} {sentence}".strip()
+            if current and len(candidate) > limit:
+                chunks.append(current)
+                current = sentence
+            else:
+                current = candidate
+        if current:
+            chunks.append(current)
+    return chunks
+
+
+def suggest_annotation_blocks(
+    text: str,
+    source: str,
+    author: str = "",
+    image_caption: str = "",
+    disclosure: str = "",
+) -> list[dict]:
+    result = extract_source_content(text, source, author)
+    candidates: list[tuple[str, str, float]] = []
+
+    resolved_author = author or result["author"]
+    resolved_caption = image_caption or result["image_caption"]
+    resolved_disclosure = disclosure or result["disclosure"]
+    if resolved_author:
+        candidates.append((resolved_author, "author", 0.98))
+    for caption in re.split(r"\n\s*\n", resolved_caption):
+        if caption.strip():
+            candidates.append((caption.strip(), "image_caption", 0.96))
+    candidates.extend((chunk, "body", result["extraction_confidence"]) for chunk in _body_chunks(result["body"]))
+    if resolved_disclosure:
+        candidates.append((resolved_disclosure, "disclosure", 0.98))
+
+    if source.startswith("Guardian "):
+        candidates.extend((match.group(0).strip(), "boilerplate", 0.98) for match in GUARDIAN_NEWSLETTER_PATTERN.finditer(text))
+        match = GUARDIAN_CONTINUE_PATTERN.search(text)
+        if match:
+            candidates.append((match.group(0).strip(), "boilerplate", 0.99))
+    if source == "JSTOR Daily":
+        match = JSTOR_NEWSLETTER_PATTERN.search(text) or JSTOR_SCRIPT_PATTERN.search(text)
+        if match:
+            candidates.extend((chunk, "boilerplate", 0.99) for chunk in _body_chunks(text[match.start():]))
+
+    blocks = []
+    seen = set()
+    for text_value, suggested_label, confidence in candidates:
+        text_value = text_value.strip()
+        digest = _block_hash(text_value)
+        if not text_value or digest in seen:
+            continue
+        seen.add(digest)
+        blocks.append({
+            "block_index": len(blocks),
+            "block_hash": digest,
+            "text": text_value,
+            "suggested_label": suggested_label,
+            "suggestion_confidence": confidence,
+        })
+    return blocks

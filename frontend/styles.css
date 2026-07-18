@@ -331,7 +331,8 @@ label {
 .profile-summary strong { overflow-wrap: anywhere; font-size: 15px; }
 .calibration-summary { margin-top: 10px; padding: 9px 11px; border-left: 3px solid var(--blue); background: #f1f5fb; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .profile-dialog,
-.assistant-dialog {
+.assistant-dialog,
+.extraction-label-dialog {
   width: min(1000px, calc(100vw - 56px));
   max-height: calc(100vh - 56px);
   margin: auto;
@@ -344,7 +345,8 @@ label {
   box-shadow: 0 24px 70px rgba(18, 31, 28, 0.24);
 }
 .profile-dialog::backdrop,
-.assistant-dialog::backdrop { background: rgba(15, 25, 23, 0.56); }
+.assistant-dialog::backdrop,
+.extraction-label-dialog::backdrop { background: rgba(15, 25, 23, 0.56); }
 .dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .dialog-head h2 { margin: 2px 0 0; font-size: 20px; }
 .profile-source-switch { display: inline-flex; margin: 14px 0; border: 1px solid var(--line); }
@@ -376,6 +378,28 @@ label {
 .assistant-mode-grid h3 { margin: 4px 0 8px; }
 .assistant-mode-grid ol { min-height: 84px; margin: 0 0 14px; padding-left: 20px; color: var(--muted); line-height: 1.7; }
 .assistant-steps { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 14px; }
+.extraction-label-dialog { width: min(1120px, calc(100vw - 56px)); overflow: hidden; }
+.extraction-label-status, .extraction-label-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 48px; }
+.extraction-label-status { border-bottom: 1px solid var(--line); color: var(--muted); }
+.extraction-label-status strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.extraction-label-workspace { display: grid; grid-template-columns: 290px minmax(0, 1fr); height: min(590px, calc(100vh - 220px)); min-height: 420px; }
+.extraction-block-list { overflow: auto; border-right: 1px solid var(--line); padding: 10px 10px 10px 0; }
+.extraction-block-item { width: 100%; min-height: 68px; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 8px; align-items: start; padding: 10px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; text-align: left; }
+.extraction-block-item.active { background: var(--teal-soft); box-shadow: inset 3px 0 var(--teal); }
+.extraction-block-item strong { color: var(--teal); font-variant-numeric: tabular-nums; }
+.extraction-block-item span { min-width: 0; overflow: hidden; }
+.extraction-block-item b { display: block; margin-bottom: 4px; color: var(--ink); font-size: 12px; }
+.extraction-block-item small { display: -webkit-box; overflow: hidden; color: var(--muted); line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.extraction-block-detail { min-width: 0; overflow: auto; padding: 22px 24px; }
+.extraction-block-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.extraction-block-detail-head h3 { margin: 3px 0 0; font-size: 18px; }
+.extraction-block-text { min-height: 190px; margin: 20px 0; padding: 18px 0; border-bottom: 1px solid var(--line); font-family: Georgia, serif; font-size: 18px; line-height: 1.85; white-space: pre-wrap; overflow-wrap: anywhere; }
+.extraction-label-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); }
+.extraction-label-options button { min-height: 44px; border: 0; border-radius: 0; background: transparent; }
+.extraction-label-options button:nth-child(n+4) { border-top: 1px solid var(--line); }
+.extraction-label-options button:not(:nth-child(3n+1)) { border-left: 1px solid var(--line); }
+.extraction-label-options button.active { background: var(--teal); color: white; }
+.extraction-label-footer { padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); }
 .user-center-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.85fr); gap: 14px; align-items: start; }
 .user-center-side { display: grid; gap: 14px; }
 .user-domain-list { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 14px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }

@@ -28,7 +28,7 @@ from pathlib import Path
 
 try:
     from .backups import create_backup, list_backups, restore_backup
-    from .content_extraction import adapter_catalog, extract_source_content
+    from .content_extraction import BLOCK_LABELS, adapter_catalog, extract_source_content, suggest_annotation_blocks
     from .lexical_data import lookup_lexical_layers, search_open_entries
     from .migrations import run_migrations
     from .practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
@@ -36,7 +36,7 @@ try:
     from .versioning import SCHEMA_VERSION, app_version, version_payload
 except ImportError:
     from backups import create_backup, list_backups, restore_backup
-    from content_extraction import adapter_catalog, extract_source_content
+    from content_extraction import BLOCK_LABELS, adapter_catalog, extract_source_content, suggest_annotation_blocks
     from lexical_data import lookup_lexical_layers, search_open_entries
     from migrations import run_migrations
     from practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
@@ -5334,22 +5334,38 @@ def extraction_quality_report() -> dict:
         ).fetchall()
         totals = conn.execute(
             """SELECT COUNT(*) AS feedback_count,
-                      COUNT(DISTINCT article_id) AS reviewed_articles,
                       SUM(CASE WHEN verdict != 'correct' THEN 1 ELSE 0 END) AS issue_count
                FROM article_extraction_feedback"""
         ).fetchone()
-        reviewed_sources = conn.execute(
-            """SELECT COUNT(DISTINCT a.source) FROM article_extraction_feedback f
-               JOIN articles a ON a.id = f.article_id"""
+        block_labels = conn.execute(
+            "SELECT COUNT(*) FROM article_extraction_block_labels WHERE label != 'unsure'"
         ).fetchone()[0]
-    reviewed_articles = int(totals["reviewed_articles"] or 0)
-    issue_count = int(totals["issue_count"] or 0)
+        corrected_blocks = conn.execute(
+            """SELECT COUNT(*) FROM article_extraction_block_labels
+               WHERE label != 'unsure' AND label != suggested_label"""
+        ).fetchone()[0]
+        reviewed_articles = conn.execute(
+            """SELECT COUNT(DISTINCT article_id) FROM (
+                 SELECT article_id FROM article_extraction_feedback
+                 UNION ALL
+                 SELECT article_id FROM article_extraction_block_labels
+               )"""
+        ).fetchone()[0]
+        reviewed_sources = conn.execute(
+            """SELECT COUNT(DISTINCT source) FROM (
+                 SELECT a.source AS source FROM article_extraction_feedback f JOIN articles a ON a.id = f.article_id
+                 UNION ALL
+                 SELECT source FROM article_extraction_block_labels
+               ) WHERE source != ''"""
+        ).fetchone()[0]
+    reviewed_articles = int(reviewed_articles or 0)
+    issue_count = int(totals["issue_count"] or 0) + int(corrected_blocks or 0)
     thresholds = {"reviewed_articles": 100, "issue_examples": 25, "reviewed_sources": 3, "block_labels": 500}
     observed = {
         "reviewed_articles": reviewed_articles,
         "issue_examples": issue_count,
         "reviewed_sources": int(reviewed_sources or 0),
-        "block_labels": 0,
+        "block_labels": int(block_labels or 0),
     }
     unmet = [key for key, minimum in thresholds.items() if observed[key] < minimum]
     return {
@@ -5366,6 +5382,55 @@ def extraction_quality_report() -> dict:
     }
 
 
+BLOCK_LABEL_NAMES = {
+    "body": "正文",
+    "author": "作者",
+    "image_caption": "图片说明",
+    "disclosure": "披露",
+    "boilerplate": "订阅噪声",
+    "unsure": "不确定",
+}
+
+
+def extraction_annotation_payload(conn: sqlite3.Connection, article_id: int) -> dict | None:
+    article = conn.execute("SELECT * FROM articles WHERE id = ?", (article_id,)).fetchone()
+    if not article:
+        return None
+    audit = conn.execute(
+        "SELECT original_body FROM article_extraction_audits WHERE article_id = ? ORDER BY id LIMIT 1",
+        (article_id,),
+    ).fetchone()
+    source_text = audit["original_body"] if audit else article["body"]
+    blocks = suggest_annotation_blocks(
+        source_text,
+        article["source"],
+        article["author"],
+        article["image_caption"],
+        article["disclosure"],
+    )
+    labels = {
+        row["block_hash"]: dict(row)
+        for row in conn.execute(
+            "SELECT * FROM article_extraction_block_labels WHERE article_id = ?", (article_id,)
+        ).fetchall()
+    }
+    for block in blocks:
+        saved = labels.get(block["block_hash"])
+        block["label"] = saved["label"] if saved else ""
+        block["labeled_at"] = saved["updated_at"] if saved else ""
+    labeled = sum(bool(block["label"]) for block in blocks)
+    usable = sum(block["label"] not in {"", "unsure"} for block in blocks)
+    return {
+        "article": {
+            "id": article["id"],
+            "title": article["title"],
+            "source": article["source"],
+            "extraction_version": article["extraction_version"],
+        },
+        "blocks": blocks,
+        "labels": [{"id": label, "label": BLOCK_LABEL_NAMES[label]} for label in BLOCK_LABELS],
+        "summary": {"total": len(blocks), "labeled": labeled, "usable": usable, "remaining": len(blocks) - labeled},
+    }
 def parse_feed_datetime(value: str) -> str:
     raw = (value or "").strip()
     if not raw:
@@ -5699,6 +5764,11 @@ class App(BaseHTTPRequestHandler):
                 return json_response(self, feed_refresh_status())
             if path == "/api/extraction/quality":
                 return json_response(self, extraction_quality_report())
+            match = re.fullmatch(r"/api/articles/(\d+)/extraction-blocks", path)
+            if match:
+                with db() as conn:
+                    annotation = extraction_annotation_payload(conn, int(match.group(1)))
+                return json_response(self, annotation) if annotation else json_response(self, {"error": "Article not found"}, 404)
             if path == "/api/books":
                 with db() as conn:
                     books = [book_detail(conn, row["id"], include_chapters=False) for row in conn.execute(
@@ -6374,6 +6444,41 @@ class App(BaseHTTPRequestHandler):
                     )
                     feedback = conn.execute("SELECT * FROM article_extraction_feedback WHERE id = ?", (cursor.lastrowid,)).fetchone()
                 return json_response(self, {"feedback": dict(feedback)}, 201)
+            match = re.fullmatch(r"/api/articles/(\d+)/extraction-block-labels", path)
+            if match:
+                label = str(payload.get("label") or "").strip()
+                block_hash = str(payload.get("block_hash") or "").strip()
+                if label not in BLOCK_LABELS:
+                    return json_response(self, {"error": "Unsupported block label"}, 400)
+                with db() as conn:
+                    annotation = extraction_annotation_payload(conn, int(match.group(1)))
+                    if not annotation:
+                        return json_response(self, {"error": "Article not found"}, 404)
+                    block = next((item for item in annotation["blocks"] if item["block_hash"] == block_hash), None)
+                    if not block:
+                        return json_response(self, {"error": "Extraction block not found"}, 404)
+                    now = utc_now()
+                    conn.execute(
+                        """INSERT INTO article_extraction_block_labels
+                           (article_id, block_hash, block_index, block_text, suggested_label, label,
+                            source, extraction_version, created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           ON CONFLICT(article_id, block_hash) DO UPDATE SET
+                             block_index = excluded.block_index,
+                             block_text = excluded.block_text,
+                             suggested_label = excluded.suggested_label,
+                             label = excluded.label,
+                             source = excluded.source,
+                             extraction_version = excluded.extraction_version,
+                             updated_at = excluded.updated_at""",
+                        (
+                            annotation["article"]["id"], block_hash, block["block_index"], block["text"],
+                            block["suggested_label"], label, annotation["article"]["source"],
+                            annotation["article"]["extraction_version"], now, now,
+                        ),
+                    )
+                    updated = extraction_annotation_payload(conn, annotation["article"]["id"])
+                return json_response(self, updated)
             if path == "/api/cards":
                 term = (payload.get("term") or "").strip()
                 if not term:
