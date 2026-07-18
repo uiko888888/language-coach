@@ -6,6 +6,7 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+- Planned `v0.8.0-alpha.24` contextual output training with bilingual translation, English summaries, personal expression, synonym usage contrasts, review integration and evidence boundaries.
 - Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
 - Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
 
