@@ -20,6 +20,10 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Tatoeba link normalization now uses a disk-backed staging join instead of loading millions of sentence IDs into Python memory.
 - Source versions default to checksum-derived identifiers and can be pinned explicitly from the CLI.
 
+### Fixed
+
+- Fixed the Kaikki PowerShell preparation switch colliding with its case-insensitive internal path variable.
+
 ### Verification
 
 - Passed 181 Python unit/integration tests and the isolated lexicon desktop E2E on schema 16.

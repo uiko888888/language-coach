@@ -126,7 +126,7 @@ if (-not $Kaikki -and -not $Tatoeba -and -not $Wordfreq) {
 
 if ($Kaikki) {
     $extension = if ($KaikkiUrl.EndsWith(".gz")) { ".jsonl.gz" } else { ".jsonl" }
-    $kaikki = Join-Path $output "kaikki-english$extension"
+    $kaikkiPath = Join-Path $output "kaikki-english$extension"
     $targets = Join-Path $output "kaikki-target-words.txt"
     $frequency = Join-Path $output "wordfreq-en.tsv"
     if (-not (Test-FrequencyTsv $frequency)) {
@@ -136,7 +136,7 @@ if ($Kaikki) {
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to build Kaikki target words."
     }
-    Invoke-ResumableKaikkiDownload $KaikkiUrl $kaikki
+    Invoke-ResumableKaikkiDownload $KaikkiUrl $kaikkiPath
 }
 
 if ($Tatoeba) {
