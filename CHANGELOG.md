@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.24.4] - 2026-07-20
+
+### Added
+
+- Added an optional FSRS 6.3.1 scheduler adapter with configurable desired retention.
+- Added persisted FSRS card state, legacy schedule mapping and explicit fallback to `adaptive-interval-v1`.
+- Added disposable real-database replay verification for migration, rating, undo and audit-log retention.
+
+### Changed
+
+- Review tests now cover both the legacy scheduler and enabled FSRS behavior.
+- Schema 17 adds FSRS state without changing existing review items or deleting review history.
+
+### Verification
+
+- Real database replay passed: SQLite integrity `ok`, 3 review items preserved, FSRS scheduler active, rollback verified and audit log retained.
+- Full suite passed: 184 tests, with 2 optional FSRS tests skipped only in environments where the optional package is unavailable.
+- FSRS is implemented but remains opt-in until longer-term retention calibration is collected.
+
 ## [0.8.0-alpha.24.3] - 2026-07-20
 
 ### Added
