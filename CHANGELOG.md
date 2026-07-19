@@ -26,6 +26,7 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Fixed absolute `-OutputDirectory` handling so large dictionary sources can be placed on a secondary drive.
 - Added an optional low-memory aria2 downloader with a configurable 1-8 connection limit for large Kaikki files.
 - Added aria2 retry, timeout, low-speed and integrity-check options so remote TLS disconnects resume without discarding partial data.
+- Kaikki validation now rejects malformed JSON while reporting and ignoring structurally valid metadata or non-English helper rows, matching the importer boundary.
 
 ### Verification
 

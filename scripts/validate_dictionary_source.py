@@ -48,7 +48,7 @@ def validate_frequency(path: Path, minimum_rows: int = 25_000) -> dict:
 
 
 def validate_kaikki(path: Path, minimum_rows: int = 25_000) -> dict:
-    rows = valid = rejected = 0
+    rows = valid = invalid_json = ignored = 0
     opener = gzip.open if ".gz" in path.suffixes else open
     with opener(path, "rt", encoding="utf-8") as stream:
         for line in stream:
@@ -56,19 +56,28 @@ def validate_kaikki(path: Path, minimum_rows: int = 25_000) -> dict:
             try:
                 item = json.loads(line)
             except json.JSONDecodeError:
-                rejected += 1
+                invalid_json += 1
                 continue
             if (
                 not isinstance(item, dict)
                 or not str(item.get("word") or "").strip()
                 or item.get("lang_code") not in {None, "en"}
             ):
-                rejected += 1
+                ignored += 1
                 continue
             valid += 1
-    if valid < minimum_rows or rejected:
-        raise ValueError(f"Kaikki JSONL has {valid} valid English rows and {rejected} rejected rows")
-    return {"kind": "kaikki-jsonl", "rows": rows, "valid_rows": valid, "rejected": rejected}
+    if valid < minimum_rows or invalid_json:
+        raise ValueError(
+            f"Kaikki JSONL has {valid} valid English rows, {ignored} ignored metadata/non-English rows "
+            f"and {invalid_json} invalid JSON rows"
+        )
+    return {
+        "kind": "kaikki-jsonl",
+        "rows": rows,
+        "valid_rows": valid,
+        "ignored_metadata_or_non_english": ignored,
+        "invalid_json_rows": invalid_json,
+    }
 
 
 def main() -> None:

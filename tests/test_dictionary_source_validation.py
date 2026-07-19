@@ -48,6 +48,21 @@ class DictionarySourceValidationTests(unittest.TestCase):
             with self.assertRaises((EOFError, OSError)):
                 validate_kaikki(path, minimum_rows=2)
 
+    def test_kaikki_validation_ignores_metadata_but_rejects_invalid_json(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "kaikki.jsonl"
+            path.write_text(
+                json.dumps({"word": "set", "lang_code": "en"}) + "\n" +
+                json.dumps({"metadata": {"dump": "English"}}) + "\n",
+                encoding="utf-8",
+            )
+            result = validate_kaikki(path, minimum_rows=1)
+            self.assertEqual(result["ignored_metadata_or_non_english"], 1)
+            self.assertEqual(result["invalid_json_rows"], 0)
+            path.write_text(path.read_text(encoding="utf-8") + "{broken\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "1 invalid JSON rows"):
+                validate_kaikki(path, minimum_rows=1)
+
     def test_target_words_include_frequency_and_quality_probes(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
