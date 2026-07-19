@@ -44,15 +44,16 @@ The default URL is the official English JSONL endpoint. If Kaikki changes the da
 
 The downloader keeps interrupted data as `.part`, resumes with `curl`, and promotes the source only after every JSON line and at least 25,000 English records validate. It does not modify the production database.
 
-Run the filtered import against a database candidate first:
+Run the filtered import and all production gates against an isolated database candidate first:
 
 ```powershell
-python .\scripts\import_kaikki.py `
-  --jsonl .\artifacts\dictionary-sources\kaikki-english.jsonl `
+python .\scripts\stage_kaikki_candidate.py `
+  --source .\artifacts\dictionary-sources\kaikki-english.jsonl `
   --words .\artifacts\dictionary-sources\kaikki-target-words.txt `
-  --database .\artifacts\kaikki-candidate.sqlite3 `
   --source-version downloaded-2026-07-19
 ```
+
+The command always leaves the production database unchanged. It exits with code `2` when any source count, metadata, probe group or SQLite integrity gate fails, while preserving the candidate and JSON report for inspection.
 
 For a custom controlled import, provide another UTF-8 target list:
 
