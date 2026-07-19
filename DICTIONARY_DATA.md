@@ -61,6 +61,14 @@ python .\scripts\import_tatoeba.py `
 
 Rows without both English and Chinese authors are rejected. Length and basic quality filters run before insertion.
 
+Use the resumable downloader when network access is available:
+
+```powershell
+.\scripts\prepare_dictionary_sources.ps1 -Tatoeba
+```
+
+Interrupted archives remain as `.part` files and the same command resumes them. A file is promoted to its final name only after a complete BZip2/TAR read succeeds.
+
 ## wordfreq
 
 Purpose: commonness ordering only. It does not supply definitions.

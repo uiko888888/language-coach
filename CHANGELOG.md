@@ -21,7 +21,7 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 ### Verification
 
 - Passed 174 Python unit/integration tests and the isolated lexicon desktop E2E on schema 16.
-- The current real database audit reports `0/22` because Kaikki, Tatoeba and wordfreq files are not installed; the unreleased work is not a completed `alpha.24.3` release.
+- The real database now contains 200,000 pinned wordfreq 3.1.1 rows and passes all three frequency-order probes; the overall audit is `3/22` because Kaikki and Tatoeba are not installed, so this is not yet a completed `alpha.24.3` release.
 
 ## [0.8.0-alpha.24.2] - 2026-07-19
 

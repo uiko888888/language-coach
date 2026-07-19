@@ -24,15 +24,16 @@ function Test-TarBzipArchive([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         return $false
     }
-    $previousCheckPath = $env:LANGUAGE_COACH_ARCHIVE_CHECK
-    try {
-        $env:LANGUAGE_COACH_ARCHIVE_CHECK = $Path
-        & python -c "import os, tarfile; archive=tarfile.open(os.environ['LANGUAGE_COACH_ARCHIVE_CHECK'], 'r:bz2'); next((item for item in archive if item.isfile()), None); archive.close()" 2>$null
-        return $LASTEXITCODE -eq 0
+    & python .\scripts\validate_dictionary_source.py --kind archive --path $Path --quiet
+    return $LASTEXITCODE -eq 0
+}
+
+function Test-FrequencyTsv([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $false
     }
-    finally {
-        $env:LANGUAGE_COACH_ARCHIVE_CHECK = $previousCheckPath
-    }
+    & python .\scripts\validate_dictionary_source.py --kind frequency --path $Path --quiet
+    return $LASTEXITCODE -eq 0
 }
 
 function Invoke-ResumableArchiveDownload([string]$Url, [string]$Target) {
@@ -87,15 +88,20 @@ if ($Tatoeba) {
 if ($Wordfreq) {
     $packageDirectory = Join-Path $output "python"
     $tsv = Join-Path $output "wordfreq-en.tsv"
-    Assert-Target $tsv
-    python -m pip install --disable-pip-version-check --target $packageDirectory wordfreq==3.1.1
-    $previousPythonPath = $env:PYTHONPATH
-    try {
-        $env:PYTHONPATH = if ($previousPythonPath) { "$packageDirectory;$previousPythonPath" } else { $packageDirectory }
-        python .\scripts\export_wordfreq.py --output $tsv --limit $FrequencyLimit
+    if ((-not $Force) -and (Test-FrequencyTsv $tsv)) {
+        Write-Output "Verified existing source: $tsv"
     }
-    finally {
-        $env:PYTHONPATH = $previousPythonPath
+    else {
+        Assert-Target $tsv
+        python -m pip install --disable-pip-version-check --upgrade --target $packageDirectory wordfreq==3.1.1
+        $previousPythonPath = $env:PYTHONPATH
+        try {
+            $env:PYTHONPATH = if ($previousPythonPath) { "$packageDirectory;$previousPythonPath" } else { $packageDirectory }
+            python .\scripts\export_wordfreq.py --output $tsv --limit $FrequencyLimit
+        }
+        finally {
+            $env:PYTHONPATH = $previousPythonPath
+        }
     }
 }
 
