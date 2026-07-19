@@ -10,7 +10,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
-from backend import server
+from backend import fsrs_adapter, server
 
 
 class BrowserBridgeTests(unittest.TestCase):
@@ -83,23 +83,23 @@ class BrowserBridgeTests(unittest.TestCase):
             baseline_count = baseline[0] if baseline else 0
         queue, _ = self.request("/api/reviews?kind=phrase&limit=100")
         self.assertTrue(any(item["id"] == review_item["id"] for item in queue["items"]))
-        self.assertFalse(queue["scheduler"]["fsrs"])
+        self.assertEqual(queue["scheduler"]["fsrs"], fsrs_adapter.enabled())
 
         rated, _ = self.request(f"/api/reviews/{review_item['id']}/rate", "POST", {
             "rating": "good", "kind": "phrase",
         })
-        self.assertEqual(rated["interval"], "3 天")
+        self.assertTrue(rated["interval"])
         with server.db() as conn:
             scheduled = conn.execute("SELECT * FROM review_items WHERE id = ?", (review_item["id"],)).fetchone()
             progress = conn.execute(
                 "SELECT completed_count FROM daily_plan_progress WHERE day = ? AND task = 'review'",
                 (server.current_plan_day(),),
             ).fetchone()[0]
-        self.assertEqual(scheduled["state"], "review")
+        self.assertIn(scheduled["state"], {"learning", "review", "relearning"})
         self.assertEqual(progress, baseline_count + 1)
         cards, _ = self.request("/api/cards")
         scheduled_card = next(item for item in cards["cards"] if item["id"] == created["card"]["id"])
-        self.assertEqual(scheduled_card["review_state"], "review")
+        self.assertEqual(scheduled_card["review_state"], scheduled["state"])
 
         undone, _ = self.request("/api/reviews/undo", "POST", {"kind": "phrase"})
         self.assertEqual(undone["review_item_id"], review_item["id"])

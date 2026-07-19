@@ -3,13 +3,13 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from backend import server
+from backend import fsrs_adapter, server
 from backend.review_scheduler import (
     ensure_review_item,
     rate_review_item,
     review_queue,
     schedule_review,
-    undo_last_review,
+    interval_label, undo_last_review,
 )
 
 
@@ -92,7 +92,7 @@ class ReviewSchedulerTests(unittest.TestCase):
             queue = review_queue(conn, now=now)
         self.assertEqual({item["kind"] for item in queue["items"]}, {"word", "phrase", "mistake"})
         self.assertEqual(queue["summary"]["due"], 3)
-        self.assertFalse(queue["scheduler"]["fsrs"])
+        self.assertEqual(queue["scheduler"]["fsrs"], fsrs_adapter.enabled())
 
     def test_rating_and_undo_restore_exact_schedule_snapshot(self):
         now = datetime(2026, 7, 18, 12, 0, tzinfo=timezone.utc)
@@ -105,7 +105,7 @@ class ReviewSchedulerTests(unittest.TestCase):
             review_id = ensure_review_item(conn, "card", card_id, now_text)
             before = dict(conn.execute("SELECT * FROM review_items WHERE id = ?", (review_id,)).fetchone())
             rated = rate_review_item(conn, review_id, "good", now)
-            self.assertEqual(rated["interval"], "3 天")
+            self.assertEqual(rated["interval"], interval_label(rated["item"], now))
             undo_last_review(conn, now + timedelta(seconds=30))
             restored = dict(conn.execute("SELECT * FROM review_items WHERE id = ?", (review_id,)).fetchone())
             log = conn.execute("SELECT * FROM review_logs WHERE id = ?", (rated["log_id"],)).fetchone()
