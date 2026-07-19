@@ -2,7 +2,7 @@
 
 ## 当前实施状态
 
-`v0.8.0-alpha.24.0` 已完成文本 MVP；`alpha.24.1` 已完成可选五维 AI 反馈、证据引用校验、处理决定、自定义错句复习和六组人工近义词边界。本机录音、脱稿复述和观点表达属于下一项 `alpha.24.2`。完整字幕拉片仍在 `v0.9`。
+`v0.8.0-alpha.24.0` 已完成文本 MVP；`alpha.24.1` 已完成可选五维 AI 反馈；`alpha.24.2` 已完成本机录音、脱稿复述、观点表达、手动文本降级和可选转写。完整字幕拉片仍在 `v0.9`。
 
 本文定义 Language Coach 的“语境输入 -> 主动输出 -> 反馈 -> 复习 -> 再次输出”方案。目标不是增加几种看起来丰富的题目，而是让阅读量、兴趣内容、词块和英语思维进入可执行、可测量的日常循环。
 
@@ -171,12 +171,15 @@ GET  /api/output/history
 POST /api/articles/{id}/read
 ```
 
-`alpha.24.2` 计划增加：
+`alpha.24.2` 已增加：
 
 ```text
 POST /api/speaking-attempts
+POST /api/speaking-attempts/{id}/audio
+POST /api/speaking-attempts/{id}/transcript
 POST /api/speaking-attempts/{id}/transcribe
 POST /api/speaking-attempts/{id}/self-review
+POST /api/speaking-attempts/{id}/review-items
 DELETE /api/speaking-attempts/{id}
 ```
 
@@ -214,8 +217,8 @@ DELETE /api/speaking-attempts/{id}
 2. 文章脱稿复述、观点表达和目标词块口头造句。
 3. 30/60/90 秒任务、准备倒计时和结构化自评。
 4. 可替换转写接口及无转写降级。
-5. 有转写时分析内容覆盖、重复、停顿、语速、词块和影响理解的语法。
-6. 错句与卡住表达进入复习，七天后再次录制。
+5. 有文本时分析内容覆盖、立即重复、填充词、语速和目标词块；当前规则不能可靠判断发音或语法。
+6. 卡住表达进入复习；七天再次录制和跨天画像校准仍待后续真实使用验证。
 
 朗读只提供发音与流畅度观察，不作为自由口语能力证据；脱稿复述和观点表达达到跨天样本门槛后，才可以进入口语画像候选。
 

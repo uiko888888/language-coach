@@ -1,5 +1,13 @@
 # Language Coach Architecture
 
+## schema 16 口语边界
+
+- `backend/speaking_training.py` 负责口语任务、尝试、文本规则观察、自评与复习链接，不访问网络或音频设备。
+- `backend/speech_transcription.py` 是可选外部转写适配器；服务端只在用户请求时读取本机音频并发送，返回文本和提供方溯源。
+- 浏览器 `MediaRecorder` 负责采集，服务端只接受白名单 MIME、限制大小并使用随机文件名；SQLite 只保存元数据和相对文件名。
+- 音频目录默认位于数据库旁的 `speaking/`，可用 `LANGUAGE_COACH_AUDIO_DIR` 隔离测试或部署目录。
+- 当前 `backend/server.py` 仍承担 HTTP 编排和文件生命周期，进入 beta 前应把口语路由进一步拆成独立 handler，并让测试通过统一夹具恢复可变的全局数据库路径。
+
 本文记录当前真实架构、依赖边界和渐进拆分顺序。它不是未来架构效果图；未完成的模块不会被写成已经存在。
 
 ## 当前运行形态

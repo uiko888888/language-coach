@@ -600,6 +600,71 @@ def _semantic_output_feedback(conn: sqlite3.Connection) -> None:
     )
 
 
+def _speaking_output_training(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """CREATE TABLE IF NOT EXISTS speaking_task_sets (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             article_id INTEGER NOT NULL,
+             source_hash TEXT NOT NULL,
+             duration_target INTEGER NOT NULL DEFAULT 60,
+             prep_seconds INTEGER NOT NULL DEFAULT 15,
+             status TEXT NOT NULL DEFAULT 'active',
+             created_at TEXT NOT NULL,
+             FOREIGN KEY(article_id) REFERENCES articles(id)
+           );
+           CREATE INDEX IF NOT EXISTS idx_speaking_task_sets_article
+           ON speaking_task_sets(article_id, duration_target, status, id DESC);
+           CREATE TABLE IF NOT EXISTS speaking_tasks (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             set_id INTEGER NOT NULL,
+             article_id INTEGER NOT NULL,
+             position INTEGER NOT NULL,
+             task_type TEXT NOT NULL,
+             prompt_text TEXT NOT NULL,
+             source_text TEXT NOT NULL,
+             target_chunks_json TEXT NOT NULL DEFAULT '[]',
+             evidence_eligible INTEGER NOT NULL DEFAULT 0,
+             created_at TEXT NOT NULL,
+             UNIQUE(set_id, position),
+             FOREIGN KEY(set_id) REFERENCES speaking_task_sets(id),
+             FOREIGN KEY(article_id) REFERENCES articles(id)
+           );
+           CREATE TABLE IF NOT EXISTS speaking_attempts (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             task_id INTEGER NOT NULL,
+             audio_filename TEXT NOT NULL DEFAULT '',
+             audio_mime TEXT NOT NULL DEFAULT '',
+             audio_bytes INTEGER NOT NULL DEFAULT 0,
+             duration_seconds INTEGER NOT NULL DEFAULT 0,
+             prep_seconds INTEGER NOT NULL DEFAULT 0,
+             transcript_text TEXT NOT NULL DEFAULT '',
+             transcript_source TEXT NOT NULL DEFAULT '',
+             transcript_provider TEXT NOT NULL DEFAULT '',
+             transcript_model TEXT NOT NULL DEFAULT '',
+             transcript_analysis_json TEXT NOT NULL DEFAULT '{}',
+             self_review_json TEXT NOT NULL DEFAULT '{}',
+             status TEXT NOT NULL DEFAULT 'draft',
+             repeat_of_id INTEGER,
+             created_at TEXT NOT NULL,
+             updated_at TEXT NOT NULL,
+             deleted_at TEXT NOT NULL DEFAULT '',
+             FOREIGN KEY(task_id) REFERENCES speaking_tasks(id),
+             FOREIGN KEY(repeat_of_id) REFERENCES speaking_attempts(id)
+           );
+           CREATE INDEX IF NOT EXISTS idx_speaking_attempts_task
+           ON speaking_attempts(task_id, created_at DESC);
+           CREATE TABLE IF NOT EXISTS speaking_review_links (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             attempt_id INTEGER NOT NULL,
+             card_id INTEGER NOT NULL,
+             created_at TEXT NOT NULL,
+             UNIQUE(attempt_id, card_id),
+             FOREIGN KEY(attempt_id) REFERENCES speaking_attempts(id),
+             FOREIGN KEY(card_id) REFERENCES cards(id)
+           );"""
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     (1, "consolidate legacy schema", _legacy_schema),
     (2, "add training loop metrics", _training_loop_metrics),
@@ -616,6 +681,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     (13, "add representative extraction review batches", _article_extraction_review_batches),
     (14, "add contextual output training", _contextual_output_training),
     (15, "add semantic output feedback", _semantic_output_feedback),
+    (16, "add local speaking output", _speaking_output_training),
 )
 
 

@@ -26,6 +26,7 @@
       <button class="nav-item" data-view="cards">生词本</button>
       <span class="nav-group">训练与考试</span>
       <button class="nav-item" data-view="output">输出训练</button>
+      <button class="nav-item" data-view="speaking">口语训练</button>
       <button class="nav-item" data-view="quiz">练习中心</button>
       <button class="nav-item" data-view="mistakes">错题本</button>
       <button class="nav-item" data-view="history">训练记录</button>
@@ -254,6 +255,7 @@
               <legend>每日真实用量</legend>
               <label>阅读词数 <input type="number" min="50" max="5000" step="50" data-daily-metric-target="reading_words" /></label>
               <label>输出句数 <input type="number" min="1" max="50" data-daily-metric-target="output_sentences" /></label>
+              <label>口语秒数 <input type="number" min="15" max="3600" step="15" data-daily-metric-target="speaking_seconds" /></label>
               <label>复习词块 <input type="number" min="1" max="100" data-daily-metric-target="review_chunks" /></label>
             </fieldset>
             <label>近期目标
@@ -457,6 +459,7 @@
               <button id="analyzeBtn">分析</button>
               <button id="markArticleReadBtn">标记读完</button>
               <button id="startOutputBtn">开始输出</button>
+              <button id="startSpeakingBtn">开始口语</button>
               <button class="primary" id="generateQuizBtn">转为练习</button>
             </div>
           </div>
@@ -498,6 +501,36 @@
           <details class="output-history">
             <summary>最近输出记录</summary>
             <div id="outputHistoryList"></div>
+          </details>
+        </section>
+      </div>
+    </section>
+
+    <section class="view" id="view-speaking">
+      <div class="speaking-workspace">
+        <aside class="band speaking-source-panel">
+          <div class="band-head">
+            <div><span class="eyebrow">Speaking source</span><h2 id="speakingSourceTitle">先选择文章</h2></div>
+            <div class="speaking-duration" role="group" aria-label="口语目标时长">
+              <button data-speaking-duration="30">30s</button>
+              <button data-speaking-duration="60" class="active">60s</button>
+              <button data-speaking-duration="90">90s</button>
+            </div>
+          </div>
+          <div class="master-list speaking-task-list" id="speakingTaskList"></div>
+          <article class="speaking-source-text" id="speakingSourceText"></article>
+        </aside>
+        <section class="band speaking-practice-panel">
+          <div class="band-head">
+            <div><span class="eyebrow">Local recording</span><h2>口语训练</h2></div>
+            <div class="badge-row" id="speakingPrivacyStatus"></div>
+          </div>
+          <div id="speakingTaskDetail"></div>
+          <section class="speaking-recorder" id="speakingRecorder"></section>
+          <section class="speaking-attempt-detail" id="speakingAttemptDetail"></section>
+          <details class="speaking-history" open>
+            <summary>最近口语记录</summary>
+            <div id="speakingHistoryList"></div>
           </details>
         </section>
       </div>

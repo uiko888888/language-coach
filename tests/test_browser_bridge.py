@@ -437,6 +437,66 @@ class BrowserBridgeTests(unittest.TestCase):
             persisted = conn.execute("SELECT response_text FROM output_attempts WHERE id = ?", (attempt["id"],)).fetchone()
         self.assertEqual(persisted["response_text"], attempt["response_text"])
 
+    def test_local_speaking_recording_transcript_review_and_delete_loop(self):
+        with server.db() as conn:
+            article = conn.execute("SELECT * FROM articles WHERE source = 'seed'").fetchone()
+        generated, _ = self.request(f"/api/articles/{article['id']}/speaking-tasks", "POST", {
+            "duration_target": 30,
+            "prep_seconds": 10,
+        })
+        self.assertEqual([task["task_type"] for task in generated["tasks"]], ["retell", "opinion", "chunk"])
+        self.assertTrue(generated["tasks"][0]["evidence_eligible"])
+        self.assertFalse(generated["tasks"][2]["evidence_eligible"])
+        task = generated["tasks"][0]
+        created, _ = self.request("/api/speaking-attempts", "POST", {
+            "task_id": task["id"], "prep_seconds": 8,
+        })
+        attempt_id = created["attempt"]["id"]
+        audio = b"test-webm-audio-payload"
+        upload = urllib.request.Request(
+            self.base + f"/api/speaking-attempts/{attempt_id}/audio",
+            data=audio,
+            method="POST",
+            headers={"Content-Type": "audio/webm", "X-Audio-Duration": "31"},
+        )
+        with urllib.request.urlopen(upload) as response:
+            uploaded = json.load(response)["attempt"]
+        self.assertEqual(uploaded["duration_seconds"], 31)
+        self.assertTrue(Path(server.speaking_audio_dir(), uploaded["audio_filename"]).is_file())
+        with urllib.request.urlopen(self.base + uploaded["audio_url"]) as response:
+            self.assertEqual(response.read(), audio)
+
+        transcript_text = "The article explains privacy choices. Um I think clear consent matters matters for users."
+        transcript, _ = self.request(f"/api/speaking-attempts/{attempt_id}/transcript", "POST", {"text": transcript_text})
+        analysis = transcript["attempt"]["transcript_analysis"]
+        self.assertGreater(analysis["words_per_minute"], 0)
+        self.assertEqual(analysis["filler_count"], 1)
+        self.assertEqual(analysis["immediate_repetitions"], 1)
+        reviewed, _ = self.request(f"/api/speaking-attempts/{attempt_id}/self-review", "POST", {
+            "ratings": {"content": 2, "coherence": 2, "fluency": 2, "chunk_use": 1, "grammar_impact": 2},
+            "note": "Pause before the conclusion.",
+            "stuck_expression": "give people meaningful control",
+        })
+        self.assertEqual(reviewed["attempt"]["self_review"]["stuck_expression"], "give people meaningful control")
+        saved, _ = self.request(f"/api/speaking-attempts/{attempt_id}/review-items", "POST", {
+            "term": "give people meaningful control", "context": transcript_text,
+        })
+        self.assertEqual(saved["card"]["kind"], "phrase")
+        history, _ = self.request("/api/speaking/history")
+        self.assertEqual(history["attempts"][0]["id"], attempt_id)
+        plan, _ = self.request("/api/daily-plan")
+        speaking_metric = next(item for item in plan["plan"]["metrics"] if item["metric"] == "speaking_seconds")
+        self.assertGreaterEqual(speaking_metric["value"], 31)
+
+        delete = urllib.request.Request(self.base + f"/api/speaking-attempts/{attempt_id}", method="DELETE")
+        with urllib.request.urlopen(delete) as response:
+            self.assertTrue(json.load(response)["deleted"])
+        self.assertFalse(Path(server.speaking_audio_dir(), uploaded["audio_filename"]).exists())
+        with self.assertRaises(urllib.error.HTTPError) as missing:
+            urllib.request.urlopen(self.base + uploaded["audio_url"])
+        self.assertEqual(missing.exception.code, 404)
+        missing.exception.close()
+
     def test_representative_review_batch_does_not_persist_empty_batch(self):
         with sqlite3.connect(":memory:") as conn:
             conn.row_factory = sqlite3.Row

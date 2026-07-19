@@ -141,7 +141,7 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.24.1";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.24.2";', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
 
@@ -179,6 +179,27 @@ class ProfileUiContractTests(unittest.TestCase):
         self.assertIn("grid-template-columns: minmax(330px, 0.9fr) minmax(520px, 1.25fr)", self.css)
         responsive = self.css.split("@media (max-width: 980px)", 1)[1]
         self.assertNotIn(".output-workspace", responsive.split("@media (max-width: 720px)", 1)[0])
+
+    def test_speaking_workspace_is_a_private_split_record_review_loop(self):
+        for element_id in (
+            "view-speaking", "speakingSourceTitle", "speakingTaskList", "speakingSourceText",
+            "speakingTaskDetail", "speakingRecorder", "speakingAttemptDetail", "speakingHistoryList",
+        ):
+            self.assertIn(f'id="{element_id}"', self.html)
+        for contract in (
+            'data-view="speaking"', "function renderSpeaking()", "async function startSpeakingTraining(",
+            "navigator.mediaDevices.getUserMedia", "new MediaRecorder(", "data-pause-speaking",
+            "data-stop-speaking", "data-save-speaking", "data-transcribe-speaking",
+            "data-save-speaking-review", "data-save-speaking-stuck", "data-delete-speaking",
+            "data-repeat-speaking", 'api("/api/speaking/transcription/status")',
+            'api(`/api/speaking-attempts/${attemptId}/transcript`',
+        ):
+            self.assertIn(contract, self.html + self.js)
+        self.assertIn("grid-template-columns: minmax(330px, 0.9fr) minmax(520px, 1.25fr)", self.css)
+        responsive = self.css.split("@media (max-width: 980px)", 1)[1]
+        self.assertNotIn(".speaking-workspace", responsive.split("@media (max-width: 720px)", 1)[0])
+        self.assertIn('window.addEventListener("pagehide"', self.js)
+        self.assertIn("releaseSpeakingStream();", self.js)
 
     def test_training_loop_exposes_deep_explanations_metrics_and_mastery(self):
         for contract in (

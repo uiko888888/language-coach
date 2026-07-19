@@ -39,6 +39,12 @@ try:
     )
     from .practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
     from .review_scheduler import ensure_review_item, rate_review_item, review_queue, undo_last_review
+    from .speaking_training import (
+        attach_audio, create_speaking_attempt, create_speaking_task_set, latest_speaking_task_set,
+        mark_speaking_attempt_deleted, save_speaking_self_review, save_transcript,
+        speaking_attempt_payload, speaking_history,
+    )
+    from .speech_transcription import transcribe_audio, transcription_status
     from .versioning import SCHEMA_VERSION, app_version, version_payload
     from .usage_contrasts import contrast_by_slug, contrast_catalog
 except ImportError:
@@ -54,6 +60,12 @@ except ImportError:
     )
     from practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
     from review_scheduler import ensure_review_item, rate_review_item, review_queue, undo_last_review
+    from speaking_training import (
+        attach_audio, create_speaking_attempt, create_speaking_task_set, latest_speaking_task_set,
+        mark_speaking_attempt_deleted, save_speaking_self_review, save_transcript,
+        speaking_attempt_payload, speaking_history,
+    )
+    from speech_transcription import transcribe_audio, transcription_status
     from versioning import SCHEMA_VERSION, app_version, version_payload
     from usage_contrasts import contrast_by_slug, contrast_catalog
 
@@ -619,6 +631,10 @@ def source_catalog() -> list[dict]:
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def speaking_audio_dir() -> Path:
+    return Path(os.environ.get("LANGUAGE_COACH_AUDIO_DIR", DB_PATH.parent / "speaking")).resolve()
 
 
 @contextmanager
@@ -3116,8 +3132,8 @@ LEARNER_SETTINGS_KEY = "learner_profile"
 DAILY_PLAN_MINUTES = {5, 15, 30, 60}
 DAILY_PLAN_TASKS = {"reading", "output", "practice", "review", "vocabulary"}
 DAILY_PLAN_DEFAULT_TARGETS = {"reading": 1, "output": 3, "practice": 5, "review": 2, "vocabulary": 5}
-DAILY_METRIC_DEFAULT_TARGETS = {"reading_words": 400, "output_sentences": 3, "review_chunks": 5}
-DAILY_METRIC_LIMITS = {"reading_words": (50, 5000), "output_sentences": (1, 50), "review_chunks": (1, 100)}
+DAILY_METRIC_DEFAULT_TARGETS = {"reading_words": 400, "output_sentences": 3, "speaking_seconds": 60, "review_chunks": 5}
+DAILY_METRIC_LIMITS = {"reading_words": (50, 5000), "output_sentences": (1, 50), "speaking_seconds": (15, 3600), "review_chunks": (1, 100)}
 PROFILE_SECTIONS = {"reading", "listening", "writing", "speaking", "vocabulary"}
 PROFILE_WEAK_AREAS = {
     "reading-speed", "evidence", "inference", "paraphrase", "vocabulary-use",
@@ -3745,6 +3761,52 @@ def usage_contrast_catalog_payload(conn: sqlite3.Connection, query: str = "") ->
         item["history"] = attempts.get(item["slug"], {"attempts": 0, "correct": 0})
         items.append(item)
     return {"contrasts": items, "query": query, "source": "curated-v1"}
+
+
+def save_speaking_review_item(
+    conn: sqlite3.Connection,
+    attempt_id: int,
+    term: str,
+    context: str = "",
+) -> dict:
+    attempt = speaking_attempt_payload(conn, attempt_id)
+    if not attempt or attempt["status"] == "deleted":
+        raise ValueError("Speaking attempt not found")
+    clean_term = re.sub(r"\s+", " ", str(term or "")).strip()
+    clean_context = str(context or attempt["transcript_text"] or attempt["prompt_text"]).strip()
+    if not re.search(r"[A-Za-z]", clean_term):
+        raise ValueError("The saved speaking expression must contain English")
+    if len(clean_term) > 500 or len(clean_context) > 3000:
+        raise ValueError("The speaking review item is too long")
+    now = utc_now()
+    card = conn.execute(
+        "SELECT * FROM cards WHERE lower(trim(term)) = lower(?) ORDER BY id DESC LIMIT 1",
+        (clean_term,),
+    ).fetchone()
+    created = False
+    if card:
+        card_id = int(card["id"])
+        conn.execute(
+            "UPDATE cards SET context = ?, source_article_id = ?, note = ?, updated_at = ? WHERE id = ?",
+            (clean_context or card["context"], attempt["article_id"], "口语卡住表达", now, card_id),
+        )
+    else:
+        cursor = conn.execute(
+            """INSERT INTO cards
+               (term, kind, context, source_article_id, status, note, created_at, updated_at)
+               VALUES (?, 'phrase', ?, ?, 'new', '口语卡住表达', ?, ?)""",
+            (clean_term, clean_context, attempt["article_id"], now, now),
+        )
+        card_id = int(cursor.lastrowid)
+        created = True
+        increment_daily_progress(conn, "vocabulary", 1)
+    ensure_review_item(conn, "card", card_id, now)
+    conn.execute(
+        "INSERT OR IGNORE INTO speaking_review_links (attempt_id, card_id, created_at) VALUES (?, ?, ?)",
+        (attempt_id, card_id, now),
+    )
+    saved = conn.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
+    return {"created": created, "card": dict(saved), "attempt": speaking_attempt_payload(conn, attempt_id)}
 
 
 def current_learner_level() -> str:
@@ -6035,8 +6097,8 @@ class App(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Language-Coach-Token")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Language-Coach-Token, X-Audio-Duration")
         self.send_header("Access-Control-Max-Age", "600")
         self.end_headers()
 
@@ -6128,6 +6190,36 @@ class App(BaseHTTPRequestHandler):
                 with db() as conn:
                     catalog = usage_contrast_catalog_payload(conn, search)
                 return json_response(self, catalog)
+            if path == "/api/speaking/tasks":
+                try:
+                    article_id = int(query.get("article_id", [""])[0])
+                    duration = int(query.get("duration", [0])[0] or 0)
+                except (TypeError, ValueError):
+                    return json_response(self, {"error": "article_id is required"}, 400)
+                with db() as conn:
+                    task_set = latest_speaking_task_set(conn, article_id, duration)
+                return json_response(self, task_set or {"set": None, "tasks": [], "summary": {"total": 0, "attempted": 0}})
+            if path == "/api/speaking/history":
+                try:
+                    limit = int(query.get("limit", [50])[0])
+                except (TypeError, ValueError):
+                    limit = 50
+                with db() as conn:
+                    history = speaking_history(conn, limit)
+                return json_response(self, history)
+            if path == "/api/speaking/transcription/status":
+                return json_response(self, transcription_status())
+            match = re.fullmatch(r"/api/speaking/audio/(\d+)", path)
+            if match:
+                with db() as conn:
+                    attempt = speaking_attempt_payload(conn, int(match.group(1)))
+                if not attempt or not attempt["audio_filename"] or attempt["status"] == "deleted":
+                    return json_response(self, {"error": "Speaking audio not found"}, 404)
+                directory = speaking_audio_dir()
+                audio_path = (directory / Path(attempt["audio_filename"]).name).resolve()
+                if directory not in audio_path.parents or not audio_path.is_file():
+                    return json_response(self, {"error": "Speaking audio file is unavailable"}, 404)
+                return text_response(self, audio_path.read_bytes(), attempt["audio_mime"] or "application/octet-stream", cache_control="no-store")
             if path == "/api/browser/status":
                 return json_response(self, {"ok": True, "translation": translation_status()})
             if path == "/api/browser/token":
@@ -6342,9 +6434,56 @@ class App(BaseHTTPRequestHandler):
         except Exception as exc:
             return json_response(self, {"error": str(exc)}, 500)
 
+    def save_speaking_audio(self, attempt_id: int) -> None:
+        allowed = {
+            "audio/webm": ".webm", "audio/ogg": ".ogg", "audio/mp4": ".m4a",
+            "audio/wav": ".wav", "audio/x-wav": ".wav",
+        }
+        mime_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        if mime_type not in allowed:
+            return json_response(self, {"error": "Unsupported speaking audio format"}, 415)
+        try:
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            duration = int(float(self.headers.get("X-Audio-Duration", "0") or "0"))
+        except ValueError:
+            return json_response(self, {"error": "Invalid audio metadata"}, 400)
+        if length < 1 or length > 15 * 1024 * 1024:
+            return json_response(self, {"error": "Speaking audio must be between 1 byte and 15 MB"}, 413)
+        with db() as conn:
+            previous = speaking_attempt_payload(conn, attempt_id)
+        if not previous or previous["status"] == "deleted":
+            return json_response(self, {"error": "Speaking attempt not found"}, 404)
+        content = self.rfile.read(length)
+        if len(content) != length:
+            return json_response(self, {"error": "Incomplete speaking audio upload"}, 400)
+        directory = speaking_audio_dir()
+        directory.mkdir(parents=True, exist_ok=True)
+        filename = f"speaking-{attempt_id}-{secrets.token_hex(8)}{allowed[mime_type]}"
+        target = (directory / filename).resolve()
+        if directory not in target.parents:
+            return json_response(self, {"error": "Invalid speaking audio path"}, 400)
+        temporary = target.with_suffix(target.suffix + ".tmp")
+        temporary.write_bytes(content)
+        temporary.replace(target)
+        try:
+            with db() as conn:
+                attempt = attach_audio(conn, attempt_id, filename, mime_type, length, duration)
+                if not previous.get("audio_filename"):
+                    increment_daily_metric(conn, "speaking_seconds", int(attempt["duration_seconds"] or 0))
+        except ValueError as exc:
+            target.unlink(missing_ok=True)
+            return json_response(self, {"error": str(exc)}, 404)
+        previous_name = Path(previous.get("audio_filename") or "").name
+        if previous_name and previous_name != filename:
+            (directory / previous_name).unlink(missing_ok=True)
+        return json_response(self, {"attempt": attempt}, 201)
+
     def do_POST(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        audio_match = re.fullmatch(r"/api/speaking-attempts/(\d+)/audio", path)
+        if audio_match:
+            return self.save_speaking_audio(int(audio_match.group(1)))
         try:
             payload = read_json(self)
             if path == "/api/extraction/review-batches":
@@ -6371,6 +6510,21 @@ class App(BaseHTTPRequestHandler):
                     except ValueError as exc:
                         return json_response(self, {"error": str(exc)}, 422)
                 return json_response(self, task_set, 201)
+            match = re.fullmatch(r"/api/articles/(\d+)/speaking-tasks", path)
+            if match:
+                with db() as conn:
+                    article = conn.execute("SELECT * FROM articles WHERE id = ?", (int(match.group(1)),)).fetchone()
+                    if not article:
+                        return json_response(self, {"error": "Article not found"}, 404)
+                    try:
+                        task_set = create_speaking_task_set(
+                            conn, article, article_keywords(article["body"]),
+                            int(payload.get("duration_target") or 60), int(payload.get("prep_seconds") or 15),
+                            bool(payload.get("force_new")),
+                        )
+                    except (TypeError, ValueError) as exc:
+                        return json_response(self, {"error": str(exc)}, 422)
+                return json_response(self, task_set, 201)
             match = re.fullmatch(r"/api/articles/(\d+)/read", path)
             if match:
                 try:
@@ -6395,6 +6549,69 @@ class App(BaseHTTPRequestHandler):
                 except (TypeError, ValueError) as exc:
                     return json_response(self, {"error": str(exc)}, 400)
                 return json_response(self, {"attempt": attempt, "plan": daily_plan_snapshot()}, 201)
+            if path == "/api/speaking-attempts":
+                try:
+                    with db() as conn:
+                        attempt = create_speaking_attempt(
+                            conn, int(payload.get("task_id") or 0), int(payload.get("prep_seconds") or 0),
+                            int(payload["repeat_of_id"]) if payload.get("repeat_of_id") else None,
+                        )
+                except (TypeError, ValueError) as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, {"attempt": attempt}, 201)
+            match = re.fullmatch(r"/api/speaking-attempts/(\d+)/self-review", path)
+            if match:
+                try:
+                    with db() as conn:
+                        attempt = save_speaking_self_review(
+                            conn, int(match.group(1)), payload.get("ratings") or {},
+                            str(payload.get("note") or ""), str(payload.get("stuck_expression") or ""),
+                        )
+                except (TypeError, ValueError) as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, {"attempt": attempt})
+            match = re.fullmatch(r"/api/speaking-attempts/(\d+)/transcript", path)
+            if match:
+                try:
+                    with db() as conn:
+                        attempt = save_transcript(
+                            conn, int(match.group(1)), str(payload.get("text") or ""), "manual",
+                        )
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, {"attempt": attempt})
+            match = re.fullmatch(r"/api/speaking-attempts/(\d+)/transcribe", path)
+            if match:
+                with db() as conn:
+                    attempt = speaking_attempt_payload(conn, int(match.group(1)))
+                if not attempt or not attempt["audio_filename"] or attempt["status"] == "deleted":
+                    return json_response(self, {"error": "Recorded speaking audio is required"}, 404)
+                directory = speaking_audio_dir()
+                audio_path = (directory / Path(attempt["audio_filename"]).name).resolve()
+                if directory not in audio_path.parents or not audio_path.is_file():
+                    return json_response(self, {"error": "Speaking audio file is unavailable"}, 404)
+                try:
+                    result = transcribe_audio(audio_path, attempt["audio_mime"])
+                    with db() as conn:
+                        saved = save_transcript(
+                            conn, attempt["id"], result["text"], "provider", result["provider"], result["model"],
+                        )
+                except RuntimeError as exc:
+                    return json_response(self, {"error": str(exc), "status": transcription_status()}, 503)
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 502)
+                return json_response(self, {"attempt": saved})
+            match = re.fullmatch(r"/api/speaking-attempts/(\d+)/review-items", path)
+            if match:
+                try:
+                    with db() as conn:
+                        result = save_speaking_review_item(
+                            conn, int(match.group(1)), str(payload.get("term") or ""),
+                            str(payload.get("context") or ""),
+                        )
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, result, 201 if result["created"] else 200)
             match = re.fullmatch(r"/api/output-attempts/(\d+)/self-review", path)
             if match:
                 try:
@@ -7365,6 +7582,30 @@ class App(BaseHTTPRequestHandler):
             return json_response(self, {"error": "Not found"}, 404)
         except json.JSONDecodeError:
             return json_response(self, {"error": "Invalid JSON"}, 400)
+        except Exception as exc:
+            return json_response(self, {"error": str(exc)}, 500)
+
+    def do_DELETE(self) -> None:
+        path = urllib.parse.urlparse(self.path).path
+        match = re.fullmatch(r"/api/speaking-attempts/(\d+)", path)
+        if not match:
+            return json_response(self, {"error": "Not found"}, 404)
+        attempt_id = int(match.group(1))
+        try:
+            with db() as conn:
+                attempt = speaking_attempt_payload(conn, attempt_id)
+            if not attempt:
+                return json_response(self, {"error": "Speaking attempt not found"}, 404)
+            filename = Path(attempt.get("audio_filename") or "").name
+            if filename:
+                directory = speaking_audio_dir()
+                target = (directory / filename).resolve()
+                if directory not in target.parents:
+                    return json_response(self, {"error": "Invalid speaking audio path"}, 400)
+                target.unlink(missing_ok=True)
+            with db() as conn:
+                mark_speaking_attempt_deleted(conn, attempt_id)
+            return json_response(self, {"deleted": True, "attempt_id": attempt_id})
         except Exception as exc:
             return json_response(self, {"error": str(exc)}, 500)
 

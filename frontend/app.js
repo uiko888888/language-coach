@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.24.1";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.24.2";
 const SUPPORTED_API_VERSION = "1";
 
 const state = {
@@ -38,6 +38,24 @@ const state = {
   usageContrasts: [],
   activeContrastSlug: "",
   contrastResults: {},
+  speakingTaskSet: null,
+  speakingTasks: [],
+  speakingHistory: { attempts: [], summary: { attempts: 0, seconds: 0, articles: 0, evidence_candidates: 0 } },
+  speakingTranscriptionStatus: { configured: false, message: "正在检查转写配置" },
+  activeSpeakingTaskIndex: 0,
+  selectedSpeakingAttemptId: null,
+  speakingDuration: 60,
+  speakingRecorder: null,
+  speakingStream: null,
+  speakingChunks: [],
+  speakingBlob: null,
+  speakingBlobUrl: "",
+  speakingStatus: "idle",
+  speakingElapsed: 0,
+  speakingPrepRemaining: 0,
+  speakingTimer: null,
+  speakingRepeatOf: null,
+  speakingDiscardPending: false,
   activeOutputTaskIndex: 0,
   outputDrafts: {},
   outputStartedAt: Date.now(),
@@ -127,6 +145,7 @@ const titles = {
   articles: ["文章池", "每日来源、个人导入和分级文章会进入这里。"],
   reader: ["阅读台", "一篇文章可以进入精读、查词、翻译和对应考试训练。"],
   output: ["输出训练", "把文章转成翻译、摘要和个人表达，并把错句送回复习。"],
+  speaking: ["口语训练", "用文章做脱稿复述、观点表达和词块口头造句，录音默认只保存在本机。"],
   quiz: ["题目", "先做题，再看证据和解析，错题会自动收集。"],
   cards: ["记忆复习", "到期词块与已掌握错题在同一队列中主动回忆。"],
   mistakes: ["错题", "保存你的错误答案、正确答案和原文证据。"],
@@ -409,6 +428,9 @@ async function finishServerPracticeRun(action = "complete", practiceSessionId = 
 
 function setView(name, { pushHistory = true } = {}) {
   const currentView = document.querySelector(".view.active")?.id?.replace("view-", "") || "dashboard";
+  if (currentView === "speaking" && name !== "speaking" && ["preparing", "recording", "paused"].includes(state.speakingStatus)) {
+    discardSpeakingDraft();
+  }
   document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.id === `view-${name}`));
   document.querySelectorAll(".nav-item").forEach(item => {
     const matchesView = item.dataset.view === name;
@@ -497,6 +519,7 @@ const dailyTaskLabels = {
 const dailyMetricLabels = {
   reading_words: "阅读词数",
   output_sentences: "输出句数",
+  speaking_seconds: "口语秒数",
   review_chunks: "复习词块",
 };
 
@@ -939,6 +962,7 @@ function renderArticles() {
           <button data-translate-article="${selected.id}">一键翻译</button>
           <button data-open-article="${selected.id}">进入阅读台</button>
           <button data-output-article="${selected.id}">输出训练</button>
+          <button data-speaking-article="${selected.id}">口语训练</button>
           ${articleTrainingAction(selected)}
         </div>
       </div>
@@ -1313,6 +1337,359 @@ async function markSelectedArticleRead() {
   const data = await api(`/api/articles/${state.selectedArticle.id}/read`, { method: "POST", body: "{}" });
   if (data.plan) applyDailyPlan(data.plan);
   toast(data.recorded ? `已记录 ${data.word_count} 个阅读词` : "今天已经记录过这篇文章");
+}
+
+function selectedSpeakingAttempt() {
+  return (state.speakingHistory.attempts || []).find(item => item.id === state.selectedSpeakingAttemptId) || null;
+}
+
+function speakingRecorderHtml(task) {
+  const status = state.speakingStatus;
+  if (!task) return `<div class="empty-state">先选择或生成一个口语任务。</div>`;
+  if (status === "preparing") {
+    return `<div class="speaking-countdown"><span>准备</span><strong>${state.speakingPrepRemaining}</strong><button data-cancel-speaking>取消</button></div>`;
+  }
+  if (status === "recording" || status === "paused") {
+    return `
+      <div class="speaking-live ${status}">
+        <span class="record-indicator" aria-hidden="true"></span>
+        <div><small>${status === "paused" ? "已暂停" : "正在录音"}</small><strong>${formatDuration(state.speakingElapsed)} / ${formatDuration(state.speakingDuration)}</strong></div>
+        <button data-pause-speaking>${status === "paused" ? "继续" : "暂停"}</button>
+        <button class="primary" data-stop-speaking>停止</button>
+      </div>`;
+  }
+  if (status === "ready" && state.speakingBlobUrl) {
+    return `
+      <div class="speaking-preview">
+        <audio controls preload="metadata" src="${state.speakingBlobUrl}"></audio>
+        <span>${formatDuration(state.speakingElapsed)} · 尚未保存</span>
+        <div class="toolbar"><button data-discard-speaking>重录</button><button class="primary" data-save-speaking>保存到本机</button></div>
+      </div>`;
+  }
+  return `
+    <div class="speaking-ready">
+      <div><span class="eyebrow">Target</span><strong>${state.speakingDuration} 秒</strong><small>准备 ${state.speakingTaskSet?.set?.prep_seconds ?? 15} 秒</small></div>
+      <button class="primary" data-begin-speaking>准备并录音</button>
+    </div>`;
+}
+
+function speakingAttemptHtml(attempt) {
+  if (!attempt) return `<div class="empty-state speaking-attempt-empty">保存录音后，可回放、自评、转写并收集卡住的表达。</div>`;
+  const review = attempt.self_review || {};
+  const analysis = attempt.transcript_analysis || {};
+  const transcriptStatus = state.speakingTranscriptionStatus || {};
+  return `
+    <div class="speaking-attempt-head">
+      <div><span class="eyebrow">Saved locally</span><h3>${escapeHtml(attempt.label)} · ${formatDuration(attempt.duration_seconds)}</h3></div>
+      <div class="toolbar"><button data-repeat-speaking="${attempt.id}" data-speaking-task-id="${attempt.task_id}">再录一次</button><button data-delete-speaking="${attempt.id}">删除</button></div>
+    </div>
+    <audio class="saved-speaking-audio" controls preload="metadata" src="${attempt.audio_url}"></audio>
+    <section class="speaking-transcript-panel">
+      <div class="output-section-head"><div><span class="eyebrow">Optional transcript</span><h4>转写与可量化观察</h4></div>${badge(transcriptStatus.configured ? "可选转写可用" : "手动文本", transcriptStatus.configured ? "teal" : "amber")}</div>
+      <p class="muted">${escapeHtml(transcriptStatus.message || "未配置转写。")}${transcriptStatus.configured ? "。点击转写后，录音会发送到你配置的服务。" : ""}</p>
+      <textarea id="speakingTranscript" placeholder="可以手动粘贴或修改转写文本">${escapeHtml(attempt.transcript_text || "")}</textarea>
+      <div class="toolbar"><button data-save-speaking-transcript="${attempt.id}">保存手动文本</button><button data-transcribe-speaking="${attempt.id}" ${transcriptStatus.configured ? "" : "disabled"}>请求转写</button></div>
+      ${Object.keys(analysis).length ? `
+        <div class="speaking-analysis">
+          <div><span>词数</span><strong>${analysis.word_count || 0}</strong></div>
+          <div><span>语速</span><strong>${analysis.words_per_minute || 0} WPM</strong></div>
+          <div><span>内容覆盖</span><strong>${Math.round((analysis.source_coverage || 0) * 100)}%</strong></div>
+          <div><span>填充词</span><strong>${analysis.filler_count || 0}</strong></div>
+          <div><span>立即重复</span><strong>${analysis.immediate_repetitions || 0}</strong></div>
+          <div><span>目标词块</span><strong>${(analysis.target_chunks_used || []).length}</strong></div>
+        </div><p class="muted">${escapeHtml(analysis.grammar_note || "")}</p>` : ""}
+    </section>
+    <section class="speaking-self-review">
+      <div class="output-section-head"><div><span class="eyebrow">Self review</span><h4>结构化口语自评</h4></div>${attempt.evidence_eligible ? badge("画像候选", "teal") : badge("练习记录")}</div>
+      <div class="speaking-rating-grid">
+        <label>内容<select id="speakingReviewContent"><option value="1">遗漏较多</option><option value="2">基本完整</option><option value="3">完整清楚</option></select></label>
+        <label>连贯<select id="speakingReviewCoherence"><option value="1">结构混乱</option><option value="2">基本连贯</option><option value="3">衔接自然</option></select></label>
+        <label>流畅<select id="speakingReviewFluency"><option value="1">频繁卡顿</option><option value="2">偶有卡顿</option><option value="3">较流畅</option></select></label>
+        <label>词块<select id="speakingReviewChunk"><option value="1">没有使用</option><option value="2">基本正确</option><option value="3">使用自然</option></select></label>
+        <label>语法影响<select id="speakingReviewGrammar"><option value="1">影响理解</option><option value="2">偶有影响</option><option value="3">不影响理解</option></select></label>
+      </div>
+      <label for="speakingReviewNote">复盘笔记</label><textarea id="speakingReviewNote">${escapeHtml(review.note || "")}</textarea>
+      <label for="speakingStuckExpression">卡住的英文表达</label><textarea id="speakingStuckExpression">${escapeHtml(review.stuck_expression || "")}</textarea>
+      <div class="toolbar"><button data-save-speaking-review="${attempt.id}">保存自评</button><button data-save-speaking-stuck="${attempt.id}">将卡住表达加入复习</button></div>
+    </section>`;
+}
+
+function renderSpeaking() {
+  const article = state.selectedArticle;
+  const tasks = state.speakingTasks || [];
+  const task = tasks[state.activeSpeakingTaskIndex];
+  document.querySelectorAll("[data-speaking-duration]").forEach(button => {
+    button.classList.toggle("active", Number(button.dataset.speakingDuration) === state.speakingDuration);
+    button.disabled = ["preparing", "recording", "paused"].includes(state.speakingStatus);
+  });
+  $("#speakingSourceTitle").textContent = article?.title || "先选择文章";
+  $("#speakingPrivacyStatus").innerHTML = `${badge("仅本机", "teal")}${badge("可删除")}`;
+  $("#speakingTaskList").innerHTML = tasks.map((item, index) => `
+    <button class="master-list-item ${index === state.activeSpeakingTaskIndex ? "active" : ""}" data-speaking-task-index="${index}" ${["preparing", "recording", "paused"].includes(state.speakingStatus) ? "disabled" : ""}>
+      <span class="master-number">${String(index + 1).padStart(2, "0")}</span>
+      <span class="master-copy"><strong>${escapeHtml(item.label)}</strong><small>${item.attempt_count || 0} 次 · ${item.evidence_eligible ? "可形成口语证据" : "仅练习"}</small></span>
+    </button>`).join("") || `<div class="empty-state">当前时长还没有任务。</div>`;
+  $("#speakingSourceText").innerHTML = task ? bilingualParagraphs(task.source_text, "", false) : article ? bilingualParagraphs(article.body, "", false) : `<p class="muted">从文章池或阅读台选择一篇文章。</p>`;
+  $("#speakingTaskDetail").innerHTML = task ? `
+    <div class="speaking-task-head"><div><span class="eyebrow">${escapeHtml(task.label)}</span><h3>${escapeHtml(task.prompt_text)}</h3></div><span>${state.speakingDuration}s</span></div>
+    ${(task.target_chunks || []).length ? `<div class="badge-row">${task.target_chunks.map(chunk => badge(chunk, "teal")).join("")}</div>` : ""}
+    <p class="muted">${task.evidence_eligible ? "脱稿完成并达到跨天样本门槛后，才可成为口语画像候选。" : "本任务只记录练习，不提高自由口语能力。"}</p>` : `
+    <div class="output-empty"><h3>把文章转成口语任务</h3><p>生成脱稿复述、观点表达和目标词块口头造句。</p><button class="primary" data-start-speaking>生成 ${state.speakingDuration} 秒任务</button></div>`;
+  $("#speakingRecorder").innerHTML = speakingRecorderHtml(task);
+  const attempt = selectedSpeakingAttempt();
+  $("#speakingAttemptDetail").innerHTML = speakingAttemptHtml(attempt);
+  if (attempt) {
+    $("#speakingReviewContent").value = String(attempt.self_review?.content || 2);
+    $("#speakingReviewCoherence").value = String(attempt.self_review?.coherence || 2);
+    $("#speakingReviewFluency").value = String(attempt.self_review?.fluency || 2);
+    $("#speakingReviewChunk").value = String(attempt.self_review?.chunk_use || 2);
+    $("#speakingReviewGrammar").value = String(attempt.self_review?.grammar_impact || 2);
+  }
+  const visibleHistory = (state.speakingHistory.attempts || []).filter(item => !article || Number(item.article_id) === Number(article.id));
+  $("#speakingHistoryList").innerHTML = visibleHistory.map(item => `
+    <button class="speaking-history-item ${item.id === state.selectedSpeakingAttemptId ? "active" : ""}" data-select-speaking-attempt="${item.id}">
+      <span>${escapeHtml(item.label)} · ${formatDuration(item.duration_seconds)}</span><small>${escapeHtml(item.created_at.slice(0, 16).replace("T", " "))}${item.repeat_of_id ? " · 再次录制" : ""}</small>
+    </button>`).join("") || `<p class="muted">当前文章还没有口语记录。</p>`;
+}
+
+async function loadSpeakingTasks(articleId = state.selectedArticle?.id) {
+  if (!articleId) {
+    state.speakingTaskSet = null;
+    state.speakingTasks = [];
+    return;
+  }
+  const data = await api(`/api/speaking/tasks?article_id=${articleId}&duration=${state.speakingDuration}`);
+  state.speakingTaskSet = data.set ? data : null;
+  state.speakingTasks = data.tasks || [];
+  if (state.activeSpeakingTaskIndex >= state.speakingTasks.length) state.activeSpeakingTaskIndex = 0;
+}
+
+async function loadSpeakingHistory() {
+  state.speakingHistory = await api("/api/speaking/history?limit=50");
+}
+
+async function loadSpeakingSupport() {
+  state.speakingTranscriptionStatus = await api("/api/speaking/transcription/status");
+}
+
+async function startSpeakingTraining(forceNew = false) {
+  if (!state.selectedArticle) return toast("先选择文章");
+  const data = await api(`/api/articles/${state.selectedArticle.id}/speaking-tasks`, {
+    method: "POST",
+    body: JSON.stringify({ duration_target: state.speakingDuration, prep_seconds: 15, force_new: forceNew }),
+  });
+  state.speakingTaskSet = data;
+  state.speakingTasks = data.tasks || [];
+  state.activeSpeakingTaskIndex = 0;
+  setView("speaking");
+  renderSpeaking();
+}
+
+function releaseSpeakingStream() {
+  (state.speakingStream?.getTracks() || []).forEach(track => track.stop());
+  state.speakingStream = null;
+}
+
+function clearSpeakingTimer() {
+  clearInterval(state.speakingTimer);
+  state.speakingTimer = null;
+}
+
+function discardSpeakingDraft() {
+  clearSpeakingTimer();
+  const willStop = Boolean(state.speakingRecorder && state.speakingRecorder.state !== "inactive");
+  state.speakingDiscardPending = willStop;
+  if (willStop) state.speakingRecorder.stop();
+  releaseSpeakingStream();
+  if (state.speakingBlobUrl) URL.revokeObjectURL(state.speakingBlobUrl);
+  state.speakingRecorder = null;
+  state.speakingChunks = [];
+  state.speakingBlob = null;
+  state.speakingBlobUrl = "";
+  state.speakingElapsed = 0;
+  state.speakingPrepRemaining = 0;
+  state.speakingStatus = "idle";
+  if (!willStop) state.speakingDiscardPending = false;
+  renderSpeaking();
+}
+
+function startMediaRecording() {
+  const mimeCandidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
+  const mimeType = mimeCandidates.find(type => MediaRecorder.isTypeSupported(type)) || "";
+  state.speakingChunks = [];
+  state.speakingDiscardPending = false;
+  state.speakingElapsed = 0;
+  state.speakingRecorder = new MediaRecorder(state.speakingStream, mimeType ? { mimeType } : undefined);
+  state.speakingRecorder.addEventListener("dataavailable", event => {
+    if (event.data.size) state.speakingChunks.push(event.data);
+  });
+  state.speakingRecorder.addEventListener("stop", () => {
+    clearSpeakingTimer();
+    if (state.speakingDiscardPending) {
+      state.speakingDiscardPending = false;
+      state.speakingChunks = [];
+      state.speakingStatus = "idle";
+      releaseSpeakingStream();
+      renderSpeaking();
+      return;
+    }
+    const type = state.speakingRecorder?.mimeType?.split(";", 1)[0] || "audio/webm";
+    state.speakingBlob = new Blob(state.speakingChunks, { type });
+    if (state.speakingBlobUrl) URL.revokeObjectURL(state.speakingBlobUrl);
+    state.speakingBlobUrl = URL.createObjectURL(state.speakingBlob);
+    state.speakingStatus = "ready";
+    releaseSpeakingStream();
+    renderSpeaking();
+  }, { once: true });
+  state.speakingRecorder.start(250);
+  state.speakingStatus = "recording";
+  state.speakingTimer = setInterval(() => {
+    if (state.speakingStatus !== "recording") return;
+    state.speakingElapsed += 1;
+    if (state.speakingElapsed >= state.speakingDuration) stopSpeakingRecording();
+    else renderSpeaking();
+  }, 1000);
+  renderSpeaking();
+}
+
+async function beginSpeakingPreparation() {
+  const task = state.speakingTasks[state.activeSpeakingTaskIndex];
+  if (!task) return toast("先生成口语任务");
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return toast("当前浏览器不支持本机录音");
+  try {
+    state.speakingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (_error) {
+    state.speakingStatus = "idle";
+    releaseSpeakingStream();
+    renderSpeaking();
+    return toast("麦克风权限被拒绝，可以重新授权后再试");
+  }
+  state.speakingPrepRemaining = state.speakingTaskSet?.set?.prep_seconds ?? 15;
+  state.speakingStatus = "preparing";
+  renderSpeaking();
+  if (!state.speakingPrepRemaining) return startMediaRecording();
+  state.speakingTimer = setInterval(() => {
+    state.speakingPrepRemaining -= 1;
+    if (state.speakingPrepRemaining <= 0) {
+      clearSpeakingTimer();
+      startMediaRecording();
+    } else renderSpeaking();
+  }, 1000);
+}
+
+function toggleSpeakingPause() {
+  if (!state.speakingRecorder) return;
+  if (state.speakingRecorder.state === "recording") {
+    state.speakingRecorder.pause();
+    state.speakingStatus = "paused";
+  } else if (state.speakingRecorder.state === "paused") {
+    state.speakingRecorder.resume();
+    state.speakingStatus = "recording";
+  }
+  renderSpeaking();
+}
+
+function stopSpeakingRecording() {
+  if (state.speakingRecorder?.state && state.speakingRecorder.state !== "inactive") state.speakingRecorder.stop();
+}
+
+async function saveSpeakingRecording() {
+  const task = state.speakingTasks[state.activeSpeakingTaskIndex];
+  if (!task || !state.speakingBlob) return toast("先完成一段录音");
+  let attemptId = null;
+  let data;
+  try {
+    const created = await api("/api/speaking-attempts", {
+      method: "POST",
+      body: JSON.stringify({ task_id: task.id, prep_seconds: state.speakingTaskSet?.set?.prep_seconds || 0, repeat_of_id: state.speakingRepeatOf }),
+    });
+    attemptId = created.attempt.id;
+    const response = await fetch(`/api/speaking-attempts/${attemptId}/audio`, {
+      method: "POST",
+      headers: { "Content-Type": state.speakingBlob.type || "audio/webm", "X-Audio-Duration": String(Math.max(1, state.speakingElapsed)) },
+      body: state.speakingBlob,
+    });
+    data = await response.json();
+    if (!response.ok) throw new Error(data.error || "录音保存失败");
+  } catch (error) {
+    if (attemptId) {
+      await fetch(`/api/speaking-attempts/${attemptId}`, { method: "DELETE" }).catch(() => null);
+    }
+    throw error;
+  }
+  state.selectedSpeakingAttemptId = data.attempt.id;
+  state.speakingRepeatOf = null;
+  if (state.speakingBlobUrl) URL.revokeObjectURL(state.speakingBlobUrl);
+  state.speakingBlob = null;
+  state.speakingBlobUrl = "";
+  state.speakingStatus = "idle";
+  state.speakingElapsed = 0;
+  await Promise.all([loadSpeakingHistory(), loadSpeakingTasks(), loadToday()]);
+  renderAll();
+  toast("录音已保存到本机");
+}
+
+async function saveSpeakingTranscript(attemptId) {
+  const data = await api(`/api/speaking-attempts/${attemptId}/transcript`, { method: "POST", body: JSON.stringify({ text: $("#speakingTranscript").value.trim() }) });
+  state.speakingHistory.attempts = state.speakingHistory.attempts.map(item => item.id === attemptId ? data.attempt : item);
+  renderSpeaking();
+  toast("文本与语速、重复和词块观察已保存");
+}
+
+async function transcribeSpeaking(attemptId) {
+  const data = await api(`/api/speaking-attempts/${attemptId}/transcribe`, { method: "POST", body: "{}" });
+  state.speakingHistory.attempts = state.speakingHistory.attempts.map(item => item.id === attemptId ? data.attempt : item);
+  renderSpeaking();
+  toast("转写完成");
+}
+
+async function saveSpeakingReview(attemptId) {
+  const data = await api(`/api/speaking-attempts/${attemptId}/self-review`, {
+    method: "POST",
+    body: JSON.stringify({
+      ratings: {
+        content: Number($("#speakingReviewContent").value), coherence: Number($("#speakingReviewCoherence").value),
+        fluency: Number($("#speakingReviewFluency").value), chunk_use: Number($("#speakingReviewChunk").value),
+        grammar_impact: Number($("#speakingReviewGrammar").value),
+      },
+      note: $("#speakingReviewNote").value.trim(),
+      stuck_expression: $("#speakingStuckExpression").value.trim(),
+    }),
+  });
+  state.speakingHistory.attempts = state.speakingHistory.attempts.map(item => item.id === attemptId ? data.attempt : item);
+  renderSpeaking();
+  toast("口语自评已保存");
+}
+
+async function saveSpeakingStuckExpression(attemptId) {
+  const term = $("#speakingStuckExpression").value.trim();
+  if (!term) return toast("先填写卡住的英文表达");
+  await api(`/api/speaking-attempts/${attemptId}/review-items`, {
+    method: "POST",
+    body: JSON.stringify({ term, context: $("#speakingTranscript").value.trim() }),
+  });
+  await Promise.all([loadSpeakingHistory(), loadCards(), loadReviews(), loadToday()]);
+  renderAll();
+  toast("卡住表达已进入复习");
+}
+
+async function deleteSpeakingAttempt(attemptId) {
+  if (!window.confirm("删除这段本机录音和记录？此操作不能撤销。")) return;
+  const response = await fetch(`/api/speaking-attempts/${attemptId}`, { method: "DELETE" });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "删除失败");
+  state.selectedSpeakingAttemptId = null;
+  await Promise.all([loadSpeakingHistory(), loadSpeakingTasks()]);
+  renderSpeaking();
+  toast("本机录音已删除");
+}
+
+function repeatSpeakingAttempt(attemptId, taskId) {
+  const index = state.speakingTasks.findIndex(task => task.id === taskId);
+  if (index >= 0) state.activeSpeakingTaskIndex = index;
+  state.speakingRepeatOf = attemptId;
+  discardSpeakingDraft();
+  $("#speakingRecorder")?.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 function renderQuizSource() {
@@ -2198,6 +2575,7 @@ function renderAll() {
   renderArticles();
   renderReader();
   renderOutput();
+  renderSpeaking();
   renderQuizzes();
   renderQuizSource();
   renderCards();
@@ -3461,6 +3839,10 @@ document.addEventListener("click", async event => {
       await Promise.all([loadOutputTasks(), loadOutputHistory()]);
       renderOutput();
     }
+    if (button.dataset.view === "speaking") {
+      await Promise.all([loadSpeakingTasks(), loadSpeakingHistory(), loadSpeakingSupport()]);
+      renderSpeaking();
+    }
     if (button.id === "refreshAllBtn") await boot();
     if (button.id === "saveLearnerSettingsBtn") await saveLearnerSettings();
     if (button.id === "createBackupBtn") await createDataBackup();
@@ -3546,6 +3928,7 @@ document.addEventListener("click", async event => {
     if (button.id === "analyzeBtn") await analyzeArticle();
     if (button.id === "markArticleReadBtn") await markSelectedArticleRead();
     if (button.id === "startOutputBtn" || button.dataset.startOutput !== undefined) await startOutputTraining(false);
+    if (button.id === "startSpeakingBtn" || button.dataset.startSpeaking !== undefined) await startSpeakingTraining(false);
     if (button.id === "regenerateOutputBtn" && window.confirm("新建一组输出任务？旧作答仍会保留在历史记录中。")) await startOutputTraining(true);
     if (button.dataset.outputTaskIndex !== undefined) {
       state.activeOutputTaskIndex = Number(button.dataset.outputTaskIndex);
@@ -3559,6 +3942,34 @@ document.addEventListener("click", async event => {
     if (button.dataset.outputFeedbackDecision) await saveOutputFeedbackDecision(Number(button.dataset.feedbackId), button.dataset.outputFeedbackDecision);
     if (button.dataset.saveOutputCustomReview) await saveCustomOutputReviewItem(Number(button.dataset.saveOutputCustomReview));
     if (button.dataset.contrastAnswer) await answerUsageContrast(button.dataset.contrastAnswer, Number(button.dataset.contrastIndex));
+    if (button.dataset.speakingDuration) {
+      state.speakingDuration = Number(button.dataset.speakingDuration);
+      state.activeSpeakingTaskIndex = 0;
+      discardSpeakingDraft();
+      await loadSpeakingTasks();
+      renderSpeaking();
+    }
+    if (button.dataset.speakingTaskIndex !== undefined) {
+      state.activeSpeakingTaskIndex = Number(button.dataset.speakingTaskIndex);
+      state.speakingRepeatOf = null;
+      discardSpeakingDraft();
+    }
+    if (button.dataset.beginSpeaking !== undefined) await beginSpeakingPreparation();
+    if (button.dataset.cancelSpeaking !== undefined) discardSpeakingDraft();
+    if (button.dataset.pauseSpeaking !== undefined) toggleSpeakingPause();
+    if (button.dataset.stopSpeaking !== undefined) stopSpeakingRecording();
+    if (button.dataset.discardSpeaking !== undefined) discardSpeakingDraft();
+    if (button.dataset.saveSpeaking !== undefined) await saveSpeakingRecording();
+    if (button.dataset.selectSpeakingAttempt) {
+      state.selectedSpeakingAttemptId = Number(button.dataset.selectSpeakingAttempt);
+      renderSpeaking();
+    }
+    if (button.dataset.saveSpeakingTranscript) await saveSpeakingTranscript(Number(button.dataset.saveSpeakingTranscript));
+    if (button.dataset.transcribeSpeaking) await transcribeSpeaking(Number(button.dataset.transcribeSpeaking));
+    if (button.dataset.saveSpeakingReview) await saveSpeakingReview(Number(button.dataset.saveSpeakingReview));
+    if (button.dataset.saveSpeakingStuck) await saveSpeakingStuckExpression(Number(button.dataset.saveSpeakingStuck));
+    if (button.dataset.deleteSpeaking) await deleteSpeakingAttempt(Number(button.dataset.deleteSpeaking));
+    if (button.dataset.repeatSpeaking) repeatSpeakingAttempt(Number(button.dataset.repeatSpeaking), Number(button.dataset.speakingTaskId));
     if (button.dataset.outputHistoryTask) {
       if (Number(state.selectedArticle?.id) !== Number(button.dataset.outputHistoryArticle)) {
         const data = await api(`/api/articles/${button.dataset.outputHistoryArticle}?exam=${encodeURIComponent(state.style)}`);
@@ -3661,6 +4072,10 @@ document.addEventListener("click", async event => {
     if (button.dataset.outputArticle) {
       await openArticle(button.dataset.outputArticle);
       await startOutputTraining(false);
+    }
+    if (button.dataset.speakingArticle) {
+      await openArticle(button.dataset.speakingArticle);
+      await startSpeakingTraining(false);
     }
     if (button.dataset.replayEvidence) await replayEvidence(Number(button.dataset.replayEvidence), button.dataset.replayText || "");
     if (button.dataset.selectArticle) {
@@ -3890,14 +4305,14 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 async function boot() {
   await loadHealth();
   await loadActivePracticeData();
-  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), loadOutputHistory(), loadOutputSupport(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), loadOutputHistory(), loadOutputSupport(), loadSpeakingHistory(), loadSpeakingSupport(), searchLexicon("", { open: false, history: false })]);
   const restoredServerRun = await restoreServerPracticeRun();
   if (!restoredServerRun && !state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);
     state.selectedArticle = data.article;
     state.analysis = data.analysis;
   }
-  if (state.selectedArticle) await loadOutputTasks(state.selectedArticle.id);
+  if (state.selectedArticle) await Promise.all([loadOutputTasks(state.selectedArticle.id), loadSpeakingTasks(state.selectedArticle.id)]);
   if (!restoredServerRun) {
     await loadQuizzes();
     if (!state.quizzes.length && state.selectedArticle) {
@@ -3929,6 +4344,8 @@ setInterval(() => {
 }, 15000);
 
 window.addEventListener("pagehide", () => {
+  clearSpeakingTimer();
+  releaseSpeakingStream();
   const snapshot = practiceRunSnapshot();
   if (!snapshot || !state.practiceRun?.id) return;
   fetch("/api/practice-runs", {

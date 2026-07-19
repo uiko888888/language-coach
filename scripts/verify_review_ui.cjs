@@ -39,7 +39,7 @@ async function run() {
   let browser;
   try {
     const version = await waitForServer();
-    if (version.app_version !== "0.8.0-alpha.24.1" || version.database_schema_version !== 15) {
+    if (version.app_version !== "0.8.0-alpha.24.2" || version.database_schema_version !== 16) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const cardResponse = await fetch(`${baseUrl}/api/cards`, {
@@ -98,7 +98,7 @@ async function run() {
     removeDatabase();
   }
   if (failures.length) throw new Error(failures.join("\n"));
-  process.stdout.write("Review desktop workflow passed on isolated schema 15.\n");
+  process.stdout.write("Review desktop workflow passed on isolated schema 16.\n");
 }
 
 run().catch(error => {

@@ -6,6 +6,33 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.8.0-alpha.24.2] - 2026-07-19
+
+### Added
+
+- Added schema 16 speaking task sets, retelling/opinion/chunk tasks, local attempts, structured self-review and review links.
+- Added 30/60/90-second browser recording with preparation countdown, pause/resume, rerecord, playback and permanent local-audio deletion.
+- Added optional OpenAI-compatible audio transcription with a complete manual-transcript fallback and explicit provider provenance.
+- Added deterministic transcript observations for WPM, source coverage, fillers, immediate repetition and target chunks.
+- Added stuck-expression capture into the existing phrase review scheduler and a separate daily speaking-seconds target.
+
+### Changed
+
+- Retelling and opinion tasks are profile-evidence candidates; target-chunk drills remain practice-only. No speaking attempt changes ability estimates automatically.
+- Audio stays local by default and is sent externally only after a user-triggered transcription request.
+
+### Verification
+
+- Passed 172 Python unit/integration tests and six isolated desktop E2E workflows.
+- The speaking E2E traversed the real browser MediaRecorder, pause/resume, binary upload, playback, transcript, self-review, review capture and physical deletion paths.
+- Replayed schema 15 to 16 from the release backup with SQLite integrity `ok`; migration created no speaking tasks or attempts.
+
+### Known limits
+
+- Transcript rules do not score pronunciation, grammar accuracy or official IELTS/TOEFL speaking bands.
+- Cross-day speaking-profile calibration is not yet enabled; the current evidence flag only records task eligibility.
+- Subtitle timeline, loop playback, speed control and clip study remain deferred to `v0.9`.
+
 ## [0.8.0-alpha.24.1] - 2026-07-19
 
 ### Added
