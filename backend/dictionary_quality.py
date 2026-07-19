@@ -18,6 +18,7 @@ DEFAULT_PROBES = {
     "examples": ["set", "run", "cast", "charge", "issue"],
     "frequency_pairs": [["the", "inspect"], ["make", "spectroscopy"], ["work", "photosynthesis"]],
 }
+MISSING_ATTRIBUTION_VALUES = {"", r"\N"}
 
 
 def _json_list(raw: str) -> list:
@@ -37,6 +38,10 @@ def _coverage(items: list[dict[str, Any]]) -> dict:
         "ratio": round(passed / total, 3) if total else 1.0,
         "items": items,
     }
+
+
+def _has_attribution(value: Any) -> bool:
+    return str(value or "").strip() not in MISSING_ATTRIBUTION_VALUES
 
 
 def _source_count(conn: sqlite3.Connection, source_key: str) -> int:
@@ -128,10 +133,11 @@ def audit_dictionary_data(
     examples = []
     for term in probes["examples"]:
         row = _attributed_example(conn, term)
+        attributed = bool(row and all(_has_attribution(value) for value in row))
         examples.append({
             "probe": term,
-            "attributed": bool(row and row[0] and row[1] and row[2]),
-            "passed": bool(row and row[0] and row[1] and row[2]),
+            "attributed": attributed,
+            "passed": attributed,
         })
 
     frequency_pairs = []

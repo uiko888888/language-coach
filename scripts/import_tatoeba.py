@@ -24,6 +24,7 @@ SOURCE_NAME = "Tatoeba English-Chinese sentence pairs"
 SOURCE_LICENSE = "CC BY 2.0 FR"
 SOURCE_ATTRIBUTION = "Tatoeba contributors; sentence-level authors retained"
 SOURCE_URL = "https://tatoeba.org/en/downloads"
+MISSING_AUTHOR_VALUES = {"", r"\N"}
 
 
 @contextmanager
@@ -69,6 +70,10 @@ def sentence_quality(english: str, chinese: str) -> int:
     return max(0, min(100, score))
 
 
+def has_attributed_author(author: str) -> bool:
+    return author.strip() not in MISSING_AUTHOR_VALUES
+
+
 def import_tatoeba(
     sentences_path: Path,
     links_path: Path,
@@ -95,7 +100,10 @@ def import_tatoeba(
                 fields = line.rstrip("\n").split("\t")
                 if len(fields) < 4 or fields[1] not in {"eng", "cmn", "zho"}:
                     continue
-                sentence_batch.append((int(fields[0]), fields[1], fields[2].strip(), fields[3].strip()))
+                author = fields[3].strip()
+                if not has_attributed_author(author):
+                    continue
+                sentence_batch.append((int(fields[0]), fields[1], fields[2].strip(), author))
                 if len(sentence_batch) >= 5000:
                     staging.executemany("INSERT OR IGNORE INTO sentences VALUES (?, ?, ?, ?)", sentence_batch)
                     sentence_batch.clear()
@@ -141,7 +149,11 @@ def import_tatoeba(
             with target:
                 target.execute("DELETE FROM open_bilingual_examples WHERE source_key = ?", (SOURCE_KEY,))
                 for english_id, english, english_author, chinese_id, chinese, chinese_author in pairs:
-                    if not english_author or not chinese_author or not (4 <= len(english) <= 280 and 2 <= len(chinese) <= 180):
+                    if (
+                        not has_attributed_author(english_author)
+                        or not has_attributed_author(chinese_author)
+                        or not (4 <= len(english) <= 280 and 2 <= len(chinese) <= 180)
+                    ):
                         continue
                     batch.append((
                         english, chinese, "en", "zh", english_author, chinese_author,

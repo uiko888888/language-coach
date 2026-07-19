@@ -6,10 +6,10 @@ import unittest
 from pathlib import Path
 
 from backend import server
-from backend.dictionary_quality import audit_dictionary_data
+from backend.dictionary_quality import _has_attribution, audit_dictionary_data
 from backend.lexical_data import lookup_lexical_layers, search_open_entries
 from scripts.import_kaikki import import_kaikki
-from scripts.import_tatoeba import import_tatoeba
+from scripts.import_tatoeba import has_attributed_author, import_tatoeba
 from scripts.import_word_frequency import import_frequency_tsv
 
 
@@ -27,6 +27,12 @@ class OpenLexicalDataTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp_dir.cleanup()
+
+    def test_tatoeba_missing_author_sentinel_is_rejected(self):
+        self.assertFalse(has_attributed_author(""))
+        self.assertFalse(has_attributed_author(r"\N"))
+        self.assertTrue(has_attributed_author("CK"))
+        self.assertFalse(_has_attribution(r"\N"))
 
     def test_layered_imports_merge_etymology_frequency_chinese_and_attributed_examples(self):
         kaikki = self.root / "kaikki.jsonl"

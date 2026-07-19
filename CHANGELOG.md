@@ -20,8 +20,9 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ### Verification
 
-- Passed 176 Python unit/integration tests and the isolated lexicon desktop E2E on schema 16.
-- The real database now contains 200,000 pinned wordfreq 3.1.1 rows and 77,344 attributable Tatoeba English-Chinese pairs. SQLite integrity, FTS alignment, author retention, licensing, all five example probes and all three frequency-order probes pass.
+- Passed 177 Python unit/integration tests and the isolated lexicon desktop E2E on schema 16.
+- The real database now contains 200,000 pinned wordfreq 3.1.1 rows and 74,545 attributable Tatoeba English-Chinese pairs. SQLite integrity, FTS alignment, author retention, licensing, all five example probes and all three frequency-order probes pass.
+- Tatoeba's `\N` missing-author sentinel is rejected by both the importer and the independent quality audit; 2,799 previously accepted unowned pairs were removed during the validated refresh.
 - The strict audit is now `8/22`. Kaikki remains uninstalled, so polysemy, phrase and Chinese reverse-lookup groups still fail and this is not yet a completed `alpha.24.3` release.
 
 ## [0.8.0-alpha.24.2] - 2026-07-19
