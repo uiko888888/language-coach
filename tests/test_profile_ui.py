@@ -294,8 +294,9 @@ class ProfileUiContractTests(unittest.TestCase):
             "数据来源与许可证", 'item.type === "open"',
         ):
             self.assertIn(contract, self.html + self.js)
-        for selector in (".lexical-frequency-panel", ".lexical-source-disclosure", ".lexical-layer-row"):
+        for selector in (".lexical-frequency-panel", ".lexical-source-disclosure", ".lexical-layer-row", ".lexical-quality-row"):
             self.assertIn(selector, self.css)
+        self.assertIn('quality.ready ? "已验证"', self.js)
 
 
 if __name__ == "__main__":

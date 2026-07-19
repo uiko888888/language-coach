@@ -1,0 +1,35 @@
+{
+  "policy_version": 1,
+  "sources": [
+    {
+      "source_key": "kaikki-english",
+      "name": "Kaikki English Wiktionary extract",
+      "discovery_url": "https://kaikki.org/dictionary/English/index.html",
+      "expected_format": "JSONL or JSONL.GZ",
+      "license": "CC BY-SA 4.0 / GFDL",
+      "minimum_rows": 25000,
+      "automatic_download": false,
+      "reason": "The full dump may be multiple gigabytes; select and verify a dated upstream dump explicitly."
+    },
+    {
+      "source_key": "tatoeba-en-zh",
+      "name": "Tatoeba English-Chinese sentence pairs",
+      "discovery_url": "https://tatoeba.org/en/downloads",
+      "expected_files": ["sentences_detailed.tar.bz2", "links.tar.bz2"],
+      "license": "CC BY 2.0 FR",
+      "minimum_rows": 25000,
+      "automatic_download": false,
+      "reason": "Sentence-level authors and the export date must be retained."
+    },
+    {
+      "source_key": "wordfreq",
+      "name": "wordfreq English frequency data",
+      "discovery_url": "https://github.com/rspeer/wordfreq",
+      "expected_format": "UTF-8 TSV: term, Zipf frequency",
+      "license": "Apache-2.0 code; mixed upstream data licenses",
+      "minimum_rows": 25000,
+      "automatic_download": false,
+      "reason": "A distributable TSV must retain the package version, NOTICE and upstream data attribution."
+    }
+  ]
+}

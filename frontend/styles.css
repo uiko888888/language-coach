@@ -1149,6 +1149,10 @@ label {
 .lexical-layer-row span { color: var(--muted); }
 .lexical-layer-row.installed strong { color: var(--teal-dark); }
 .lexical-layer-row.missing strong { color: var(--amber); }
+.lexical-quality-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0 4px; border-top: 1px solid var(--line); font-size: 12px; }
+.lexical-quality-row span { color: var(--muted); }
+.lexical-quality-row.ready strong { color: var(--teal-dark); }
+.lexical-quality-row.pending strong { color: var(--amber); }
 
 .dictionary-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 17px; border-bottom: 1px solid var(--line); }
 .dictionary-section-nav { position: sticky; top: 0; z-index: 3; display: flex; gap: 6px; overflow-x: auto; padding: 9px 0; border-bottom: 1px solid var(--line); background: var(--surface); }

@@ -6,6 +6,23 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Added a versioned open-dictionary source manifest and explicit source preparation commands.
+- Added an executable quality audit for source metadata, minimum row counts, polysemy, phrases, Chinese reverse lookup, attributable examples and frequency ordering.
+- Added a dictionary UI quality state that distinguishes imported rows from a validated dataset.
+
+### Changed
+
+- Kaikki and wordfreq imports now stage and validate data before a short atomic replacement, preserving the last successful layer on empty or invalid refreshes.
+- Tatoeba link normalization now uses a disk-backed staging join instead of loading millions of sentence IDs into Python memory.
+- Source versions default to checksum-derived identifiers and can be pinned explicitly from the CLI.
+
+### Verification
+
+- Passed 174 Python unit/integration tests and the isolated lexicon desktop E2E on schema 16.
+- The current real database audit reports `0/22` because Kaikki, Tatoeba and wordfreq files are not installed; the unreleased work is not a completed `alpha.24.3` release.
+
 ## [0.8.0-alpha.24.2] - 2026-07-19
 
 ### Added

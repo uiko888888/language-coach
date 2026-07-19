@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from backend import server
+from backend.dictionary_quality import audit_dictionary_data
 from backend.lexical_data import lookup_lexical_layers, search_open_entries
 from scripts.import_kaikki import import_kaikki
 from scripts.import_tatoeba import import_tatoeba
@@ -38,7 +39,7 @@ class OpenLexicalDataTests(unittest.TestCase):
             "forms": [{"form": "inspected", "tags": ["past"]}],
             "etymology_text": "From Latin inspectus, from inspicere.",
             "senses": [{
-                "glosses": ["to examine carefully"],
+                "glosses": ["to examine carefully", "to review officially", "to look at closely"],
                 "translations": [{"lang_code": "zh", "word": "检查；仔细查看"}],
                 "examples": [{"text": "They inspect every component."}],
                 "synonyms": [{"word": "examine"}],
@@ -56,7 +57,7 @@ class OpenLexicalDataTests(unittest.TestCase):
             encoding="utf-8",
         )
         links = self.root / "links.tsv"
-        links.write_text("1\t2\n3\t4\n", encoding="utf-8")
+        links.write_text("2\t1\n4\t3\n", encoding="utf-8")
         sentence_archive = self.root / "sentences_detailed.tar.bz2"
         links_archive = self.root / "links.tar.bz2"
         with tarfile.open(sentence_archive, "w:bz2") as archive:
@@ -97,6 +98,73 @@ class OpenLexicalDataTests(unittest.TestCase):
         self.assertEqual(open_result["lexical_layers"]["examples"][0]["target_text"], "工程师每年检查这座桥。")
         self.assertTrue(any(item["type"] == "open" for item in chinese_payload["results"]))
         self.assertTrue(all(layer["installed"] for layer in status["layers"][1:]))
+        self.assertIn("quality", status)
+        conn = sqlite3.connect(self.database)
+        conn.row_factory = sqlite3.Row
+        try:
+            audit = audit_dictionary_data(
+                conn,
+                probes={
+                    "polysemy": ["inspect"],
+                    "phrases": ["inspection"],
+                    "chinese": ["检查"],
+                    "examples": ["inspect"],
+                    "frequency_pairs": [],
+                },
+                minimum_counts={
+                    "kaikki-english": 1,
+                    "tatoeba-en-zh": 1,
+                    "wordfreq": 1,
+                },
+            )
+        finally:
+            conn.close()
+        self.assertTrue(audit["ready"])
+        self.assertTrue(all(item["metadata_complete"] for item in audit["sources"]))
+
+    def test_failed_frequency_refresh_rolls_back_previous_source(self):
+        valid = self.root / "valid-frequency.tsv"
+        valid.write_text("inspect\t4.72\n", encoding="utf-8")
+        invalid = self.root / "invalid-frequency.tsv"
+        invalid.write_text("bad\tnan\nmissing\tunknown\n", encoding="utf-8")
+        import_frequency_tsv(valid, self.database, "3.1.1-test")
+        with self.assertRaisesRegex(ValueError, "no valid Zipf rows"):
+            import_frequency_tsv(invalid, self.database, "broken")
+        conn = sqlite3.connect(self.database)
+        try:
+            frequency = conn.execute(
+                "SELECT zipf_frequency FROM lexical_frequencies WHERE normalized = 'inspect'"
+            ).fetchone()[0]
+            version = conn.execute(
+                "SELECT version FROM dictionary_sources WHERE source_key = 'wordfreq'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(frequency, 4.72)
+        self.assertEqual(version, "3.1.1-test")
+
+    def test_empty_filtered_kaikki_refresh_keeps_previous_entries(self):
+        source = self.root / "kaikki-refresh.jsonl"
+        source.write_text(json.dumps({
+            "id": "inspect-verb",
+            "word": "inspect",
+            "lang_code": "en",
+            "pos": "verb",
+            "senses": [{"glosses": ["to examine carefully"]}],
+        }) + "\n", encoding="utf-8")
+        import_kaikki(source, self.database, source_version="2026-07-test")
+        with self.assertRaisesRegex(ValueError, "no matching English lexical records"):
+            import_kaikki(source, self.database, words={"missing"}, source_version="broken")
+        conn = sqlite3.connect(self.database)
+        try:
+            row = conn.execute(
+                """SELECT e.headword, d.version FROM open_lexical_entries e
+                   JOIN dictionary_sources d ON d.source_key = e.source_key
+                   WHERE e.normalized = 'inspect'"""
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(row, ("inspect", "2026-07-test"))
 
     def test_invalid_preference_data_does_not_affect_open_lexical_schema(self):
         conn = sqlite3.connect(self.database)

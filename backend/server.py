@@ -30,6 +30,7 @@ try:
     from .ai_feedback import feedback_provider_status, request_semantic_feedback
     from .backups import create_backup, list_backups, restore_backup
     from .content_extraction import BLOCK_LABELS, adapter_catalog, adapter_for_source, extract_source_content, suggest_annotation_blocks
+    from .dictionary_quality import audit_dictionary_data
     from .lexical_data import lookup_lexical_layers, search_open_entries
     from .migrations import run_migrations
     from .output_training import (
@@ -51,6 +52,7 @@ except ImportError:
     from ai_feedback import feedback_provider_status, request_semantic_feedback
     from backups import create_backup, list_backups, restore_backup
     from content_extraction import BLOCK_LABELS, adapter_catalog, adapter_for_source, extract_source_content, suggest_annotation_blocks
+    from dictionary_quality import audit_dictionary_data
     from lexical_data import lookup_lexical_layers, search_open_entries
     from migrations import run_migrations
     from output_training import (
@@ -4935,6 +4937,7 @@ def dictionary_data_status() -> dict:
             "frequencies": conn.execute("SELECT COUNT(*) FROM lexical_frequencies").fetchone()[0],
             "curated_entries": conn.execute("SELECT COUNT(*) FROM dictionary_entries").fetchone()[0],
         }
+        quality = audit_dictionary_data(conn)
     installed = {item["source_key"] for item in sources}
     layers = [
         {"id": "wordnet", "label": "英文语义", "source_key": "open-english-wordnet", "count": counts["wordnet_lemmas"]},
@@ -4944,7 +4947,7 @@ def dictionary_data_status() -> dict:
     ]
     for layer in layers:
         layer["installed"] = layer["source_key"] in installed and layer["count"] > 0
-    return {"sources": sources, "layers": layers, "counts": counts}
+    return {"sources": sources, "layers": layers, "counts": counts, "quality": quality}
 
 
 def progress_payload(conn: sqlite3.Connection) -> dict:

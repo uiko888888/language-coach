@@ -2055,7 +2055,13 @@ function renderLexicon() {
   $("#lexicalDataStatus").innerHTML = (state.lexicalDataStatus.layers || []).map(layer => `
     <div class="lexical-layer-row ${layer.installed ? "installed" : "missing"}">
       <span>${escapeHtml(layer.label)}</span><strong>${layer.installed ? Number(layer.count).toLocaleString("zh-CN") : "未导入"}</strong>
-    </div>`).join("");
+    </div>`).join("") + (() => {
+      const quality = state.lexicalDataStatus.quality;
+      if (!quality) return "";
+      return `<div class="lexical-quality-row ${quality.ready ? "ready" : "pending"}">
+        <span>开放数据质量</span><strong>${quality.ready ? "已验证" : `待验证 ${quality.passed || 0}/${quality.total || 0}`}</strong>
+      </div>`;
+    })();
   renderLexiconGuidance();
   renderLexiconHistory();
   renderLexicalDetail(state.selectedLexicalItem);

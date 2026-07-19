@@ -73,9 +73,29 @@ Import a UTF-8 tab-separated file with `term` and `Zipf frequency`:
 python .\scripts\import_word_frequency.py --tsv .\artifacts\wordfreq-en.tsv
 ```
 
+The pinned package can be prepared explicitly when network access is available:
+
+```powershell
+.\scripts\prepare_dictionary_sources.ps1 -Wordfreq
+python .\scripts\import_word_frequency.py `
+  --tsv .\artifacts\dictionary-sources\wordfreq-en.tsv `
+  --source-version 3.1.1
+```
+
 The UI labels general frequency and local article frequency separately. Local occurrence counts never masquerade as general language frequency.
 
 ## Verification
+
+Before a layer is called production-ready, run the representative quality audit:
+
+```powershell
+python .\scripts\audit_dictionary_data.py `
+  --database .\data\language_coach.sqlite `
+  --report .\artifacts\dictionary-quality.json `
+  --strict
+```
+
+The strict gate requires at least 25,000 rows in each open layer, complete source metadata, and at least 60% coverage in every probe group: polysemy, phrases, Chinese reverse lookup, attributable examples and frequency ordering. An imported layer may be displayed before it passes, but it remains labeled `待验证`.
 
 Restart the scheduled backend after schema or bulk data changes, then verify:
 
@@ -88,4 +108,4 @@ Invoke-RestMethod http://127.0.0.1:8766/api/version
 Invoke-RestMethod http://127.0.0.1:8766/api/dictionary/status
 ```
 
-Expected application compatibility is currently schema 7. Query history and review history remain private local data and must not be bundled with dictionary exports. Data quality must be checked with representative polysemous words, phrases, Chinese queries and uncommon terms before a source is declared production-ready.
+Expected application compatibility is currently schema 16. Query history and review history remain private local data and must not be bundled with dictionary exports. Data quality must pass the executable audit before a source is declared production-ready.

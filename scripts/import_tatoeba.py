@@ -74,18 +74,24 @@ def import_tatoeba(
     links_path: Path,
     database: Path = server.DB_PATH,
     limit: int = 0,
+    source_version: str = "",
 ) -> dict:
     sentences_path, links_path, database = Path(sentences_path), Path(links_path), Path(database)
     database.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as temp_dir:
         staging = sqlite3.connect(Path(temp_dir) / "tatoeba-staging.sqlite")
         staging.executescript(
-            """CREATE TABLE sentences (id INTEGER PRIMARY KEY, lang TEXT, text TEXT, author TEXT);
-               CREATE TABLE links (english_id INTEGER, chinese_id INTEGER, PRIMARY KEY(english_id, chinese_id));"""
+            """PRAGMA journal_mode = OFF;
+               PRAGMA synchronous = OFF;
+               PRAGMA temp_store = FILE;
+               CREATE TABLE sentences (id INTEGER PRIMARY KEY, lang TEXT, text TEXT, author TEXT);
+               CREATE TABLE raw_links (left_id INTEGER NOT NULL, right_id INTEGER NOT NULL);"""
         )
         sentence_batch = []
+        scanned_sentences = 0
         with open_text(sentences_path) as stream, staging:
             for line in stream:
+                scanned_sentences += 1
                 fields = line.rstrip("\n").split("\t")
                 if len(fields) < 4 or fields[1] not in {"eng", "cmn", "zho"}:
                     continue
@@ -95,24 +101,25 @@ def import_tatoeba(
                     sentence_batch.clear()
             if sentence_batch:
                 staging.executemany("INSERT OR IGNORE INTO sentences VALUES (?, ?, ?, ?)", sentence_batch)
-        english_ids = {row[0] for row in staging.execute("SELECT id FROM sentences WHERE lang = 'eng'")}
-        chinese_ids = {row[0] for row in staging.execute("SELECT id FROM sentences WHERE lang IN ('cmn', 'zho')")}
         link_batch = []
+        scanned_links = 0
         with open_text(links_path) as stream, staging:
             for line in stream:
+                scanned_links += 1
                 fields = line.rstrip("\n").split("\t")
                 if len(fields) < 2:
                     continue
-                left, right = int(fields[0]), int(fields[1])
-                pair = (left, right) if left in english_ids and right in chinese_ids else (right, left) if right in english_ids and left in chinese_ids else None
-                if pair:
-                    link_batch.append(pair)
+                try:
+                    link_batch.append((int(fields[0]), int(fields[1])))
+                except ValueError:
+                    continue
                 if len(link_batch) >= 5000:
-                    staging.executemany("INSERT OR IGNORE INTO links VALUES (?, ?)", link_batch)
+                    staging.executemany("INSERT INTO raw_links VALUES (?, ?)", link_batch)
                     link_batch.clear()
             if link_batch:
-                staging.executemany("INSERT OR IGNORE INTO links VALUES (?, ?)", link_batch)
+                staging.executemany("INSERT INTO raw_links VALUES (?, ?)", link_batch)
 
+        source_checksum = files_checksum([sentences_path, links_path])
         target = sqlite3.connect(database)
         try:
             server.ensure_wordnet_schema(target)
@@ -121,9 +128,15 @@ def import_tatoeba(
             batch = []
             pairs = staging.execute(
                 """SELECT e.id, e.text, e.author, z.id, z.text, z.author
-                   FROM links l JOIN sentences e ON e.id = l.english_id
-                   JOIN sentences z ON z.id = l.chinese_id
-                   ORDER BY e.id, z.id"""
+                   FROM raw_links l
+                   JOIN sentences e ON e.id = l.left_id AND e.lang = 'eng'
+                   JOIN sentences z ON z.id = l.right_id AND z.lang IN ('cmn', 'zho')
+                   UNION ALL
+                   SELECT e.id, e.text, e.author, z.id, z.text, z.author
+                   FROM raw_links l
+                   JOIN sentences z ON z.id = l.left_id AND z.lang IN ('cmn', 'zho')
+                   JOIN sentences e ON e.id = l.right_id AND e.lang = 'eng'
+                   ORDER BY 1, 4"""
             )
             with target:
                 target.execute("DELETE FROM open_bilingual_examples WHERE source_key = ?", (SOURCE_KEY,))
@@ -155,12 +168,22 @@ def import_tatoeba(
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         batch,
                     )
+                stored = target.execute(
+                    "SELECT COUNT(*) FROM open_bilingual_examples WHERE source_key = ?", (SOURCE_KEY,)
+                ).fetchone()[0]
+                if stored < 1:
+                    raise ValueError("Tatoeba exports contain no attributable English-Chinese pairs")
                 register_dictionary_source(
-                    target, source_key=SOURCE_KEY, name=SOURCE_NAME, version="download export",
+                    target, source_key=SOURCE_KEY, name=SOURCE_NAME,
+                    version=source_version.strip() or f"sha256:{source_checksum[:12]}",
                     license_name=SOURCE_LICENSE, attribution=SOURCE_ATTRIBUTION, source_url=SOURCE_URL,
-                    checksum=files_checksum([sentences_path, links_path]), imported_at=server.utc_now(),
+                    checksum=source_checksum, imported_at=server.utc_now(),
                 )
-            return {"source": SOURCE_NAME, "pairs": imported, "database": str(database)}
+            return {
+                "source": SOURCE_NAME, "pairs": stored, "candidate_pairs": imported,
+                "sentences_scanned": scanned_sentences,
+                "links_scanned": scanned_links, "database": str(database),
+            }
         finally:
             target.close()
             staging.close()
@@ -172,8 +195,11 @@ def main() -> None:
     parser.add_argument("--links", type=Path, required=True, help="Tatoeba links TSV/BZ2")
     parser.add_argument("--database", type=Path, default=server.DB_PATH)
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--source-version", default="", help="Tatoeba export date")
     args = parser.parse_args()
-    print(json.dumps(import_tatoeba(args.sentences, args.links, args.database, args.limit), ensure_ascii=False, indent=2))
+    print(json.dumps(import_tatoeba(
+        args.sentences, args.links, args.database, args.limit, args.source_version
+    ), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

@@ -99,7 +99,13 @@ def parse_record(item: dict, line_number: int) -> tuple | None:
     )
 
 
-def import_kaikki(path: Path, database: Path = server.DB_PATH, limit: int = 0, words: set[str] | None = None) -> dict:
+def import_kaikki(
+    path: Path,
+    database: Path = server.DB_PATH,
+    limit: int = 0,
+    words: set[str] | None = None,
+    source_version: str = "",
+) -> dict:
     path = Path(path)
     database = Path(database)
     database.parent.mkdir(parents=True, exist_ok=True)
@@ -110,8 +116,30 @@ def import_kaikki(path: Path, database: Path = server.DB_PATH, limit: int = 0, w
         ensure_lexical_data_schema(conn)
         imported = scanned = 0
         batch = []
-        with open_text(path) as stream, conn:
-            conn.execute("DELETE FROM open_lexical_entries WHERE source_key = ?", (SOURCE_KEY,))
+        source_checksum = checksum(path)
+        conn.executescript(
+            """DROP TABLE IF EXISTS temp.kaikki_import_stage;
+               CREATE TEMP TABLE kaikki_import_stage (
+                 normalized TEXT NOT NULL,
+                 headword TEXT NOT NULL,
+                 pos TEXT NOT NULL,
+                 glosses_json TEXT NOT NULL,
+                 translations_zh_json TEXT NOT NULL,
+                 forms_json TEXT NOT NULL,
+                 pronunciations_json TEXT NOT NULL,
+                 etymology_text TEXT NOT NULL,
+                 synonyms_json TEXT NOT NULL,
+                 antonyms_json TEXT NOT NULL,
+                 phrases_json TEXT NOT NULL,
+                 examples_json TEXT NOT NULL,
+                 tags_json TEXT NOT NULL,
+                 source_key TEXT NOT NULL,
+                 source_record_id TEXT NOT NULL,
+                 created_at TEXT NOT NULL,
+                 UNIQUE(source_key, source_record_id, pos)
+               );"""
+        )
+        with open_text(path) as stream:
             for line_number, line in enumerate(stream, 1):
                 scanned += 1
                 item = json.loads(line)
@@ -124,7 +152,7 @@ def import_kaikki(path: Path, database: Path = server.DB_PATH, limit: int = 0, w
                 imported += 1
                 if len(batch) >= 1000:
                     conn.executemany(
-                        """INSERT OR REPLACE INTO open_lexical_entries
+                        """INSERT OR REPLACE INTO kaikki_import_stage
                            (normalized, headword, pos, glosses_json, translations_zh_json, forms_json,
                             pronunciations_json, etymology_text, synonyms_json, antonyms_json, phrases_json,
                             examples_json, tags_json, source_key, source_record_id, created_at)
@@ -136,17 +164,34 @@ def import_kaikki(path: Path, database: Path = server.DB_PATH, limit: int = 0, w
                     break
             if batch:
                 conn.executemany(
-                    """INSERT OR REPLACE INTO open_lexical_entries
+                    """INSERT OR REPLACE INTO kaikki_import_stage
                        (normalized, headword, pos, glosses_json, translations_zh_json, forms_json,
                         pronunciations_json, etymology_text, synonyms_json, antonyms_json, phrases_json,
                         examples_json, tags_json, source_key, source_record_id, created_at)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     batch,
                 )
+            if imported < 1:
+                raise ValueError("Kaikki source contains no matching English lexical records")
+        conn.commit()
+        imported = conn.execute("SELECT COUNT(*) FROM kaikki_import_stage").fetchone()[0]
+        with conn:
+            conn.execute("DELETE FROM open_lexical_entries WHERE source_key = ?", (SOURCE_KEY,))
+            conn.execute(
+                """INSERT INTO open_lexical_entries
+                   (normalized, headword, pos, glosses_json, translations_zh_json, forms_json,
+                    pronunciations_json, etymology_text, synonyms_json, antonyms_json, phrases_json,
+                    examples_json, tags_json, source_key, source_record_id, created_at)
+                   SELECT normalized, headword, pos, glosses_json, translations_zh_json, forms_json,
+                          pronunciations_json, etymology_text, synonyms_json, antonyms_json, phrases_json,
+                          examples_json, tags_json, source_key, source_record_id, created_at
+                   FROM kaikki_import_stage"""
+            )
             register_dictionary_source(
-                conn, source_key=SOURCE_KEY, name=SOURCE_NAME, version="rolling",
+                conn, source_key=SOURCE_KEY, name=SOURCE_NAME,
+                version=source_version.strip() or f"sha256:{source_checksum[:12]}",
                 license_name=SOURCE_LICENSE, attribution=SOURCE_ATTRIBUTION, source_url=SOURCE_URL,
-                checksum=checksum(path), imported_at=server.utc_now(),
+                checksum=source_checksum, imported_at=server.utc_now(),
             )
         return {"source": SOURCE_NAME, "scanned": scanned, "imported": imported, "database": str(database)}
     finally:
@@ -159,9 +204,10 @@ def main() -> None:
     parser.add_argument("--database", type=Path, default=server.DB_PATH)
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--words", type=Path, help="Optional UTF-8 file with one target word per line")
+    parser.add_argument("--source-version", default="", help="Kaikki dump date or release identifier")
     args = parser.parse_args()
     words = set(args.words.read_text(encoding="utf-8").splitlines()) if args.words else None
-    print(json.dumps(import_kaikki(args.jsonl, args.database, args.limit, words), ensure_ascii=False, indent=2))
+    print(json.dumps(import_kaikki(args.jsonl, args.database, args.limit, words, args.source_version), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
