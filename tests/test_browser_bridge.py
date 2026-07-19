@@ -326,6 +326,57 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(refreshed["analytics"]["confusion"][0]["suggested_label"], "body")
         self.assertEqual(refreshed["analytics"]["confusion"][0]["label"], "boilerplate")
 
+    def test_contextual_output_loop_tracks_metrics_and_review(self):
+        with server.db() as conn:
+            article = conn.execute("SELECT * FROM articles WHERE source = 'seed'").fetchone()
+            article_id = article["id"]
+            conn.execute("DELETE FROM output_review_links")
+            conn.execute("DELETE FROM output_attempts")
+            conn.execute("DELETE FROM output_tasks")
+            conn.execute("DELETE FROM output_task_sets")
+            conn.execute("DELETE FROM article_reading_events WHERE article_id = ?", (article_id,))
+            conn.execute("DELETE FROM daily_learning_metrics")
+
+        generated, _ = self.request(f"/api/articles/{article_id}/output-tasks", "POST", {})
+        self.assertEqual([task["task_type"] for task in generated["tasks"]], ["en_to_zh", "zh_to_en", "summary", "personal"])
+        reconstruction = next(task for task in generated["tasks"] if task["task_type"] == "zh_to_en")
+        submitted, _ = self.request(
+            "/api/output-attempts", "POST",
+            {
+                "task_id": reconstruction["id"],
+                "response": reconstruction["reference_text"],
+                "elapsed_seconds": 42,
+                "confidence": 2,
+            },
+        )
+        attempt = submitted["attempt"]
+        self.assertEqual(attempt["elapsed_seconds"], 42)
+        self.assertTrue(all(check["passed"] for check in attempt["feedback"]["checks"]))
+        self.assertGreaterEqual(next(item for item in submitted["plan"]["metrics"] if item["metric"] == "output_sentences")["value"], 1)
+
+        reviewed, _ = self.request(
+            f"/api/output-attempts/{attempt['id']}/self-review", "POST",
+            {"ratings": {"information": 3, "naturalness": 2, "chunk_use": 2}, "note": "Check collocations."},
+        )
+        self.assertEqual(reviewed["attempt"]["self_review"]["information"], 3)
+        saved, _ = self.request(f"/api/output-attempts/{attempt['id']}/save-review-item", "POST", {})
+        self.assertEqual(saved["card"]["kind"], "phrase")
+        self.assertEqual(saved["card"]["term"], reconstruction["target_chunks"][0])
+        self.assertEqual(saved["card"]["context"], reconstruction["reference_text"])
+        queue, _ = self.request("/api/reviews?kind=phrase&limit=100")
+        self.assertTrue(any(item["item_id"] == saved["card"]["id"] for item in queue["items"]))
+
+        first_read, _ = self.request(f"/api/articles/{article_id}/read", "POST", {})
+        repeated_read, _ = self.request(f"/api/articles/{article_id}/read", "POST", {})
+        self.assertTrue(first_read["recorded"])
+        self.assertFalse(repeated_read["recorded"])
+        reading_metric = next(item for item in repeated_read["plan"]["metrics"] if item["metric"] == "reading_words")
+        self.assertEqual(reading_metric["value"], first_read["word_count"])
+
+        history, _ = self.request("/api/output/history")
+        self.assertGreaterEqual(history["summary"]["attempts"], 1)
+        self.assertEqual(history["attempts"][0]["article_title"], article["title"])
+
     def test_representative_review_batch_does_not_persist_empty_batch(self):
         with sqlite3.connect(":memory:") as conn:
             conn.row_factory = sqlite3.Row

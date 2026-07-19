@@ -488,6 +488,83 @@ def _article_extraction_review_batches(conn: sqlite3.Connection) -> None:
     )
 
 
+def _contextual_output_training(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """CREATE TABLE IF NOT EXISTS output_task_sets (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             article_id INTEGER NOT NULL,
+             source_hash TEXT NOT NULL,
+             generation_version TEXT NOT NULL,
+             status TEXT NOT NULL DEFAULT 'active',
+             created_at TEXT NOT NULL,
+             FOREIGN KEY(article_id) REFERENCES articles(id)
+           );
+           CREATE INDEX IF NOT EXISTS idx_output_task_sets_article
+           ON output_task_sets(article_id, status, id DESC);
+           CREATE TABLE IF NOT EXISTS output_tasks (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             set_id INTEGER NOT NULL,
+             article_id INTEGER NOT NULL,
+             position INTEGER NOT NULL,
+             task_type TEXT NOT NULL,
+             prompt_text TEXT NOT NULL,
+             source_text TEXT NOT NULL,
+             reference_text TEXT NOT NULL DEFAULT '',
+             target_chunks_json TEXT NOT NULL DEFAULT '[]',
+             guidance_json TEXT NOT NULL DEFAULT '{}',
+             generation_source TEXT NOT NULL,
+             created_at TEXT NOT NULL,
+             UNIQUE(set_id, position),
+             FOREIGN KEY(set_id) REFERENCES output_task_sets(id),
+             FOREIGN KEY(article_id) REFERENCES articles(id)
+           );
+           CREATE INDEX IF NOT EXISTS idx_output_tasks_article
+           ON output_tasks(article_id, task_type, id DESC);
+           CREATE TABLE IF NOT EXISTS output_attempts (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             task_id INTEGER NOT NULL,
+             response_text TEXT NOT NULL,
+             elapsed_seconds INTEGER NOT NULL DEFAULT 0,
+             hint_used INTEGER NOT NULL DEFAULT 0,
+             confidence INTEGER,
+             sentence_count INTEGER NOT NULL DEFAULT 1,
+             deterministic_feedback_json TEXT NOT NULL DEFAULT '{}',
+             self_review_json TEXT NOT NULL DEFAULT '{}',
+             created_at TEXT NOT NULL,
+             updated_at TEXT NOT NULL,
+             FOREIGN KEY(task_id) REFERENCES output_tasks(id)
+           );
+           CREATE INDEX IF NOT EXISTS idx_output_attempts_task
+           ON output_attempts(task_id, created_at DESC);
+           CREATE TABLE IF NOT EXISTS output_review_links (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             attempt_id INTEGER NOT NULL,
+             card_id INTEGER NOT NULL,
+             link_type TEXT NOT NULL DEFAULT 'reference',
+             created_at TEXT NOT NULL,
+             UNIQUE(attempt_id, card_id, link_type),
+             FOREIGN KEY(attempt_id) REFERENCES output_attempts(id),
+             FOREIGN KEY(card_id) REFERENCES cards(id)
+           );
+           CREATE TABLE IF NOT EXISTS daily_learning_metrics (
+             day TEXT NOT NULL,
+             metric TEXT NOT NULL,
+             value INTEGER NOT NULL DEFAULT 0,
+             updated_at TEXT NOT NULL,
+             PRIMARY KEY(day, metric)
+           );
+           CREATE TABLE IF NOT EXISTS article_reading_events (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             day TEXT NOT NULL,
+             article_id INTEGER NOT NULL,
+             word_count INTEGER NOT NULL DEFAULT 0,
+             created_at TEXT NOT NULL,
+             UNIQUE(day, article_id),
+             FOREIGN KEY(article_id) REFERENCES articles(id)
+           );"""
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     (1, "consolidate legacy schema", _legacy_schema),
     (2, "add training loop metrics", _training_loop_metrics),
@@ -502,6 +579,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     (11, "apply registered source extraction adapters", _source_adapter_backfill),
     (12, "add human article block labels", _article_extraction_block_labels),
     (13, "add representative extraction review batches", _article_extraction_review_batches),
+    (14, "add contextual output training", _contextual_output_training),
 )
 
 

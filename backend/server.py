@@ -31,6 +31,10 @@ try:
     from .content_extraction import BLOCK_LABELS, adapter_catalog, adapter_for_source, extract_source_content, suggest_annotation_blocks
     from .lexical_data import lookup_lexical_layers, search_open_entries
     from .migrations import run_migrations
+    from .output_training import (
+        create_output_task_set, latest_output_task_set, output_attempt_payload,
+        output_history, save_self_review, submit_output_attempt,
+    )
     from .practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
     from .review_scheduler import ensure_review_item, rate_review_item, review_queue, undo_last_review
     from .versioning import SCHEMA_VERSION, app_version, version_payload
@@ -39,6 +43,10 @@ except ImportError:
     from content_extraction import BLOCK_LABELS, adapter_catalog, adapter_for_source, extract_source_content, suggest_annotation_blocks
     from lexical_data import lookup_lexical_layers, search_open_entries
     from migrations import run_migrations
+    from output_training import (
+        create_output_task_set, latest_output_task_set, output_attempt_payload,
+        output_history, save_self_review, submit_output_attempt,
+    )
     from practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
     from review_scheduler import ensure_review_item, rate_review_item, review_queue, undo_last_review
     from versioning import SCHEMA_VERSION, app_version, version_payload
@@ -3100,8 +3108,10 @@ CEFR_ORDER = {"A1": 1, "A2": 2, "B1": 3, "B2": 4, "C1": 5, "C2": 6}
 
 LEARNER_SETTINGS_KEY = "learner_profile"
 DAILY_PLAN_MINUTES = {5, 15, 30, 60}
-DAILY_PLAN_TASKS = {"reading", "practice", "review", "vocabulary"}
-DAILY_PLAN_DEFAULT_TARGETS = {"reading": 1, "practice": 5, "review": 2, "vocabulary": 5}
+DAILY_PLAN_TASKS = {"reading", "output", "practice", "review", "vocabulary"}
+DAILY_PLAN_DEFAULT_TARGETS = {"reading": 1, "output": 3, "practice": 5, "review": 2, "vocabulary": 5}
+DAILY_METRIC_DEFAULT_TARGETS = {"reading_words": 400, "output_sentences": 3, "review_chunks": 5}
+DAILY_METRIC_LIMITS = {"reading_words": (50, 5000), "output_sentences": (1, 50), "review_chunks": (1, 100)}
 PROFILE_SECTIONS = {"reading", "listening", "writing", "speaking", "vocabulary"}
 PROFILE_WEAK_AREAS = {
     "reading-speed", "evidence", "inference", "paraphrase", "vocabulary-use",
@@ -3157,8 +3167,9 @@ QUICK_TEST_ITEMS = [
 ]
 DEFAULT_LEARNER_SETTINGS = {
     "daily_minutes": 15,
-    "daily_tasks": ["reading", "practice", "review"],
+    "daily_tasks": ["reading", "output", "practice", "review"],
     "daily_targets": DAILY_PLAN_DEFAULT_TARGETS,
+    "daily_metric_targets": DAILY_METRIC_DEFAULT_TARGETS,
     "short_goal": "",
     "short_goal_date": "",
     "long_goal": "",
@@ -3210,6 +3221,11 @@ def learner_settings() -> dict:
     settings["daily_targets"] = {
         task: max(1, min(50, int(raw_targets.get(task) or DAILY_PLAN_DEFAULT_TARGETS[task])))
         for task in DAILY_PLAN_TASKS
+    }
+    raw_metric_targets = settings.get("daily_metric_targets") if isinstance(settings.get("daily_metric_targets"), dict) else {}
+    settings["daily_metric_targets"] = {
+        metric: max(bounds[0], min(bounds[1], int(raw_metric_targets.get(metric) or DAILY_METRIC_DEFAULT_TARGETS[metric])))
+        for metric, bounds in DAILY_METRIC_LIMITS.items()
     }
     settings["recommendations_enabled"] = bool(settings["recommendations_enabled"])
     settings["article_layout"] = settings["article_layout"] if settings["article_layout"] in {"split", "grid"} else "split"
@@ -3459,6 +3475,10 @@ def update_learner_settings(payload: dict) -> dict:
             task: max(1, min(50, int((payload.get("daily_targets") or {}).get(task) or DAILY_PLAN_DEFAULT_TARGETS[task])))
             for task in DAILY_PLAN_TASKS
         },
+        "daily_metric_targets": {
+            metric: max(bounds[0], min(bounds[1], int((payload.get("daily_metric_targets") or {}).get(metric) or DAILY_METRIC_DEFAULT_TARGETS[metric])))
+            for metric, bounds in DAILY_METRIC_LIMITS.items()
+        },
         "short_goal": str(payload.get("short_goal") or "").strip()[:160],
         "short_goal_date": str(payload.get("short_goal_date") or "").strip()[:20],
         "long_goal": str(payload.get("long_goal") or "").strip()[:160],
@@ -3530,6 +3550,49 @@ def set_daily_progress(conn: sqlite3.Connection, task: str, completed_count: int
     )
 
 
+def increment_daily_metric(conn: sqlite3.Connection, metric: str, amount: int, day: str = "") -> None:
+    if metric not in DAILY_METRIC_DEFAULT_TARGETS or amount <= 0:
+        return
+    target_day = day or current_plan_day()
+    conn.execute(
+        """INSERT INTO daily_learning_metrics (day, metric, value, updated_at)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(day, metric) DO UPDATE SET
+             value = daily_learning_metrics.value + excluded.value,
+             updated_at = excluded.updated_at""",
+        (target_day, metric, amount, utc_now()),
+    )
+
+
+def decrement_daily_metric(conn: sqlite3.Connection, metric: str, amount: int, day: str = "") -> None:
+    if metric not in DAILY_METRIC_DEFAULT_TARGETS or amount <= 0:
+        return
+    target_day = day or current_plan_day()
+    conn.execute(
+        """UPDATE daily_learning_metrics SET value = MAX(0, value - ?), updated_at = ?
+           WHERE day = ? AND metric = ?""",
+        (amount, utc_now(), target_day, metric),
+    )
+
+
+def mark_article_read(conn: sqlite3.Connection, article_id: int) -> dict:
+    article = conn.execute("SELECT id, body FROM articles WHERE id = ?", (article_id,)).fetchone()
+    if not article:
+        raise ValueError("Article not found")
+    count = len(words(article["body"]))
+    day = current_plan_day()
+    cursor = conn.execute(
+        """INSERT OR IGNORE INTO article_reading_events (day, article_id, word_count, created_at)
+           VALUES (?, ?, ?, ?)""",
+        (day, article_id, count, utc_now()),
+    )
+    recorded = cursor.rowcount > 0
+    if recorded:
+        increment_daily_metric(conn, "reading_words", count, day)
+        increment_daily_progress(conn, "reading", 1, day)
+    return {"recorded": recorded, "word_count": count, "day": day}
+
+
 def daily_plan_snapshot(settings: dict | None = None, day: str = "") -> dict:
     settings = settings or learner_settings()
     target_day = day or current_plan_day()
@@ -3539,6 +3602,9 @@ def daily_plan_snapshot(settings: dict | None = None, day: str = "") -> dict:
         ).fetchall()
         item_rows = conn.execute(
             "SELECT * FROM daily_plan_items WHERE day = ? ORDER BY completed, created_at, id", (target_day,)
+        ).fetchall()
+        metric_rows = conn.execute(
+            "SELECT metric, value FROM daily_learning_metrics WHERE day = ?", (target_day,)
         ).fetchall()
     completed_by_task = {row["task"]: row["completed_count"] for row in progress_rows}
     tasks = []
@@ -3560,16 +3626,78 @@ def daily_plan_snapshot(settings: dict | None = None, day: str = "") -> dict:
     remaining_minutes = max(0, round(settings["daily_minutes"] * (100 - overall_percent) / 100))
     if overall_percent < 100:
         remaining_minutes = max(1, remaining_minutes)
+    metric_values = {row["metric"]: row["value"] for row in metric_rows}
+    metrics = []
+    for metric, target in settings["daily_metric_targets"].items():
+        value = metric_values.get(metric, 0)
+        metrics.append({
+            "metric": metric, "target": target, "value": value,
+            "done": value >= target, "percent": min(100, round(value / max(1, target) * 100)),
+        })
     return {
         "date": target_day,
         "minutes": settings["daily_minutes"],
         "tasks": tasks,
         "items": rows_to_dicts(item_rows),
+        "metrics": metrics,
         "overall_percent": overall_percent,
         "remaining_minutes": remaining_minutes,
         "completed": bool(tasks) and all(item["done"] for item in tasks),
         "summary": "今日计划已完成" if tasks and all(item["done"] for item in tasks) else f"还需约 {remaining_minutes} 分钟",
     }
+
+
+def save_output_review_item(conn: sqlite3.Connection, attempt_id: int) -> dict:
+    attempt = output_attempt_payload(conn, attempt_id)
+    if not attempt:
+        raise ValueError("Output attempt not found")
+    existing = conn.execute(
+        """SELECT l.*, c.term, c.context FROM output_review_links l
+           JOIN cards c ON c.id = l.card_id WHERE l.attempt_id = ? AND l.link_type = 'reference'""",
+        (attempt_id,),
+    ).fetchone()
+    if existing:
+        return {"created": False, "card": dict(existing), "attempt": attempt}
+    if attempt["task_type"] == "zh_to_en":
+        context = attempt["reference_text"]
+    else:
+        context = attempt["source_text"] or attempt["reference_text"]
+    matching_chunks = [
+        chunk for chunk in (attempt["target_chunks"] or [])
+        if str(chunk).strip() and str(chunk).casefold() in str(context).casefold()
+    ]
+    term = matching_chunks[0] if matching_chunks else context
+    term = re.sub(r"\s+", " ", str(term)).strip()[:500]
+    context = str(context or "").strip()[:3000]
+    now = utc_now()
+    card = conn.execute(
+        "SELECT * FROM cards WHERE lower(trim(term)) = lower(?) ORDER BY id DESC LIMIT 1", (term,)
+    ).fetchone()
+    created = False
+    if card:
+        card_id = int(card["id"])
+        conn.execute(
+            "UPDATE cards SET context = ?, source_article_id = ?, note = ?, updated_at = ? WHERE id = ?",
+            (context or card["context"], attempt["article_id"], f"输出复习 · {attempt['task_label']}", now, card_id),
+        )
+    else:
+        cursor = conn.execute(
+            """INSERT INTO cards
+               (term, kind, context, source_article_id, status, note, created_at, updated_at)
+               VALUES (?, 'phrase', ?, ?, 'new', ?, ?, ?)""",
+            (term, context, attempt["article_id"], f"输出复习 · {attempt['task_label']}", now, now),
+        )
+        card_id = int(cursor.lastrowid)
+        created = True
+        increment_daily_progress(conn, "vocabulary", 1)
+    ensure_review_item(conn, "card", card_id, now)
+    conn.execute(
+        """INSERT OR IGNORE INTO output_review_links (attempt_id, card_id, link_type, created_at)
+           VALUES (?, ?, 'reference', ?)""",
+        (attempt_id, card_id, now),
+    )
+    saved = conn.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
+    return {"created": created, "card": dict(saved), "attempt": output_attempt_payload(conn, attempt_id)}
 
 
 def current_learner_level() -> str:
@@ -5930,6 +6058,22 @@ class App(BaseHTTPRequestHandler):
                 return json_response(self, {"book": book}) if book else json_response(self, {"error": "Book not found"}, 404)
             if path == "/api/daily-plan":
                 return json_response(self, {"plan": daily_plan_snapshot()})
+            if path == "/api/output/tasks":
+                try:
+                    article_id = int(query.get("article_id", [""])[0])
+                except (TypeError, ValueError):
+                    return json_response(self, {"error": "article_id is required"}, 400)
+                with db() as conn:
+                    task_set = latest_output_task_set(conn, article_id)
+                return json_response(self, task_set or {"set": None, "tasks": [], "summary": {"total": 0, "completed": 0, "remaining": 0}})
+            if path == "/api/output/history":
+                try:
+                    limit = int(query.get("limit", [50])[0])
+                except (TypeError, ValueError):
+                    limit = 50
+                with db() as conn:
+                    history = output_history(conn, limit)
+                return json_response(self, history)
             if path == "/api/browser/status":
                 return json_response(self, {"ok": True, "translation": translation_status()})
             if path == "/api/browser/token":
@@ -6160,6 +6304,61 @@ class App(BaseHTTPRequestHandler):
                 except ValueError as exc:
                     return json_response(self, {"error": str(exc)}, 422)
                 return json_response(self, batch, 201)
+            match = re.fullmatch(r"/api/articles/(\d+)/output-tasks", path)
+            if match:
+                with db() as conn:
+                    article = conn.execute("SELECT * FROM articles WHERE id = ?", (int(match.group(1)),)).fetchone()
+                    if not article:
+                        return json_response(self, {"error": "Article not found"}, 404)
+                    try:
+                        task_set = create_output_task_set(
+                            conn, article, article_keywords(article["body"]), bool(payload.get("force_new")),
+                        )
+                    except ValueError as exc:
+                        return json_response(self, {"error": str(exc)}, 422)
+                return json_response(self, task_set, 201)
+            match = re.fullmatch(r"/api/articles/(\d+)/read", path)
+            if match:
+                try:
+                    with db() as conn:
+                        result = mark_article_read(conn, int(match.group(1)))
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 404)
+                return json_response(self, {**result, "plan": daily_plan_snapshot()})
+            if path == "/api/output-attempts":
+                try:
+                    with db() as conn:
+                        attempt = submit_output_attempt(
+                            conn,
+                            int(payload.get("task_id") or 0),
+                            str(payload.get("response") or ""),
+                            int(payload.get("elapsed_seconds") or 0),
+                            bool(payload.get("hint_used")),
+                            payload.get("confidence"),
+                        )
+                        increment_daily_metric(conn, "output_sentences", int(attempt["sentence_count"] or 1))
+                        increment_daily_progress(conn, "output", int(attempt["sentence_count"] or 1))
+                except (TypeError, ValueError) as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, {"attempt": attempt, "plan": daily_plan_snapshot()}, 201)
+            match = re.fullmatch(r"/api/output-attempts/(\d+)/self-review", path)
+            if match:
+                try:
+                    with db() as conn:
+                        attempt = save_self_review(
+                            conn, int(match.group(1)), payload.get("ratings") or {}, str(payload.get("note") or ""),
+                        )
+                except (TypeError, ValueError) as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, {"attempt": attempt})
+            match = re.fullmatch(r"/api/output-attempts/(\d+)/save-review-item", path)
+            if match:
+                try:
+                    with db() as conn:
+                        result = save_output_review_item(conn, int(match.group(1)))
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 404)
+                return json_response(self, result, 201 if result["created"] else 200)
             match = re.fullmatch(r"/api/extraction/review-items/(\d+)/activity", path)
             if match:
                 elapsed = max(0, min(int(payload.get("elapsed_seconds") or 0), 300))
@@ -6185,6 +6384,8 @@ class App(BaseHTTPRequestHandler):
                     with db() as conn:
                         result = rate_review_item(conn, int(match.group(1)), str(payload.get("rating") or ""))
                         increment_daily_progress(conn, "review", 1)
+                        if result["item"]["item_type"] == "card":
+                            increment_daily_metric(conn, "review_chunks", 1)
                         queue = review_queue(conn, kind=str(payload.get("kind") or "all"), limit=20)
                 except ValueError as exc:
                     return json_response(self, {"error": str(exc)}, 400)
@@ -6193,9 +6394,14 @@ class App(BaseHTTPRequestHandler):
                 try:
                     with db() as conn:
                         result = undo_last_review(conn)
+                        review_item = conn.execute(
+                            "SELECT item_type FROM review_items WHERE id = ?", (result["review_item_id"],)
+                        ).fetchone()
                         reviewed_day = datetime.fromisoformat(result["reviewed_at"]).astimezone().date().isoformat()
                         if reviewed_day == current_plan_day():
                             decrement_daily_progress(conn, "review", 1, reviewed_day)
+                            if review_item and review_item["item_type"] == "card":
+                                decrement_daily_metric(conn, "review_chunks", 1, reviewed_day)
                         queue = review_queue(conn, kind=str(payload.get("kind") or "all"), limit=20)
                 except ValueError as exc:
                     return json_response(self, {"error": str(exc)}, 400)

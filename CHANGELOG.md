@@ -6,10 +6,32 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
-- Locked the remaining `v0.8` scope: contextual text output, evidence-aware feedback, local speaking practice, real open dictionary data, validated FSRS and beta hardening; full clip study moves to `v0.9` and cloud delivery to `v0.10`.
-- Planned `v0.8.0-alpha.24` contextual output training with bilingual translation, English summaries, personal expression, synonym usage contrasts, review integration and evidence boundaries.
-- Researched legally distributable English dictionary sources and staged the import order for Open English WordNet, Kaikki/Wiktionary, Tatoeba, FreeDict, Moby Thesaurus, and wordfreq.
-- Verified the per-user Windows sign-in task on port `8766`; the task is running and the backend health endpoint responds successfully.
+## [0.8.0-alpha.24.0] - 2026-07-19
+
+### Added
+
+- Added schema 14 contextual output task sets, tasks, attempts, self-review and review links.
+- Added English-to-Chinese comprehension translation, Chinese-to-English reconstruction, three-sentence summary and personal-expression tasks from aligned articles.
+- Added a fixed-sidebar, left-source/right-answer output workspace with attempt history and daily-plan entry points.
+- Added separate daily reading-word, output-sentence and reviewed-chunk targets and metrics.
+- Added idempotent article reading events and contextual phrase cards that enter the existing review scheduler.
+
+### Changed
+
+- Reader, article pool and daily plan can enter output training without leaving the article context.
+- Rule feedback checks only defensible form and information signals; references are labeled as non-unique expressions or points.
+- Review cards now prefer an English target chunk that occurs in the task context instead of saving a Chinese reconstruction prompt.
+
+### Verification
+
+- Passed 163 Python unit/integration tests, Python and JavaScript syntax checks, and isolated desktop E2E for output, extraction review, lexicon, review and translation.
+- Replayed schema 12 to 14 migration with SQLite integrity `ok`; the real schema 14 database is also `ok` and was backed up without auto-created output data.
+
+### Known limits
+
+- Semantic quality, naturalness and synonym boundaries still depend on structured self-review; evidence-aware AI feedback is scheduled for `alpha.24.1`.
+- Speaking recording, retelling and opinion tasks remain scheduled for `alpha.24.2` and are not included in this release.
+- Output quantity is effort evidence only and does not directly raise ability or CEFR estimates.
 
 ## [0.8.0-alpha.23.0.7] - 2026-07-19
 

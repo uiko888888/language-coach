@@ -25,6 +25,7 @@
       <button class="nav-item" data-view="lexicon" data-lexicon-filter="morpheme">词根词缀</button>
       <button class="nav-item" data-view="cards">生词本</button>
       <span class="nav-group">训练与考试</span>
+      <button class="nav-item" data-view="output">输出训练</button>
       <button class="nav-item" data-view="quiz">练习中心</button>
       <button class="nav-item" data-view="mistakes">错题本</button>
       <button class="nav-item" data-view="history">训练记录</button>
@@ -227,6 +228,7 @@
           <strong id="dailyPlanSummary">15 分钟</strong>
         </div>
         <div class="daily-plan-tasks" id="dailyPlanTasks"></div>
+        <div class="daily-metric-progress" id="dailyMetricProgress"></div>
         <div class="daily-plan-queue" id="dailyPlanQueue"></div>
         <div class="goal-summary" id="goalSummary"></div>
         <details class="plan-settings">
@@ -243,9 +245,16 @@
             <fieldset class="plan-task-fieldset">
               <legend>学习内容</legend>
               <label><input type="checkbox" data-daily-task="reading" /> 阅读 <input type="number" min="1" max="50" data-daily-target="reading" aria-label="阅读目标数量" /></label>
+              <label><input type="checkbox" data-daily-task="output" /> 主动输出 <input type="number" min="1" max="50" data-daily-target="output" aria-label="输出目标句数" /></label>
               <label><input type="checkbox" data-daily-task="practice" /> 做题 <input type="number" min="1" max="50" data-daily-target="practice" aria-label="做题目标数量" /></label>
               <label><input type="checkbox" data-daily-task="review" /> 错题复盘 <input type="number" min="1" max="50" data-daily-target="review" aria-label="错题复盘目标数量" /></label>
               <label><input type="checkbox" data-daily-task="vocabulary" /> 词块复习 <input type="number" min="1" max="50" data-daily-target="vocabulary" aria-label="词块复习目标数量" /></label>
+            </fieldset>
+            <fieldset class="plan-task-fieldset daily-metric-settings">
+              <legend>每日真实用量</legend>
+              <label>阅读词数 <input type="number" min="50" max="5000" step="50" data-daily-metric-target="reading_words" /></label>
+              <label>输出句数 <input type="number" min="1" max="50" data-daily-metric-target="output_sentences" /></label>
+              <label>复习词块 <input type="number" min="1" max="100" data-daily-metric-target="review_chunks" /></label>
             </fieldset>
             <label>近期目标
               <input id="shortGoal" maxlength="160" placeholder="例如：两周内稳定完成 IELTS 判断题" />
@@ -446,6 +455,8 @@
               <button id="toggleTranslationBtn" aria-pressed="false">显示译文</button>
               <button id="translateArticleBtn">一键翻译</button>
               <button id="analyzeBtn">分析</button>
+              <button id="markArticleReadBtn">标记读完</button>
+              <button id="startOutputBtn">开始输出</button>
               <button class="primary" id="generateQuizBtn">转为练习</button>
             </div>
           </div>
@@ -465,6 +476,30 @@
             <span class="muted">点文章里的词</span>
           </div>
         </aside>
+      </div>
+    </section>
+
+    <section class="view" id="view-output">
+      <div class="output-workspace">
+        <aside class="band output-source-panel">
+          <div class="band-head">
+            <div><span class="eyebrow">Source</span><h2 id="outputSourceTitle">先选择文章</h2></div>
+            <button id="outputTranslationBtn">显示译文</button>
+          </div>
+          <article class="output-source-text" id="outputSourceText"></article>
+        </aside>
+        <section class="band output-task-panel">
+          <div class="band-head">
+            <div><span class="eyebrow">Active output</span><h2>输出训练</h2></div>
+            <div class="toolbar"><span id="outputProgress">0 / 0</span><button id="regenerateOutputBtn">新建一组</button></div>
+          </div>
+          <div class="output-task-tabs" id="outputTaskTabs" role="tablist" aria-label="输出任务"></div>
+          <div class="output-task-body" id="outputTaskBody"></div>
+          <details class="output-history">
+            <summary>最近输出记录</summary>
+            <div id="outputHistoryList"></div>
+          </details>
+        </section>
       </div>
     </section>
 

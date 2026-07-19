@@ -1,5 +1,9 @@
 # Contextual Output Training Plan
 
+## 当前实施状态
+
+`v0.8.0-alpha.24.0` 已完成文本 MVP：schema 14、四类任务、规则检查、结构化自评、历史、每日阅读/输出/复习指标和统一复习链接均已落地。开放语义 AI 反馈、近义词边界与任意错句保存属于 `alpha.24.1`；本机录音、脱稿复述和观点表达属于 `alpha.24.2`。完整字幕拉片仍在 `v0.9`。
+
 本文定义 Language Coach 的“语境输入 -> 主动输出 -> 反馈 -> 复习 -> 再次输出”方案。目标不是增加几种看起来丰富的题目，而是让阅读量、兴趣内容、词块和英语思维进入可执行、可测量的日常循环。
 
 ## 用户问题
@@ -126,27 +130,41 @@
 
 输出练习只增加一个明确入口，不在阅读页堆叠全部表单。翻译、摘要、近义词和个人表达使用任务标签切换。
 
-## 计划数据模型
+## 数据模型
 
-计划在 schema 14 增加：
+schema 14 已增加：
 
-- `output_tasks`：素材、段落、任务类型、提示、参考、目标词块、生成来源和质量状态。
+- `output_task_sets`：文章、原文哈希、生成版本、状态和创建时间。
+- `output_tasks`：素材、段落、任务类型、提示、参考、目标词块和生成来源。
 - `output_attempts`：用户答案、用时、提示使用、信心、自评和反馈版本。
+- `output_review_links`：输出作答与统一复习卡之间的可追溯关系。
+- `daily_learning_metrics`：阅读词数、输出句数和复习词块数。
+- `article_reading_events`：同一文章同一天只累计一次阅读量。
+
+后续 schema 计划增加：
+
 - `output_feedback`：信息准确、搭配、语域、衔接、自然度、证据和反馈来源。
 - `usage_contrast_sets`：近义词组、对比维度、例句、来源和审核状态。
-- `speaking_attempts`：任务、录音本地路径、时长、准备时间、转写、自评、删除状态和再次录制关联。
+- `speaking_attempts`：任务、录音本机引用、时长、准备时间、转写、自评、删除状态和再次录制关联。
 
 所有 AI 反馈保存提供方、模型、提示版本和原文证据；密钥不进入数据库或前端。用户原始答案始终保留，系统建议作为独立字段，不覆盖用户表达。
 
-## 计划 API
+## API
 
 ```text
 POST /api/articles/{id}/output-tasks
-GET  /api/output-tasks?article_id=&type=
+GET  /api/output/tasks?article_id=
 POST /api/output-attempts
 POST /api/output-attempts/{id}/self-review
 POST /api/output-attempts/{id}/save-review-item
-GET  /api/output/analytics
+GET  /api/output/history
+POST /api/articles/{id}/read
+```
+
+`alpha.24.1-alpha.24.2` 计划增加：
+
+```text
+POST /api/output-attempts/{id}/semantic-feedback
 POST /api/speaking-attempts
 POST /api/speaking-attempts/{id}/transcribe
 POST /api/speaking-attempts/{id}/self-review

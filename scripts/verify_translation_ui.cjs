@@ -47,7 +47,7 @@ async function run() {
   const failures = [];
   try {
     const version = await waitForServer();
-    if (version.app_version !== "0.8.0-alpha.23.0.7" || version.database_schema_version !== 13) {
+    if (version.app_version !== "0.8.0-alpha.24.0" || version.database_schema_version !== 14) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const created = await post("/api/articles", {
@@ -117,7 +117,7 @@ async function run() {
     server.kill();
   }
   if (failures.length) throw new Error(failures.join("\n"));
-  process.stdout.write("Practice one-click translation workflow passed on schema 8.\n");
+  process.stdout.write("Practice one-click translation workflow passed on schema 14.\n");
 }
 
 run().catch(error => {

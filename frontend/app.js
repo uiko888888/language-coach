@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.23.0.7";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.24.0";
 const SUPPORTED_API_VERSION = "1";
 
 const state = {
@@ -31,6 +31,12 @@ const state = {
   extractionReviewBatch: null,
   extractionReviewItem: null,
   extractionActivityStartedAt: 0,
+  outputTaskSet: null,
+  outputTasks: [],
+  outputHistory: { attempts: [], summary: { attempts: 0, sentences: 0, articles: 0 } },
+  activeOutputTaskIndex: 0,
+  outputDrafts: {},
+  outputStartedAt: Date.now(),
   runtime: null,
   backups: [],
   sourceCatalog: [],
@@ -116,6 +122,7 @@ const titles = {
   dashboard: ["今日训练", "文章、词汇、题目和错题都走本地数据库。"],
   articles: ["文章池", "每日来源、个人导入和分级文章会进入这里。"],
   reader: ["阅读台", "一篇文章可以进入精读、查词、翻译和对应考试训练。"],
+  output: ["输出训练", "把文章转成翻译、摘要和个人表达，并把错句送回复习。"],
   quiz: ["题目", "先做题，再看证据和解析，错题会自动收集。"],
   cards: ["记忆复习", "到期词块与已掌握错题在同一队列中主动回忆。"],
   mistakes: ["错题", "保存你的错误答案、正确答案和原文证据。"],
@@ -477,9 +484,16 @@ function renderStats() {
 
 const dailyTaskLabels = {
   reading: "阅读",
+  output: "主动输出",
   practice: "考试练习",
   review: "错题复盘",
   vocabulary: "词块复习",
+};
+
+const dailyMetricLabels = {
+  reading_words: "阅读词数",
+  output_sentences: "输出句数",
+  review_chunks: "复习词块",
 };
 
 const profileWeakLabels = {
@@ -497,6 +511,9 @@ function renderLearnerSettings() {
   });
   document.querySelectorAll("[data-daily-target]").forEach(input => {
     input.value = String(settings.daily_targets?.[input.dataset.dailyTarget] || 1);
+  });
+  document.querySelectorAll("[data-daily-metric-target]").forEach(input => {
+    input.value = String(settings.daily_metric_targets?.[input.dataset.dailyMetricTarget] || 1);
   });
   $("#shortGoal").value = settings.short_goal || "";
   $("#shortGoalDate").value = settings.short_goal_date || "";
@@ -669,6 +686,12 @@ function renderDailyPlan() {
     <div class="daily-plan-queue-item ${item.completed ? "completed" : ""}">
       <span>${badge(dailyTaskLabels[item.task] || item.task, item.completed ? "" : "teal")} ${escapeHtml(item.title || `${item.item_type} #${item.item_id}`)}</span>
       ${item.completed ? `<small>已完成</small>` : `<button data-complete-plan-item="${item.id}">完成</button>`}
+    </div>
+  `).join("");
+  $("#dailyMetricProgress").innerHTML = (plan.metrics || []).map(item => `
+    <div class="daily-metric-item ${item.done ? "done" : ""}">
+      <div><span>${escapeHtml(dailyMetricLabels[item.metric] || item.metric)}</span><strong>${item.value} / ${item.target}</strong></div>
+      <div class="ability-meter"><span style="width:${item.percent}%"></span></div>
     </div>
   `).join("");
 }
@@ -911,6 +934,7 @@ function renderArticles() {
           <button data-toggle-translation="true">${state.showTranslation ? "隐藏译文" : "显示译文"}</button>
           <button data-translate-article="${selected.id}">一键翻译</button>
           <button data-open-article="${selected.id}">进入阅读台</button>
+          <button data-output-article="${selected.id}">输出训练</button>
           ${articleTrainingAction(selected)}
         </div>
       </div>
@@ -976,6 +1000,188 @@ function renderReader() {
   $("#generateQuizBtn").textContent = article.training_eligible ? "转为练习" : article.content_status === "full" ? "暂不适合出题" : "摘要不可出题";
   $("#generateQuizBtn").title = article.training_block_reason || "";
   renderAnalysis();
+}
+
+function latestOutputAttempt(taskId) {
+  return (state.outputHistory.attempts || []).find(attempt => Number(attempt.task_id) === Number(taskId)) || null;
+}
+
+function renderOutputHistory() {
+  const attempts = state.outputHistory.attempts || [];
+  $("#outputHistoryList").innerHTML = attempts.slice(0, 12).map(attempt => `
+    <button class="output-history-item" data-output-history-task="${attempt.task_id}" data-output-history-article="${attempt.article_id}">
+      <span>${escapeHtml(attempt.task_label)} · ${escapeHtml(attempt.article_title)}</span>
+      <small>${attempt.sentence_count} 句 · ${escapeHtml(attempt.created_at.slice(0, 16).replace("T", " "))}</small>
+    </button>
+  `).join("") || `<p class="muted">还没有输出记录。</p>`;
+}
+
+function renderOutput() {
+  const article = state.selectedArticle;
+  $("#outputSourceTitle").textContent = article?.title || "先选择文章";
+  $("#outputSourceText").innerHTML = article
+    ? bilingualParagraphs(article.body, article.translation_zh, state.showTranslation)
+    : `<p class="muted">从文章池或阅读台选择一篇文章。</p>`;
+  $("#outputTranslationBtn").textContent = state.showTranslation ? "隐藏译文" : article?.translation_aligned ? "显示译文" : "暂无对齐译文";
+  const tasks = state.outputTasks || [];
+  const summary = state.outputTaskSet?.summary || { completed: 0, total: 0 };
+  $("#outputProgress").textContent = `${summary.completed} / ${summary.total}`;
+  $("#outputTaskTabs").innerHTML = tasks.map((task, index) => `
+    <button role="tab" aria-selected="${index === state.activeOutputTaskIndex}" class="${index === state.activeOutputTaskIndex ? "active" : ""}" data-output-task-index="${index}">
+      <span>${String(index + 1).padStart(2, "0")}</span>${escapeHtml(task.label)}${task.attempt_count ? " · 已完成" : ""}
+    </button>
+  `).join("");
+  const task = tasks[state.activeOutputTaskIndex];
+  if (!article) {
+    $("#outputTaskBody").innerHTML = `<div class="empty-state">先选择一篇文章，再开始输出训练。</div>`;
+    renderOutputHistory();
+    return;
+  }
+  if (!task) {
+    $("#outputTaskBody").innerHTML = `
+      <div class="output-empty">
+        <h3>把这篇文章转成主动输出</h3>
+        <p>有对齐译文时生成双向翻译；任何合格正文都可以生成英文摘要和个人表达。</p>
+        <button class="primary" data-start-output="true">生成输出任务</button>
+      </div>`;
+    renderOutputHistory();
+    return;
+  }
+  const attempt = latestOutputAttempt(task.id);
+  const draft = state.outputDrafts[task.id] ?? attempt?.response_text ?? "";
+  const feedback = attempt?.feedback;
+  const selfReview = attempt?.self_review || {};
+  $("#outputTaskBody").innerHTML = `
+    <div class="output-task-head">
+      <div><span class="eyebrow">${escapeHtml(task.label)}</span><h3>${escapeHtml(task.prompt_text)}</h3></div>
+      <span class="output-task-position">${task.position} / ${tasks.length}</span>
+    </div>
+    <p class="output-guidance">${escapeHtml(task.guidance?.instruction || "先独立完成，再查看原文证据。")}</p>
+    ${(task.target_chunks || []).length ? `<div class="badge-row">${task.target_chunks.map(chunk => badge(chunk, "teal")).join("")}</div>` : ""}
+    <label class="output-answer-label" for="outputResponse">你的表达</label>
+    <textarea id="outputResponse" data-output-draft="${task.id}" placeholder="先独立作答，不需要追求与原文逐字相同。">${escapeHtml(draft)}</textarea>
+    <div class="output-submit-row">
+      <label>信心
+        <select id="outputConfidence"><option value="1">猜测</option><option value="2" selected>犹豫</option><option value="3">确定</option></select>
+      </label>
+      <label class="filter-toggle"><input id="outputHintUsed" type="checkbox" />提交前查看了提示</label>
+      <button class="primary" id="submitOutputBtn">${attempt ? "再次提交" : "提交并对照"}</button>
+    </div>
+    ${attempt ? `
+      <section class="output-feedback">
+        <div class="output-reference">
+          <span>${escapeHtml(task.guidance?.reference_label || "参考表达")}</span>
+          <p>${searchableEnglish(task.reference_text || "当前任务没有唯一参考答案。", false)}</p>
+        </div>
+        <div class="output-checks">
+          ${(feedback?.checks || []).map(check => `<div class="output-check ${check.passed === true ? "passed" : check.passed === false ? "needs-work" : "review"}"><strong>${check.passed === true ? "通过" : check.passed === false ? "复查" : "自评"}</strong><span>${escapeHtml(check.label)}</span></div>`).join("")}
+        </div>
+        <p class="muted">${escapeHtml(feedback?.note || "")}</p>
+        <div class="output-self-review">
+          <h4>结构化自评</h4>
+          <label>信息完整<select id="selfReviewInformation"><option value="1">需重做</option><option value="2">基本完成</option><option value="3">完整</option></select></label>
+          <label>表达自然<select id="selfReviewNaturalness"><option value="1">需重做</option><option value="2">基本自然</option><option value="3">自然</option></select></label>
+          <label>词块使用<select id="selfReviewChunk"><option value="1">未掌握</option><option value="2">基本正确</option><option value="3">运用自然</option></select></label>
+          <textarea id="selfReviewNote" placeholder="记录下一次最需要改的一点">${escapeHtml(selfReview.note || "")}</textarea>
+          <div class="toolbar"><button data-save-output-self-review="${attempt.id}">保存自评</button><button data-save-output-review="${attempt.id}" ${attempt.review_links?.length ? "disabled" : ""}>${attempt.review_links?.length ? "已加入复习" : "将参考表达加入复习"}</button></div>
+        </div>
+      </section>` : ""}
+  `;
+  if (attempt) {
+    $("#selfReviewInformation").value = String(selfReview.information || 2);
+    $("#selfReviewNaturalness").value = String(selfReview.naturalness || 2);
+    $("#selfReviewChunk").value = String(selfReview.chunk_use || 2);
+    $("#outputConfidence").value = String(attempt.confidence || 2);
+  }
+  renderOutputHistory();
+}
+
+async function loadOutputHistory() {
+  state.outputHistory = await api("/api/output/history?limit=50");
+  renderOutputHistory();
+}
+
+async function loadOutputTasks(articleId = state.selectedArticle?.id) {
+  if (!articleId) {
+    state.outputTaskSet = null;
+    state.outputTasks = [];
+    return;
+  }
+  const data = await api(`/api/output/tasks?article_id=${articleId}`);
+  state.outputTaskSet = data.set ? data : null;
+  state.outputTasks = data.tasks || [];
+  if (state.activeOutputTaskIndex >= state.outputTasks.length) state.activeOutputTaskIndex = 0;
+}
+
+async function startOutputTraining(forceNew = false) {
+  if (!state.selectedArticle) return toast("先选择文章");
+  const data = await api(`/api/articles/${state.selectedArticle.id}/output-tasks`, {
+    method: "POST",
+    body: JSON.stringify({ force_new: forceNew }),
+  });
+  state.outputTaskSet = data;
+  state.outputTasks = data.tasks || [];
+  state.activeOutputTaskIndex = Math.max(0, state.outputTasks.findIndex(task => !task.attempt_count));
+  state.outputStartedAt = Date.now();
+  await loadOutputHistory();
+  setView("output");
+  renderOutput();
+  if (!state.outputTasks.some(task => ["en_to_zh", "zh_to_en"].includes(task.task_type))) {
+    toast("当前没有对齐译文，先生成摘要和个人表达；翻译后可新建一组");
+  }
+}
+
+async function submitOutputResponse() {
+  const task = state.outputTasks[state.activeOutputTaskIndex];
+  const response = $("#outputResponse")?.value.trim() || "";
+  if (!task || !response) return toast("先写下你的表达");
+  const data = await api("/api/output-attempts", {
+    method: "POST",
+    body: JSON.stringify({
+      task_id: task.id,
+      response,
+      elapsed_seconds: Math.max(0, Math.round((Date.now() - state.outputStartedAt) / 1000)),
+      hint_used: $("#outputHintUsed").checked,
+      confidence: Number($("#outputConfidence").value),
+    }),
+  });
+  state.outputDrafts[task.id] = response;
+  if (data.plan) applyDailyPlan(data.plan);
+  await Promise.all([loadOutputTasks(), loadOutputHistory()]);
+  state.outputStartedAt = Date.now();
+  renderOutput();
+  toast("已保存输出并显示可确定的检查项");
+}
+
+async function saveOutputSelfReview(attemptId) {
+  const data = await api(`/api/output-attempts/${attemptId}/self-review`, {
+    method: "POST",
+    body: JSON.stringify({
+      ratings: {
+        information: Number($("#selfReviewInformation").value),
+        naturalness: Number($("#selfReviewNaturalness").value),
+        chunk_use: Number($("#selfReviewChunk").value),
+      },
+      note: $("#selfReviewNote").value.trim(),
+    }),
+  });
+  state.outputHistory.attempts = state.outputHistory.attempts.map(item => item.id === data.attempt.id ? data.attempt : item);
+  renderOutput();
+  toast("自评已保存");
+}
+
+async function saveOutputReviewItem(attemptId) {
+  await api(`/api/output-attempts/${attemptId}/save-review-item`, { method: "POST", body: "{}" });
+  await Promise.all([loadOutputHistory(), loadCards(), loadReviews(), loadToday()]);
+  renderAll();
+  toast("参考表达已进入复习队列");
+}
+
+async function markSelectedArticleRead() {
+  if (!state.selectedArticle) return toast("先选择文章");
+  const data = await api(`/api/articles/${state.selectedArticle.id}/read`, { method: "POST", body: "{}" });
+  if (data.plan) applyDailyPlan(data.plan);
+  toast(data.recorded ? `已记录 ${data.word_count} 个阅读词` : "今天已经记录过这篇文章");
 }
 
 function renderQuizSource() {
@@ -1860,6 +2066,7 @@ function renderAll() {
   renderDashboard();
   renderArticles();
   renderReader();
+  renderOutput();
   renderQuizzes();
   renderQuizSource();
   renderCards();
@@ -1966,6 +2173,9 @@ async function saveLearnerSettings() {
       daily_tasks: dailyTasks,
       daily_targets: Object.fromEntries(
         [...document.querySelectorAll("[data-daily-target]")].map(input => [input.dataset.dailyTarget, Number(input.value) || 1]),
+      ),
+      daily_metric_targets: Object.fromEntries(
+        [...document.querySelectorAll("[data-daily-metric-target]")].map(input => [input.dataset.dailyMetricTarget, Number(input.value) || 1]),
       ),
       short_goal: $("#shortGoal").value.trim(),
       short_goal_date: $("#shortGoalDate").value,
@@ -2395,6 +2605,14 @@ async function startDailyPlan() {
     renderQuizSource();
     return;
   }
+  if (firstTask === "output") {
+    if (!state.selectedArticle) {
+      const first = state.today.lanes?.[0]?.article;
+      if (first) await openArticle(first.id);
+    }
+    await startOutputTraining(false);
+    return;
+  }
   const first = state.today.lanes?.[0]?.article;
   if (first) await openArticle(first.id);
   else setView("articles");
@@ -2448,7 +2666,7 @@ async function openArticle(id) {
   state.selectedArticle = data.article;
   state.evidenceReplay = "";
   state.analysis = data.analysis;
-  await loadQuizzes();
+  await Promise.all([loadQuizzes(), loadOutputTasks(id)]);
   setView("reader");
   renderAll();
 }
@@ -2700,6 +2918,7 @@ async function toggleArticleTranslation() {
   renderReader();
   renderArticles();
   renderQuizSource();
+  renderOutput();
 }
 
 async function saveArticleContent(id) {
@@ -3107,6 +3326,10 @@ document.addEventListener("click", async event => {
       renderQuizzes();
       renderQuizSource();
     }
+    if (button.dataset.view === "output") {
+      await Promise.all([loadOutputTasks(), loadOutputHistory()]);
+      renderOutput();
+    }
     if (button.id === "refreshAllBtn") await boot();
     if (button.id === "saveLearnerSettingsBtn") await saveLearnerSettings();
     if (button.id === "createBackupBtn") await createDataBackup();
@@ -3156,7 +3379,7 @@ document.addEventListener("click", async event => {
         limit: Number(button.dataset.startPrescription) || 5,
       });
     }
-    if (button.id === "toggleTranslationBtn" || button.id === "quizTranslationBtn" || button.dataset.toggleTranslation) await toggleArticleTranslation();
+    if (button.id === "toggleTranslationBtn" || button.id === "quizTranslationBtn" || button.id === "outputTranslationBtn" || button.dataset.toggleTranslation) await toggleArticleTranslation();
     if (button.id === "saveTranslationBtn") await saveTranslation();
     if (button.id === "translateArticleBtn") await translateArticle();
     if (button.dataset.translateArticle) await translateArticle(Number(button.dataset.translateArticle));
@@ -3190,6 +3413,29 @@ document.addEventListener("click", async event => {
     if (button.id === "importEpubBtn") await importEpub();
     if (button.id === "openEpubChapterBtn") await openEpubChapter();
     if (button.id === "analyzeBtn") await analyzeArticle();
+    if (button.id === "markArticleReadBtn") await markSelectedArticleRead();
+    if (button.id === "startOutputBtn" || button.dataset.startOutput !== undefined) await startOutputTraining(false);
+    if (button.id === "regenerateOutputBtn" && window.confirm("新建一组输出任务？旧作答仍会保留在历史记录中。")) await startOutputTraining(true);
+    if (button.dataset.outputTaskIndex !== undefined) {
+      state.activeOutputTaskIndex = Number(button.dataset.outputTaskIndex);
+      state.outputStartedAt = Date.now();
+      renderOutput();
+    }
+    if (button.id === "submitOutputBtn") await submitOutputResponse();
+    if (button.dataset.saveOutputSelfReview) await saveOutputSelfReview(Number(button.dataset.saveOutputSelfReview));
+    if (button.dataset.saveOutputReview) await saveOutputReviewItem(Number(button.dataset.saveOutputReview));
+    if (button.dataset.outputHistoryTask) {
+      if (Number(state.selectedArticle?.id) !== Number(button.dataset.outputHistoryArticle)) {
+        const data = await api(`/api/articles/${button.dataset.outputHistoryArticle}?exam=${encodeURIComponent(state.style)}`);
+        state.selectedArticle = data.article;
+        state.analysis = data.analysis;
+        await loadOutputTasks(data.article.id);
+      }
+      const index = state.outputTasks.findIndex(task => task.id === Number(button.dataset.outputHistoryTask));
+      if (index >= 0) state.activeOutputTaskIndex = index;
+      setView("output");
+      renderOutput();
+    }
     if (button.id === "generateQuizBtn") await generatePassagePractice();
     if (button.id === "generatePracticeBtn") await generateQuizzes();
     if (button.id === "generateFullPaperBtn") await generateFullPaper();
@@ -3277,6 +3523,10 @@ document.addEventListener("click", async event => {
       renderAll();
     }
     if (button.dataset.openArticle) await openArticle(button.dataset.openArticle);
+    if (button.dataset.outputArticle) {
+      await openArticle(button.dataset.outputArticle);
+      await startOutputTraining(false);
+    }
     if (button.dataset.replayEvidence) await replayEvidence(Number(button.dataset.replayEvidence), button.dataset.replayText || "");
     if (button.dataset.selectArticle) {
       state.selectedPoolArticleId = Number(button.dataset.selectArticle);
@@ -3411,6 +3661,10 @@ $("#quizSessionMode").addEventListener("change", async event => {
 });
 
 document.addEventListener("input", event => {
+  if (event.target.matches("[data-output-draft]")) {
+    state.outputDrafts[Number(event.target.dataset.outputDraft)] = event.target.value;
+    return;
+  }
   if (!event.target.matches("[data-typed-quiz]")) return;
   const quizId = Number(event.target.dataset.typedQuiz);
   state.quizSession.answers[quizId] = event.target.value;
@@ -3495,13 +3749,14 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 async function boot() {
   await loadHealth();
   await loadActivePracticeData();
-  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), loadOutputHistory(), searchLexicon("", { open: false, history: false })]);
   const restoredServerRun = await restoreServerPracticeRun();
   if (!restoredServerRun && !state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);
     state.selectedArticle = data.article;
     state.analysis = data.analysis;
   }
+  if (state.selectedArticle) await loadOutputTasks(state.selectedArticle.id);
   if (!restoredServerRun) {
     await loadQuizzes();
     if (!state.quizzes.length && state.selectedArticle) {

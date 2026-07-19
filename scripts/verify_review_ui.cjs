@@ -39,7 +39,7 @@ async function run() {
   let browser;
   try {
     const version = await waitForServer();
-    if (version.app_version !== "0.8.0-alpha.23.0.7" || version.database_schema_version !== 13) {
+    if (version.app_version !== "0.8.0-alpha.24.0" || version.database_schema_version !== 14) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const cardResponse = await fetch(`${baseUrl}/api/cards`, {
@@ -75,8 +75,10 @@ async function run() {
     if (sidebarPosition !== "fixed") failures.push(`sidebar is not fixed: ${sidebarPosition}`);
     const columns = await page.locator(".review-workspace").evaluate(element => getComputedStyle(element).gridTemplateColumns);
     if (columns.split(" ").length < 2) failures.push(`review workspace is not split: ${columns}`);
-    if (Number(await page.locator("#reviewDueCount").innerText()) < 1) failures.push("due review count is empty");
+    const initialDueCount = Number(await page.locator("#reviewDueCount").innerText());
+    if (initialDueCount < 1) failures.push("due review count is empty");
     if (!(await page.locator("#reviewQueue").innerText()).includes("evidence-based practice")) failures.push("seed phrase is missing from queue");
+    if (!(await page.locator("#reviewDetail h2").innerText()).includes("evidence-based practice")) failures.push("seed phrase is not selected");
 
     await page.click("#revealReviewAnswerBtn");
     if (await page.locator("[data-rate-review]").count() !== 4) failures.push("four review ratings are not visible");
@@ -85,10 +87,10 @@ async function run() {
     await page.screenshot({ path: path.join(root, "artifacts", "review-workspace-desktop.png"), fullPage: true });
 
     await page.click('[data-rate-review="good"]');
-    await page.waitForFunction(() => document.querySelector("#reviewDueCount")?.textContent.trim() === "0");
+    await page.waitForFunction(expected => Number(document.querySelector("#reviewDueCount")?.textContent.trim()) === expected, initialDueCount - 1);
     if (await page.locator("#undoReviewBtn").isDisabled()) failures.push("undo did not become available");
     await page.click("#undoReviewBtn");
-    await page.waitForFunction(() => document.querySelector("#reviewDueCount")?.textContent.trim() === "1");
+    await page.waitForFunction(expected => Number(document.querySelector("#reviewDueCount")?.textContent.trim()) === expected, initialDueCount);
   } finally {
     if (browser) await browser.close();
     server.kill();
@@ -96,7 +98,7 @@ async function run() {
     removeDatabase();
   }
   if (failures.length) throw new Error(failures.join("\n"));
-  process.stdout.write("Review desktop workflow passed on isolated schema 7.\n");
+  process.stdout.write("Review desktop workflow passed on isolated schema 14.\n");
 }
 
 run().catch(error => {
