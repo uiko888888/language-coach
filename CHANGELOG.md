@@ -23,6 +23,8 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 ### Fixed
 
 - Fixed the Kaikki PowerShell preparation switch colliding with its case-insensitive internal path variable.
+- Fixed absolute `-OutputDirectory` handling so large dictionary sources can be placed on a secondary drive.
+- Added an optional low-memory aria2 downloader with a configurable 1-8 connection limit for large Kaikki files.
 
 ### Verification
 

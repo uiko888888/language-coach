@@ -4,6 +4,10 @@ param(
     [switch]$Tatoeba,
     [switch]$Wordfreq,
     [switch]$Force,
+    [ValidateSet("curl", "aria2")]
+    [string]$Downloader = "curl",
+    [ValidateRange(1, 8)]
+    [int]$ParallelConnections = 2,
     [ValidateRange(25000, 1000000)]
     [int]$FrequencyLimit = 200000,
     [ValidateRange(25000, 200000)]
@@ -16,7 +20,11 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $root
-$output = [IO.Path]::GetFullPath((Join-Path $root $OutputDirectory))
+$output = if ([IO.Path]::IsPathRooted($OutputDirectory)) {
+    [IO.Path]::GetFullPath($OutputDirectory)
+} else {
+    [IO.Path]::GetFullPath((Join-Path $root $OutputDirectory))
+}
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 
 function Assert-Target([string]$Path) {
@@ -104,11 +112,24 @@ function Invoke-ResumableKaikkiDownload([string]$Url, [string]$Target) {
         }
     }
 
-    $curlArguments = @(
-        "--fail", "--location", "--retry", "8", "--retry-delay", "2", "--retry-all-errors",
-        "--connect-timeout", "30", "--continue-at", "-", "--output", $partial, $Url
-    )
-    & curl.exe @curlArguments
+    if ($Downloader -eq "aria2") {
+        if (-not (Get-Command aria2c -ErrorAction SilentlyContinue)) {
+            throw "Downloader aria2 selected but aria2c is not installed. Install it with: winget install --id aria2.aria2 -e"
+        }
+        $aria2Arguments = @(
+            "--continue=true", "--allow-overwrite=true", "--auto-file-renaming=false",
+            "--max-connection-per-server=$ParallelConnections", "--split=$ParallelConnections",
+            "--min-split-size=1M", "--file-allocation=none", "--dir=$([IO.Path]::GetDirectoryName($partial))",
+            "--out=$([IO.Path]::GetFileName($partial))", $Url
+        )
+        & aria2c @aria2Arguments
+    } else {
+        $curlArguments = @(
+            "--fail", "--location", "--retry", "8", "--retry-delay", "2", "--retry-all-errors",
+            "--connect-timeout", "30", "--continue-at", "-", "--output", $partial, $Url
+        )
+        & curl.exe @curlArguments
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "Download interrupted after $((Get-Item -LiteralPath $partial -ErrorAction SilentlyContinue).Length) bytes. Re-run the same command to resume: $Url"
     }
@@ -129,6 +150,9 @@ if ($Kaikki) {
     $kaikkiPath = Join-Path $output "kaikki-english$extension"
     $targets = Join-Path $output "kaikki-target-words.txt"
     $frequency = Join-Path $output "wordfreq-en.tsv"
+    if (-not (Test-FrequencyTsv $frequency)) {
+        $frequency = Join-Path $root "artifacts\dictionary-sources\wordfreq-en.tsv"
+    }
     if (-not (Test-FrequencyTsv $frequency)) {
         throw "Validated wordfreq TSV required before building Kaikki targets: $frequency"
     }

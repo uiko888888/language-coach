@@ -44,6 +44,19 @@ The default URL is the official English JSONL endpoint. If Kaikki changes the da
 
 The downloader keeps interrupted data as `.part`, resumes with `curl`, and promotes the source only after every JSON line and at least 25,000 English records validate. It does not modify the production database.
 
+Large sources may be stored on another local drive. `-OutputDirectory` accepts an absolute path, for example `D:\language-coach-dictionary`; pass the resulting absolute source path to the candidate importer.
+
+For a faster, still low-memory download, install aria2 and use two connections:
+
+```powershell
+winget install --id aria2.aria2 -e
+.\scripts\prepare_dictionary_sources.ps1 `
+  -Kaikki `
+  -Downloader aria2 `
+  -ParallelConnections 2 `
+  -OutputDirectory "D:\language-coach-dictionary"
+```
+
 Run the filtered import and all production gates against an isolated database candidate first:
 
 ```powershell
