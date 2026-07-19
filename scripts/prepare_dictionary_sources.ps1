@@ -118,6 +118,8 @@ function Invoke-ResumableKaikkiDownload([string]$Url, [string]$Target) {
         }
         $aria2Arguments = @(
             "--continue=true", "--allow-overwrite=true", "--auto-file-renaming=false",
+            "--check-integrity=true", "--max-tries=20", "--retry-wait=10",
+            "--timeout=60", "--connect-timeout=30", "--lowest-speed-limit=10K",
             "--max-connection-per-server=$ParallelConnections", "--split=$ParallelConnections",
             "--min-split-size=1M", "--file-allocation=none", "--dir=$([IO.Path]::GetDirectoryName($partial))",
             "--out=$([IO.Path]::GetFileName($partial))", $Url
