@@ -45,12 +45,13 @@ def main() -> int:
             result = None
             if queue["items"]:
                 result = rate_review_item(conn, queue["items"][0]["id"], "good", now)
-                undo_last_review(conn, now)
+                undone = undo_last_review(conn, now)
             after_count = conn.execute("SELECT COUNT(*) FROM review_items").fetchone()[0]
             after_logs = conn.execute("SELECT COUNT(*) FROM review_logs").fetchone()[0]
 
-        if integrity != "ok" or before_count != after_count or before_logs != after_logs:
-            raise SystemExit("FSRS replay changed counts or failed SQLite integrity validation")
+        expected_logs = before_logs + (1 if result else 0)
+        if integrity != "ok" or before_count != after_count or after_logs != expected_logs:
+            raise SystemExit("FSRS replay failed SQLite integrity or review-count validation")
         print({
             "database_copy": str(replay_db),
             "integrity": integrity,
@@ -60,7 +61,8 @@ def main() -> int:
             "fsrs": True,
             "sample_rating": result["rating"] if result else None,
             "sample_scheduler": result["item"]["scheduler"] if result else fsrs_adapter.FSRS_ID,
-            "rollback_verified": True,
+            "rollback_verified": bool(result and undone),
+            "audit_log_retained": after_logs == expected_logs,
         })
     return 0
 
