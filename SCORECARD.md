@@ -6,24 +6,25 @@ The goal is to raise every major product dimension above 6/10 through evidence, 
 
 | Dimension | Current | 6/10 acceptance gate | Planned release |
 | --- | ---: | --- | --- |
-| Dictionary and chunks | 5.9 | Import licensed Kaikki, Tatoeba and frequency subsets; pass polysemy, phrase, Chinese-query and attribution audit | alpha.22.2 |
-| Review scheduling | 5.8 | Replace the versioned baseline with validated FSRS; add retention target, suspension/reset and real-log calibration | alpha.23.1 |
-| Listening and clip study | 2.0 | Local media plus SRT/VTT, cue sync, loop, speed, bilingual cue and phrase capture | alpha.24 |
-| Interest and fun | 4.8 | Clip workflow, editable challenge intensity, meaningful mastery rewards and seven-day retention evidence | alpha.24 then validation |
-| Other exams | 4.5 | At least CET and Kaoyan have independent paper structures, validated answer rules and official-format boundaries | alpha.25 |
-| Accessibility | 4.8 | Keyboard-only core loop, visible focus, semantic labels, contrast audit and desktop/mobile browser checks | alpha.26 |
+| Dictionary and chunks | 5.9 | Import licensed Kaikki, Tatoeba and frequency subsets; pass polysemy, phrase, Chinese-query and attribution audit | alpha.24.3 |
+| Review scheduling | 5.8 | Replace the versioned baseline with validated FSRS; add retention target, suspension/reset and real-log calibration | alpha.24.4 |
+| Listening and clip study | 2.0 | Local media plus SRT/VTT, cue sync, loop, speed, bilingual cue and phrase capture | v0.9.0-alpha.1 |
+| Interest and fun | 4.8 | Contextual text/speaking output, editable challenge intensity and seven-day repeated-output evidence | alpha.24.0-alpha.24.2 |
+| Other exams | 4.5 | At least CET and Kaoyan have independent paper structures, validated answer rules and official-format boundaries | v0.9 after clip foundation |
+| Accessibility | 4.8 | Keyboard-only core loop, visible focus, semantic labels, contrast audit and desktop browser checks | beta.1 |
 | Public delivery | 4.0 | Account ownership, server authorization, cloud database, migration, export/delete and deploy runbook | v0.10.0 |
 
 ## Execution Order
 
-1. alpha.22.1: mature dictionary query workflow without commercial-content copying.
-2. alpha.22.2: real open dictionary data and quality audit.
-3. alpha.23.0: unified review data, due queue, recall, rating and undo baseline.
-4. alpha.23.1: validated FSRS adapter and retention controls.
-5. alpha.24: subtitle clip workspace and interest-mode differentiation.
-6. alpha.25: CET/Kaoyan independent exam structures and question validation.
-7. alpha.26: accessibility, visual consistency and browser E2E baseline.
-8. v0.10.0: multi-user cloud delivery and security boundary.
+1. alpha.23.0.7: complete the representative 20-article extraction review.
+2. alpha.24.0: contextual text output and review integration.
+3. alpha.24.1: evidence-aware semantic feedback and synonym usage contrasts.
+4. alpha.24.2: local recording, retelling and opinion-speaking loop.
+5. alpha.24.3: real open dictionary data and quality audit.
+6. alpha.24.4: validated FSRS adapter and retention controls.
+7. beta.1: export, core E2E, accessibility, migration and recovery acceptance.
+8. v0.9.0: subtitle clip study and broader exam structures.
+9. v0.10.0: multi-user cloud delivery and security boundary.
 
 ## Scoring Rules
 
