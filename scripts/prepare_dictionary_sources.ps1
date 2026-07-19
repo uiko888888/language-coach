@@ -1,10 +1,15 @@
 [CmdletBinding()]
 param(
+    [switch]$Kaikki,
     [switch]$Tatoeba,
     [switch]$Wordfreq,
     [switch]$Force,
     [ValidateRange(25000, 1000000)]
     [int]$FrequencyLimit = 200000,
+    [ValidateRange(25000, 200000)]
+    [int]$KaikkiTargetLimit = 60000,
+    [ValidatePattern('^https://kaikki\.org/')]
+    [string]$KaikkiUrl = "https://kaikki.org/dictionary/English/kaikki.org-dictionary-English.jsonl",
     [string]$OutputDirectory = "artifacts\dictionary-sources"
 )
 
@@ -33,6 +38,14 @@ function Test-FrequencyTsv([string]$Path) {
         return $false
     }
     & python .\scripts\validate_dictionary_source.py --kind frequency --path $Path --quiet
+    return $LASTEXITCODE -eq 0
+}
+
+function Test-KaikkiJsonl([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $false
+    }
+    & python .\scripts\validate_dictionary_source.py --kind kaikki --path $Path --quiet
     return $LASTEXITCODE -eq 0
 }
 
@@ -71,11 +84,59 @@ function Invoke-ResumableArchiveDownload([string]$Url, [string]$Target) {
     Write-Output "Downloaded and verified: $Target"
 }
 
-if (-not $Tatoeba -and -not $Wordfreq) {
-    Write-Output "No download selected. Use -Tatoeba and/or -Wordfreq."
-    Write-Output "Kaikki remains manual because the official dump can be multiple gigabytes:"
-    Write-Output "https://kaikki.org/dictionary/English/index.html"
+function Invoke-ResumableKaikkiDownload([string]$Url, [string]$Target) {
+    $partial = "$Target.part"
+    if ($Force) {
+        Remove-Item -LiteralPath $Target -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
+    }
+    elseif (Test-KaikkiJsonl $Target) {
+        Write-Output "Verified existing source: $Target"
+        return
+    }
+    elseif (Test-Path -LiteralPath $Target) {
+        if ((Test-Path -LiteralPath $partial) -and
+            (Get-Item -LiteralPath $partial).Length -ge (Get-Item -LiteralPath $Target).Length) {
+            Remove-Item -LiteralPath $Target -Force
+        }
+        else {
+            Move-Item -LiteralPath $Target -Destination $partial -Force
+        }
+    }
+
+    $curlArguments = @(
+        "--fail", "--location", "--retry", "8", "--retry-delay", "2", "--retry-all-errors",
+        "--connect-timeout", "30", "--continue-at", "-", "--output", $partial, $Url
+    )
+    & curl.exe @curlArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Download interrupted after $((Get-Item -LiteralPath $partial -ErrorAction SilentlyContinue).Length) bytes. Re-run the same command to resume: $Url"
+    }
+    if (-not (Test-KaikkiJsonl $partial)) {
+        throw "Downloaded Kaikki JSONL failed full validation and remains available for inspection: $partial"
+    }
+    Move-Item -LiteralPath $partial -Destination $Target -Force
+    Write-Output "Downloaded and verified: $Target"
+}
+
+if (-not $Kaikki -and -not $Tatoeba -and -not $Wordfreq) {
+    Write-Output "No download selected. Use -Kaikki, -Tatoeba and/or -Wordfreq."
     exit 0
+}
+
+if ($Kaikki) {
+    $extension = if ($KaikkiUrl.EndsWith(".gz")) { ".jsonl.gz" } else { ".jsonl" }
+    $kaikki = Join-Path $output "kaikki-english$extension"
+    $targets = Join-Path $output "kaikki-target-words.txt"
+    $frequency = Join-Path $output "wordfreq-en.tsv"
+    if (-not (Test-FrequencyTsv $frequency)) {
+        throw "Validated wordfreq TSV required before building Kaikki targets: $frequency"
+    }
+    python .\scripts\build_kaikki_target_words.py --frequency $frequency --output $targets --limit $KaikkiTargetLimit
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to build Kaikki target words."
+    }
+    Invoke-ResumableKaikkiDownload $KaikkiUrl $kaikki
 }
 
 if ($Tatoeba) {

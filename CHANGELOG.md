@@ -11,6 +11,7 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 - Added a versioned open-dictionary source manifest and explicit source preparation commands.
 - Added an executable quality audit for source metadata, minimum row counts, polysemy, phrases, Chinese reverse lookup, attributable examples and frequency ordering.
 - Added a dictionary UI quality state that distinguishes imported rows from a validated dataset.
+- Added resumable official Kaikki JSONL/GZ preparation, full-stream validation and a reproducible 60,000-word frequency target list that includes every quality-gate term.
 
 ### Changed
 
@@ -20,7 +21,7 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ### Verification
 
-- Passed 177 Python unit/integration tests and the isolated lexicon desktop E2E on schema 16.
+- Passed 179 Python unit/integration tests and the isolated lexicon desktop E2E on schema 16.
 - The real database now contains 200,000 pinned wordfreq 3.1.1 rows and 74,545 attributable Tatoeba English-Chinese pairs. SQLite integrity, FTS alignment, author retention, licensing, all five example probes and all three frequency-order probes pass.
 - Tatoeba's `\N` missing-author sentinel is rejected by both the importer and the independent quality audit; 2,799 previously accepted unowned pairs were removed during the validated refresh.
 - The strict audit is now `8/22`. Kaikki remains uninstalled, so polysemy, phrase and Chinese reverse-lookup groups still fail and this is not yet a completed `alpha.24.3` release.

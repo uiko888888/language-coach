@@ -28,13 +28,33 @@ Purpose: pronunciation, forms, English glosses, Chinese translations when presen
 
 Source: [Kaikki English dictionary extract](https://kaikki.org/dictionary/English/index.html). Wiktionary attribution and CC BY-SA/GFDL obligations apply.
 
-The importer accepts JSONL or JSONL.GZ and streams records instead of loading the dump into memory:
+The importer accepts JSONL or JSONL.GZ and streams records instead of loading the dump into memory. Prepare a reproducible 60,000-word target list and resumably download the official dump with:
 
 ```powershell
-python .\scripts\import_kaikki.py --jsonl .\artifacts\kaikki-english.jsonl.gz
+.\scripts\prepare_dictionary_sources.ps1 -Kaikki
 ```
 
-For a controlled first import, create a UTF-8 target list and filter the dump:
+The default URL is the official English JSONL endpoint. If Kaikki changes the dated download link, copy the current `kaikki.org` link from the discovery page and pass it explicitly:
+
+```powershell
+.\scripts\prepare_dictionary_sources.ps1 `
+  -Kaikki `
+  -KaikkiUrl "https://kaikki.org/path/from-the-official-index.jsonl.gz"
+```
+
+The downloader keeps interrupted data as `.part`, resumes with `curl`, and promotes the source only after every JSON line and at least 25,000 English records validate. It does not modify the production database.
+
+Run the filtered import against a database candidate first:
+
+```powershell
+python .\scripts\import_kaikki.py `
+  --jsonl .\artifacts\dictionary-sources\kaikki-english.jsonl `
+  --words .\artifacts\dictionary-sources\kaikki-target-words.txt `
+  --database .\artifacts\kaikki-candidate.sqlite3 `
+  --source-version downloaded-2026-07-19
+```
+
+For a custom controlled import, provide another UTF-8 target list:
 
 ```powershell
 python .\scripts\import_kaikki.py `
