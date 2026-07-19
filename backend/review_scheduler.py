@@ -4,6 +4,11 @@ import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
+try:
+    from .fsrs_adapter import FSRS_ID, enabled as fsrs_enabled, schedule_review as schedule_review_fsrs
+except ImportError:
+    from fsrs_adapter import FSRS_ID, enabled as fsrs_enabled, schedule_review as schedule_review_fsrs
+
 
 SCHEDULER_ID = "adaptive-interval-v1"
 UNDO_WINDOW_MINUTES = 10
@@ -11,7 +16,7 @@ RATINGS = ("again", "hard", "good", "easy")
 RATING_LABELS = {"again": "忘记", "hard": "困难", "good": "记得", "easy": "轻松"}
 SCHEDULE_FIELDS = (
     "state", "due_at", "interval_days", "ease_factor", "repetitions", "lapses",
-    "last_review_at", "scheduler", "updated_at",
+    "last_review_at", "scheduler", "updated_at", "fsrs_state_json",
 )
 
 
@@ -44,7 +49,8 @@ def ensure_review_schema(conn: sqlite3.Connection) -> None:
              repetitions INTEGER NOT NULL DEFAULT 0,
              lapses INTEGER NOT NULL DEFAULT 0,
              last_review_at TEXT NOT NULL DEFAULT '',
-             scheduler TEXT NOT NULL DEFAULT 'adaptive-interval-v1',
+           scheduler TEXT NOT NULL DEFAULT 'adaptive-interval-v1',
+             fsrs_state_json TEXT NOT NULL DEFAULT '',
              created_at TEXT NOT NULL,
              updated_at TEXT NOT NULL,
              UNIQUE(learner_key, item_type, item_id)
@@ -159,7 +165,17 @@ def schedule_review(item: sqlite3.Row | dict, rating: str, reviewed_at: datetime
         "last_review_at": iso(reviewed_at),
         "scheduler": SCHEDULER_ID,
         "updated_at": iso(reviewed_at),
+        "fsrs_state_json": source.get("fsrs_state_json") or "",
     }
+
+
+def schedule_for_item(item: sqlite3.Row | dict, rating: str, reviewed_at: datetime) -> dict:
+    if fsrs_enabled():
+        try:
+            return schedule_review_fsrs(dict(item), rating, reviewed_at)
+        except (RuntimeError, TypeError, ValueError, KeyError):
+            pass
+    return schedule_review(item, rating, reviewed_at)
 
 
 def interval_label(after: dict, reviewed_at: datetime) -> str:
@@ -175,7 +191,7 @@ def interval_label(after: dict, reviewed_at: datetime) -> str:
 
 def review_choices(item: sqlite3.Row | dict, now: datetime) -> list[dict]:
     return [
-        {"rating": rating, "label": RATING_LABELS[rating], "interval": interval_label(schedule_review(item, rating, now), now)}
+        {"rating": rating, "label": RATING_LABELS[rating], "interval": interval_label(schedule_for_item(item, rating, now), now)}
         for rating in RATINGS
     ]
 
@@ -261,7 +277,7 @@ def review_queue(
     return {
         "items": [review_item_payload(row, current) for row in rows],
         "summary": {**counts, "due": sum(counts.values()), "next_due": next_due, "kind": kind},
-        "scheduler": {"id": SCHEDULER_ID, "fsrs": False, "description": "可替换的保守间隔调度；当前不是 FSRS。"},
+        "scheduler": {"id": FSRS_ID if fsrs_enabled() else SCHEDULER_ID, "fsrs": fsrs_enabled(), "description": "FSRS 6.3.1" if fsrs_enabled() else "可替换的保守间隔调度；当前不是 FSRS。"},
         "undo": review_undo_status(conn, current, learner_key),
     }
 
@@ -301,7 +317,7 @@ def rate_review_item(
     if parse_time(row["due_at"], current) > current:
         raise ValueError("Review item is not due yet")
     before = schedule_snapshot(row)
-    after = schedule_review(row, rating, current)
+    after = schedule_for_item(row, rating, current)
     assignments = ", ".join(f"{field} = ?" for field in SCHEDULE_FIELDS)
     conn.execute(
         f"UPDATE review_items SET {assignments} WHERE id = ?",

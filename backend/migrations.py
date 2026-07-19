@@ -176,6 +176,10 @@ def _review_schedule(conn: sqlite3.Connection) -> None:
     backfill_review_items(conn, _utc_now())
 
 
+def _fsrs_review_state(conn: sqlite3.Connection) -> None:
+    _ensure_column(conn, "review_items", "fsrs_state_json", "TEXT NOT NULL DEFAULT ''")
+
+
 SCRIPT_NOISE_PATTERN = re.compile(
     r"(?i)(?:\bGF_AJAX_POSTBACK\b|\bgform_confirmation_loaded\b|\bgform_pre_post_render\b|"
     r"\bgformRedirect\b|\bgform_wrapper_\d+\b|\bconfirmation_content\b|window\[['\"]gf_|jQuery\(['\"]#gform)"
@@ -682,6 +686,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     (14, "add contextual output training", _contextual_output_training),
     (15, "add semantic output feedback", _semantic_output_feedback),
     (16, "add local speaking output", _speaking_output_training),
+    (17, "add optional FSRS review state", _fsrs_review_state),
 )
 
 
