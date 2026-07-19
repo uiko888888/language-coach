@@ -27,29 +27,35 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 try:
+    from .ai_feedback import feedback_provider_status, request_semantic_feedback
     from .backups import create_backup, list_backups, restore_backup
     from .content_extraction import BLOCK_LABELS, adapter_catalog, adapter_for_source, extract_source_content, suggest_annotation_blocks
     from .lexical_data import lookup_lexical_layers, search_open_entries
     from .migrations import run_migrations
     from .output_training import (
         create_output_task_set, latest_output_task_set, output_attempt_payload,
-        output_history, save_self_review, submit_output_attempt,
+        output_history, save_feedback_decision, save_self_review, save_semantic_feedback,
+        submit_output_attempt,
     )
     from .practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
     from .review_scheduler import ensure_review_item, rate_review_item, review_queue, undo_last_review
     from .versioning import SCHEMA_VERSION, app_version, version_payload
+    from .usage_contrasts import contrast_by_slug, contrast_catalog
 except ImportError:
+    from ai_feedback import feedback_provider_status, request_semantic_feedback
     from backups import create_backup, list_backups, restore_backup
     from content_extraction import BLOCK_LABELS, adapter_catalog, adapter_for_source, extract_source_content, suggest_annotation_blocks
     from lexical_data import lookup_lexical_layers, search_open_entries
     from migrations import run_migrations
     from output_training import (
         create_output_task_set, latest_output_task_set, output_attempt_payload,
-        output_history, save_self_review, submit_output_attempt,
+        output_history, save_feedback_decision, save_self_review, save_semantic_feedback,
+        submit_output_attempt,
     )
     from practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
     from review_scheduler import ensure_review_item, rate_review_item, review_queue, undo_last_review
     from versioning import SCHEMA_VERSION, app_version, version_payload
+    from usage_contrasts import contrast_by_slug, contrast_catalog
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -3647,26 +3653,43 @@ def daily_plan_snapshot(settings: dict | None = None, day: str = "") -> dict:
     }
 
 
-def save_output_review_item(conn: sqlite3.Connection, attempt_id: int) -> dict:
+def save_output_review_item(
+    conn: sqlite3.Connection,
+    attempt_id: int,
+    custom_term: str = "",
+    custom_context: str = "",
+    custom_note: str = "",
+) -> dict:
     attempt = output_attempt_payload(conn, attempt_id)
     if not attempt:
         raise ValueError("Output attempt not found")
-    existing = conn.execute(
-        """SELECT l.*, c.term, c.context FROM output_review_links l
-           JOIN cards c ON c.id = l.card_id WHERE l.attempt_id = ? AND l.link_type = 'reference'""",
-        (attempt_id,),
-    ).fetchone()
-    if existing:
-        return {"created": False, "card": dict(existing), "attempt": attempt}
-    if attempt["task_type"] == "zh_to_en":
-        context = attempt["reference_text"]
+    is_custom = bool(str(custom_term or "").strip())
+    if is_custom:
+        term = re.sub(r"\s+", " ", str(custom_term)).strip()
+        context = str(custom_context or attempt["source_text"] or attempt["reference_text"]).strip()
+        if not re.search(r"[A-Za-z]", term):
+            raise ValueError("The saved word, phrase, or sentence must contain English")
+        if len(term) > 500 or len(context) > 3000:
+            raise ValueError("The review item is too long")
+        link_type = "custom"
     else:
-        context = attempt["source_text"] or attempt["reference_text"]
-    matching_chunks = [
-        chunk for chunk in (attempt["target_chunks"] or [])
-        if str(chunk).strip() and str(chunk).casefold() in str(context).casefold()
-    ]
-    term = matching_chunks[0] if matching_chunks else context
+        existing = conn.execute(
+            """SELECT l.*, c.term, c.context FROM output_review_links l
+               JOIN cards c ON c.id = l.card_id WHERE l.attempt_id = ? AND l.link_type = 'reference'""",
+            (attempt_id,),
+        ).fetchone()
+        if existing:
+            return {"created": False, "card": dict(existing), "attempt": attempt}
+        if attempt["task_type"] == "zh_to_en":
+            context = attempt["reference_text"]
+        else:
+            context = attempt["source_text"] or attempt["reference_text"]
+        matching_chunks = [
+            chunk for chunk in (attempt["target_chunks"] or [])
+            if str(chunk).strip() and str(chunk).casefold() in str(context).casefold()
+        ]
+        term = matching_chunks[0] if matching_chunks else context
+        link_type = "reference"
     term = re.sub(r"\s+", " ", str(term)).strip()[:500]
     context = str(context or "").strip()[:3000]
     now = utc_now()
@@ -3678,14 +3701,20 @@ def save_output_review_item(conn: sqlite3.Connection, attempt_id: int) -> dict:
         card_id = int(card["id"])
         conn.execute(
             "UPDATE cards SET context = ?, source_article_id = ?, note = ?, updated_at = ? WHERE id = ?",
-            (context or card["context"], attempt["article_id"], f"输出复习 · {attempt['task_label']}", now, card_id),
+            (
+                context or card["context"], attempt["article_id"],
+                str(custom_note or f"输出复习 · {attempt['task_label']}").strip()[:500], now, card_id,
+            ),
         )
     else:
         cursor = conn.execute(
             """INSERT INTO cards
                (term, kind, context, source_article_id, status, note, created_at, updated_at)
                VALUES (?, 'phrase', ?, ?, 'new', ?, ?, ?)""",
-            (term, context, attempt["article_id"], f"输出复习 · {attempt['task_label']}", now, now),
+            (
+                term, context, attempt["article_id"],
+                str(custom_note or f"输出复习 · {attempt['task_label']}").strip()[:500], now, now,
+            ),
         )
         card_id = int(cursor.lastrowid)
         created = True
@@ -3693,11 +3722,29 @@ def save_output_review_item(conn: sqlite3.Connection, attempt_id: int) -> dict:
     ensure_review_item(conn, "card", card_id, now)
     conn.execute(
         """INSERT OR IGNORE INTO output_review_links (attempt_id, card_id, link_type, created_at)
-           VALUES (?, ?, 'reference', ?)""",
-        (attempt_id, card_id, now),
+           VALUES (?, ?, ?, ?)""",
+        (attempt_id, card_id, link_type, now),
     )
     saved = conn.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
     return {"created": created, "card": dict(saved), "attempt": output_attempt_payload(conn, attempt_id)}
+
+
+def usage_contrast_catalog_payload(conn: sqlite3.Connection, query: str = "") -> dict:
+    attempts = {
+        row["contrast_slug"]: {"attempts": row["attempts"], "correct": row["correct"]}
+        for row in conn.execute(
+            """SELECT contrast_slug, COUNT(*) AS attempts, COALESCE(SUM(correct), 0) AS correct
+               FROM usage_contrast_attempts GROUP BY contrast_slug"""
+        ).fetchall()
+    }
+    items = []
+    for contrast in contrast_catalog(query):
+        item = dict(contrast)
+        item.pop("answer_index", None)
+        item.pop("explanation", None)
+        item["history"] = attempts.get(item["slug"], {"attempts": 0, "correct": 0})
+        items.append(item)
+    return {"contrasts": items, "query": query, "source": "curated-v1"}
 
 
 def current_learner_level() -> str:
@@ -6074,6 +6121,13 @@ class App(BaseHTTPRequestHandler):
                 with db() as conn:
                     history = output_history(conn, limit)
                 return json_response(self, history)
+            if path == "/api/output/feedback/status":
+                return json_response(self, feedback_provider_status())
+            if path == "/api/output/contrasts":
+                search = query.get("query", [""])[0]
+                with db() as conn:
+                    catalog = usage_contrast_catalog_payload(conn, search)
+                return json_response(self, catalog)
             if path == "/api/browser/status":
                 return json_response(self, {"ok": True, "translation": translation_status()})
             if path == "/api/browser/token":
@@ -6351,6 +6405,35 @@ class App(BaseHTTPRequestHandler):
                 except (TypeError, ValueError) as exc:
                     return json_response(self, {"error": str(exc)}, 400)
                 return json_response(self, {"attempt": attempt})
+            match = re.fullmatch(r"/api/output-attempts/(\d+)/semantic-feedback", path)
+            if match:
+                attempt_id = int(match.group(1))
+                with db() as conn:
+                    attempt = output_attempt_payload(conn, attempt_id)
+                if not attempt:
+                    return json_response(self, {"error": "Output attempt not found"}, 404)
+                if attempt.get("semantic_feedback") and not payload.get("force_new"):
+                    return json_response(self, {"semantic_feedback": attempt["semantic_feedback"], "reused": True})
+                try:
+                    result = request_semantic_feedback(attempt)
+                    with db() as conn:
+                        feedback = save_semantic_feedback(conn, attempt_id, result)
+                except RuntimeError as exc:
+                    return json_response(self, {"error": str(exc), "status": feedback_provider_status()}, 503)
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 502)
+                return json_response(self, {"semantic_feedback": feedback}, 201)
+            match = re.fullmatch(r"/api/output-feedback/(\d+)/decision", path)
+            if match:
+                try:
+                    with db() as conn:
+                        feedback = save_feedback_decision(
+                            conn, int(match.group(1)), str(payload.get("decision") or ""),
+                            str(payload.get("revised_response") or ""),
+                        )
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, {"semantic_feedback": feedback})
             match = re.fullmatch(r"/api/output-attempts/(\d+)/save-review-item", path)
             if match:
                 try:
@@ -6359,6 +6442,43 @@ class App(BaseHTTPRequestHandler):
                 except ValueError as exc:
                     return json_response(self, {"error": str(exc)}, 404)
                 return json_response(self, result, 201 if result["created"] else 200)
+            match = re.fullmatch(r"/api/output-attempts/(\d+)/review-items", path)
+            if match:
+                try:
+                    with db() as conn:
+                        result = save_output_review_item(
+                            conn, int(match.group(1)), str(payload.get("term") or ""),
+                            str(payload.get("context") or ""), str(payload.get("note") or ""),
+                        )
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, result, 201 if result["created"] else 200)
+            match = re.fullmatch(r"/api/output/contrasts/([a-z0-9-]+)/attempt", path)
+            if match:
+                contrast = contrast_by_slug(match.group(1))
+                if not contrast:
+                    return json_response(self, {"error": "Usage contrast not found"}, 404)
+                try:
+                    selected_index = int(payload.get("selected_index"))
+                except (TypeError, ValueError):
+                    return json_response(self, {"error": "selected_index is required"}, 400)
+                if selected_index < 0 or selected_index >= len(contrast["options"]):
+                    return json_response(self, {"error": "Invalid contrast option"}, 400)
+                correct = selected_index == int(contrast["answer_index"])
+                with db() as conn:
+                    conn.execute(
+                        """INSERT INTO usage_contrast_attempts
+                           (contrast_slug, selected_index, correct, created_at) VALUES (?, ?, ?, ?)""",
+                        (contrast["slug"], selected_index, int(correct), utc_now()),
+                    )
+                    catalog = usage_contrast_catalog_payload(conn, contrast["terms"][0])
+                return json_response(self, {
+                    "correct": correct,
+                    "answer_index": contrast["answer_index"],
+                    "answer": contrast["options"][contrast["answer_index"]],
+                    "explanation": contrast["explanation"],
+                    "history": next(item["history"] for item in catalog["contrasts"] if item["slug"] == contrast["slug"]),
+                })
             match = re.fullmatch(r"/api/extraction/review-items/(\d+)/activity", path)
             if match:
                 elapsed = max(0, min(int(payload.get("elapsed_seconds") or 0), 300))

@@ -141,7 +141,7 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.24.0";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.24.1";', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
 
@@ -169,9 +169,13 @@ class ProfileUiContractTests(unittest.TestCase):
         for contract in (
             'data-view="output"', "function renderOutput()", "async function startOutputTraining(",
             'api("/api/output-attempts"', "data-save-output-self-review", "data-save-output-review",
-            "daily_metric_targets:",
+            "daily_metric_targets:", "data-request-semantic-feedback", "data-output-feedback-decision",
+            "data-save-output-custom-review", "data-contrast-answer", 'api("/api/output/feedback/status")',
+            'api("/api/output/contrasts")',
         ):
             self.assertIn(contract, self.html + self.js)
+        for selector in (".semantic-feedback-panel", ".custom-review-panel", ".usage-contrast-panel"):
+            self.assertIn(selector, self.css)
         self.assertIn("grid-template-columns: minmax(330px, 0.9fr) minmax(520px, 1.25fr)", self.css)
         responsive = self.css.split("@media (max-width: 980px)", 1)[1]
         self.assertNotIn(".output-workspace", responsive.split("@media (max-width: 720px)", 1)[0])

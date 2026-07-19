@@ -1,4 +1,5 @@
 const fs = require("fs");
+const http = require("http");
 const path = require("path");
 const { spawn, execFileSync } = require("child_process");
 const { chromium } = require("playwright");
@@ -7,6 +8,7 @@ const root = path.resolve(__dirname, "..");
 const port = 8774;
 const baseUrl = `http://127.0.0.1:${port}`;
 const database = path.join(root, "artifacts", "output-training-e2e.sqlite3");
+const aiPort = 8775;
 
 function removeDatabase() {
   for (const suffix of ["", "-shm", "-wal"]) {
@@ -38,17 +40,42 @@ async function post(url, body) {
 
 async function run() {
   removeDatabase();
+  const aiServer = http.createServer((_request, response) => {
+    const dimensions = Object.fromEntries(
+      ["information", "collocation", "register", "coherence", "naturalness"].map(key => [key, {
+        score: 4,
+        finding: "The response preserves the intended meaning.",
+        suggestion: "Keep the wording concise.",
+        evidence_quote: "",
+      }]),
+    );
+    const content = JSON.stringify({
+      summary: "Accurate reconstruction with a natural structure.",
+      dimensions,
+      revised_response: "Independent bookstores create welcoming spaces where readers discover unfamiliar writers.",
+    });
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({ choices: [{ message: { content } }] }));
+  });
+  await new Promise(resolve => aiServer.listen(aiPort, "127.0.0.1", resolve));
   const server = spawn("python", ["backend/server.py", String(port)], {
     cwd: root,
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, LANGUAGE_COACH_DB_PATH: database },
+    env: {
+      ...process.env,
+      LANGUAGE_COACH_DB_PATH: database,
+      OUTPUT_AI_PROVIDER: "openai-compatible",
+      OUTPUT_AI_API_URL: `http://127.0.0.1:${aiPort}/v1/chat/completions`,
+      OUTPUT_AI_API_KEY: "e2e-key",
+      OUTPUT_AI_MODEL: "e2e-model",
+    },
   });
   let browser;
   const failures = [];
   try {
     const version = await waitForServer();
-    if (version.app_version !== "0.8.0-alpha.24.0" || version.database_schema_version !== 14) {
+    if (version.app_version !== "0.8.0-alpha.24.1" || version.database_schema_version !== 15) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const body = [
@@ -99,7 +126,16 @@ async function run() {
     await page.click("[data-save-output-self-review]");
     await page.click("[data-save-output-review]");
     await page.waitForFunction(() => document.querySelector("[data-save-output-review]")?.disabled === true);
-    await page.screenshot({ path: path.join(root, "artifacts", "output-training-desktop.png"), fullPage: true });
+    await page.click("[data-request-semantic-feedback]");
+    await page.waitForFunction(() => document.querySelectorAll(".semantic-dimensions article").length === 5);
+    await page.click('[data-output-feedback-decision="keep"]');
+    await page.waitForFunction(() => document.querySelector('[data-output-feedback-decision="keep"]')?.classList.contains("active"));
+    await page.fill("#customReviewTerm", "create welcoming spaces");
+    await page.fill("#customReviewContext", reconstruction.reference_text);
+    await page.click("[data-save-output-custom-review]");
+    await page.click('[data-contrast-answer="say-tell-speak-talk"][data-contrast-index="1"]');
+    await page.waitForSelector(".contrast-result.correct");
+    await page.screenshot({ path: path.join(root, "artifacts", "output-feedback-desktop.png"), fullPage: true });
     await page.click('[data-view="reader"]');
     await page.click("#markArticleReadBtn");
     await page.waitForTimeout(150);
@@ -112,16 +148,24 @@ async function run() {
       "print(a[1])",
       "print(c.execute(\"SELECT COUNT(*) FROM output_review_links\").fetchone()[0])",
       "print(dict(c.execute(\"SELECT metric, value FROM daily_learning_metrics\").fetchall()))",
+      "print('semantic', c.execute(\"SELECT COUNT(*) FROM output_semantic_feedback\").fetchone()[0])",
+      "print('decisions', c.execute(\"SELECT COUNT(*) FROM output_feedback_decisions\").fetchone()[0])",
+      "print('contrasts', c.execute(\"SELECT COUNT(*) FROM usage_contrast_attempts\").fetchone()[0])",
+      "print('custom', c.execute(\"SELECT COUNT(*) FROM output_review_links WHERE link_type='custom'\").fetchone()[0])",
     ].join("; ")], { cwd: root, env: { ...process.env, LANGUAGE_COACH_DB_PATH: database } }).toString();
     if (!dbState.includes("Review the collocation next week.")) failures.push("self review was not persisted");
     if (!dbState.includes("'reading_words':") || !dbState.includes("'output_sentences':")) failures.push(`daily metrics are incomplete: ${dbState}`);
-    if (!/\r?\n1\r?\n/.test(dbState)) failures.push(`output review link was not persisted: ${dbState}`);
+    if (!/\r?\n2\r?\n/.test(dbState)) failures.push(`output review links were not persisted: ${dbState}`);
+    for (const marker of ["semantic 1", "decisions 1", "contrasts 1", "custom 1"]) {
+      if (!dbState.includes(marker)) failures.push(`${marker} was not persisted: ${dbState}`);
+    }
   } finally {
     if (browser) await browser.close();
     server.kill();
+    await new Promise(resolve => aiServer.close(resolve));
   }
   if (failures.length) throw new Error(failures.join("\n"));
-  console.log("contextual output desktop E2E passed");
+  console.log("semantic output feedback desktop E2E passed");
 }
 
 run().catch(error => {

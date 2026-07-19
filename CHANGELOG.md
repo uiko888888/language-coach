@@ -6,6 +6,34 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.8.0-alpha.24.1] - 2026-07-19
+
+### Added
+
+- Added schema 15 evidence-aware semantic feedback, feedback decisions and usage-contrast attempt history.
+- Added an optional OpenAI-compatible five-dimension feedback adapter for information, collocation, register, coherence and naturalness.
+- Added exact evidence-quote validation, provider/model/prompt provenance, a 1 MB response limit and duplicate-request reuse.
+- Added keep, accept and modify decisions without replacing the learner's original answer.
+- Added editable output error, sentence and phrase capture into the existing review scheduler with article context.
+- Added six curated high-frequency synonym boundary sets covering action, collocation, register, stance and intensity, with non-leaking answer APIs.
+
+### Changed
+
+- The output workspace now continues from deterministic checks into optional AI feedback, personal correction and synonym-boundary practice without leaving the split article context.
+- AI feedback remains opt-in; the source and answer are sent only after the learner requests feedback from their configured provider.
+
+### Verification
+
+- Passed 168 Python unit/integration tests and five isolated desktop E2E workflows.
+- The output E2E uses a local mock provider but traverses the real HTTP, validation, persistence, decision and UI paths.
+- Replayed schema 14 to 15 migration with SQLite integrity `ok`; the real schema 15 database is also `ok`, backed up and contains no automatically generated feedback data.
+
+### Known limits
+
+- Exact quote validation prevents invented citations but cannot guarantee that a model's interpretation or revision is pedagogically correct.
+- The built-in synonym deck contains six audited high-frequency groups; broad lexical coverage still depends on later open-data imports and reviewed expansion.
+- Speaking recording and optional transcription remain scheduled for `alpha.24.2`.
+
 ## [0.8.0-alpha.24.0] - 2026-07-19
 
 ### Added

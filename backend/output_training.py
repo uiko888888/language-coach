@@ -340,7 +340,69 @@ def output_attempt_payload(conn: sqlite3.Connection, attempt_id: int) -> dict | 
         (attempt_id,),
     ).fetchall()
     item["review_links"] = [dict(link) for link in links]
+    feedback_row = conn.execute(
+        "SELECT * FROM output_semantic_feedback WHERE attempt_id = ? ORDER BY id DESC LIMIT 1",
+        (attempt_id,),
+    ).fetchone()
+    item["semantic_feedback"] = semantic_feedback_payload(conn, feedback_row) if feedback_row else None
     return item
+
+
+def semantic_feedback_payload(conn: sqlite3.Connection, row: sqlite3.Row | dict) -> dict:
+    item = dict(row)
+    item["feedback"] = _load_json(item.pop("feedback_json", "{}"), {})
+    decision = conn.execute(
+        "SELECT decision, revised_response, created_at, updated_at FROM output_feedback_decisions WHERE feedback_id = ?",
+        (item["id"],),
+    ).fetchone()
+    item["decision"] = dict(decision) if decision else None
+    return item
+
+
+def save_semantic_feedback(conn: sqlite3.Connection, attempt_id: int, result: dict) -> dict:
+    if not conn.execute("SELECT 1 FROM output_attempts WHERE id = ?", (attempt_id,)).fetchone():
+        raise ValueError("Output attempt not found")
+    now = utc_now()
+    cursor = conn.execute(
+        """INSERT INTO output_semantic_feedback
+           (attempt_id, provider, model, prompt_version, status, feedback_json, created_at)
+           VALUES (?, ?, ?, ?, 'complete', ?, ?)""",
+        (
+            attempt_id, str(result.get("provider") or ""), str(result.get("model") or ""),
+            str(result.get("prompt_version") or ""), _json(result.get("feedback") or {}), now,
+        ),
+    )
+    row = conn.execute("SELECT * FROM output_semantic_feedback WHERE id = ?", (cursor.lastrowid,)).fetchone()
+    return semantic_feedback_payload(conn, row)
+
+
+def save_feedback_decision(
+    conn: sqlite3.Connection,
+    feedback_id: int,
+    decision: str,
+    revised_response: str = "",
+) -> dict:
+    if decision not in {"accept", "keep", "modify"}:
+        raise ValueError("Feedback decision must be accept, keep, or modify")
+    feedback_row = conn.execute("SELECT * FROM output_semantic_feedback WHERE id = ?", (feedback_id,)).fetchone()
+    if not feedback_row:
+        raise ValueError("Semantic feedback not found")
+    revised = re.sub(r"\r\n?", "\n", str(revised_response or "")).strip()[:5000]
+    if decision == "modify" and len(revised) < 3:
+        raise ValueError("A modified response is required")
+    now = utc_now()
+    conn.execute(
+        """INSERT INTO output_feedback_decisions
+           (feedback_id, decision, revised_response, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(feedback_id) DO UPDATE SET
+             decision = excluded.decision,
+             revised_response = excluded.revised_response,
+             updated_at = excluded.updated_at""",
+        (feedback_id, decision, revised, now, now),
+    )
+    updated = conn.execute("SELECT * FROM output_semantic_feedback WHERE id = ?", (feedback_id,)).fetchone()
+    return semantic_feedback_payload(conn, updated)
 
 
 def save_self_review(conn: sqlite3.Connection, attempt_id: int, values: dict, note: str = "") -> dict:

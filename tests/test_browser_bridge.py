@@ -377,6 +377,66 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertGreaterEqual(history["summary"]["attempts"], 1)
         self.assertEqual(history["attempts"][0]["article_title"], article["title"])
 
+    def test_semantic_feedback_contrast_and_custom_review_loop(self):
+        with server.db() as conn:
+            article = conn.execute("SELECT * FROM articles WHERE source = 'seed'").fetchone()
+        generated, _ = self.request(f"/api/articles/{article['id']}/output-tasks", "POST", {})
+        task = next(item for item in generated["tasks"] if item["task_type"] == "personal")
+        submitted, _ = self.request("/api/output-attempts", "POST", {
+            "task_id": task["id"],
+            "response": f"I use {task['target_chunks'][0]} when I discuss research with classmates.",
+            "confidence": 2,
+        })
+        attempt = submitted["attempt"]
+        provider_result = {
+            "provider": "openai-compatible",
+            "model": "test-model",
+            "prompt_version": "output-feedback-v1",
+            "feedback": {
+                "summary": "The idea is clear.",
+                "dimensions": [
+                    {"id": key, "label": key, "score": 4, "finding": "Clear", "suggestion": "Keep it concise", "evidence_quote": "", "evidence_origin": "none"}
+                    for key in ("information", "collocation", "register", "coherence", "naturalness")
+                ],
+                "revised_response": "I use this expression when discussing research with classmates.",
+                "boundary": "The suggestion is not a unique answer.",
+            },
+        }
+        with patch.object(server, "request_semantic_feedback", return_value=provider_result):
+            feedback_response, _ = self.request(
+                f"/api/output-attempts/{attempt['id']}/semantic-feedback", "POST", {}
+            )
+        feedback = feedback_response["semantic_feedback"]
+        self.assertEqual(len(feedback["feedback"]["dimensions"]), 5)
+        reused, _ = self.request(f"/api/output-attempts/{attempt['id']}/semantic-feedback", "POST", {})
+        self.assertTrue(reused["reused"])
+        self.assertEqual(reused["semantic_feedback"]["id"], feedback["id"])
+        decided, _ = self.request(f"/api/output-feedback/{feedback['id']}/decision", "POST", {
+            "decision": "modify",
+            "revised_response": "I use this expression when discussing research with classmates.",
+        })
+        self.assertEqual(decided["semantic_feedback"]["decision"]["decision"], "modify")
+
+        custom, _ = self.request(f"/api/output-attempts/{attempt['id']}/review-items", "POST", {
+            "term": "discuss research with classmates",
+            "context": attempt["response_text"],
+            "note": "My corrected output sentence",
+        })
+        self.assertEqual(custom["card"]["term"], "discuss research with classmates")
+        self.assertEqual(custom["card"]["source_article_id"], article["id"])
+
+        contrasts, _ = self.request("/api/output/contrasts?query=career")
+        contrast = contrasts["contrasts"][0]
+        self.assertEqual(contrast["slug"], "job-work-career")
+        self.assertNotIn("answer_index", contrast)
+        answer, _ = self.request(f"/api/output/contrasts/{contrast['slug']}/attempt", "POST", {"selected_index": 2})
+        self.assertTrue(answer["correct"])
+        self.assertEqual(answer["history"]["attempts"], 1)
+
+        with server.db() as conn:
+            persisted = conn.execute("SELECT response_text FROM output_attempts WHERE id = ?", (attempt["id"],)).fetchone()
+        self.assertEqual(persisted["response_text"], attempt["response_text"])
+
     def test_representative_review_batch_does_not_persist_empty_batch(self):
         with sqlite3.connect(":memory:") as conn:
             conn.row_factory = sqlite3.Row

@@ -30,7 +30,7 @@ async function run() {
   let browser;
   try {
     const version = await waitForServer();
-    if (version.app_version !== "0.8.0-alpha.24.0" || version.database_schema_version !== 14) {
+    if (version.app_version !== "0.8.0-alpha.24.1" || version.database_schema_version !== 15) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const lexicalPayload = await fetch(`${baseUrl}/api/lexicon/search?q=cast`).then(response => response.json());
@@ -69,7 +69,7 @@ async function run() {
     server.kill();
   }
   if (failures.length) throw new Error(failures.join("\n"));
-  process.stdout.write("Lexicon bilingual desktop workflow passed on schema 14.\n");
+  process.stdout.write("Lexicon bilingual desktop workflow passed on schema 15.\n");
 }
 
 run().catch(error => {

@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.24.0";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.24.1";
 const SUPPORTED_API_VERSION = "1";
 
 const state = {
@@ -34,6 +34,10 @@ const state = {
   outputTaskSet: null,
   outputTasks: [],
   outputHistory: { attempts: [], summary: { attempts: 0, sentences: 0, articles: 0 } },
+  outputFeedbackStatus: { configured: false, message: "正在检查 AI 反馈配置" },
+  usageContrasts: [],
+  activeContrastSlug: "",
+  contrastResults: {},
   activeOutputTaskIndex: 0,
   outputDrafts: {},
   outputStartedAt: Date.now(),
@@ -1016,6 +1020,62 @@ function renderOutputHistory() {
   `).join("") || `<p class="muted">还没有输出记录。</p>`;
 }
 
+function semanticFeedbackHtml(attempt) {
+  const semantic = attempt?.semantic_feedback;
+  const status = state.outputFeedbackStatus || {};
+  if (!semantic) {
+    return `
+      <section class="semantic-feedback-panel">
+        <div class="output-section-head"><div><span class="eyebrow">Evidence-aware feedback</span><h4>AI 五维反馈</h4></div>${badge(status.configured ? "可用" : "未配置", status.configured ? "teal" : "amber")}</div>
+        <p class="muted">${escapeHtml(status.message || "未配置 AI；规则检查和自评仍可使用。")}${status.configured ? "。点击后会把当前任务原文和答案发送到你配置的 AI 服务。" : ""}</p>
+        <button data-request-semantic-feedback="${attempt.id}" ${status.configured ? "" : "disabled"}>生成五维反馈</button>
+      </section>`;
+  }
+  const feedback = semantic.feedback || {};
+  const decision = semantic.decision?.decision || "";
+  return `
+    <section class="semantic-feedback-panel">
+      <div class="output-section-head"><div><span class="eyebrow">${escapeHtml(semantic.provider)} · ${escapeHtml(semantic.model)}</span><h4>AI 五维反馈</h4></div>${badge(`提示 ${semantic.prompt_version}`)}</div>
+      <p>${escapeHtml(feedback.summary || "")}</p>
+      <div class="semantic-dimensions">${(feedback.dimensions || []).map(item => `
+        <article>
+          <div><strong>${escapeHtml(item.label)}</strong><span>${item.score}/5</span></div>
+          <p>${escapeHtml(item.finding)}</p>
+          <small>${escapeHtml(item.suggestion)}</small>
+          ${item.evidence_quote ? `<blockquote>${searchableEnglish(item.evidence_quote, false)}</blockquote>` : ""}
+        </article>`).join("")}</div>
+      ${feedback.revised_response ? `<div class="semantic-revision"><span>建议版本（非唯一答案）</span><p>${searchableEnglish(feedback.revised_response, false)}</p></div>` : ""}
+      <p class="muted">${escapeHtml(feedback.boundary || "AI 建议可拒绝，不直接改变能力等级。")}</p>
+      <div class="feedback-decision-row" role="group" aria-label="处理 AI 反馈">
+        <button data-output-feedback-decision="keep" data-feedback-id="${semantic.id}" class="${decision === "keep" ? "active" : ""}">保留我的表达</button>
+        <button data-output-feedback-decision="accept" data-feedback-id="${semantic.id}" class="${decision === "accept" ? "active" : ""}">采纳建议</button>
+      </div>
+      <label for="semanticRevision">修改后版本</label>
+      <textarea id="semanticRevision">${escapeHtml(semantic.decision?.revised_response || feedback.revised_response || attempt.response_text || "")}</textarea>
+      <button data-output-feedback-decision="modify" data-feedback-id="${semantic.id}" class="${decision === "modify" ? "active" : ""}">保存我的修改</button>
+    </section>`;
+}
+
+function usageContrastHtml() {
+  const items = state.usageContrasts || [];
+  if (!items.length) return "";
+  if (!items.some(item => item.slug === state.activeContrastSlug)) state.activeContrastSlug = items[0].slug;
+  const item = items.find(candidate => candidate.slug === state.activeContrastSlug) || items[0];
+  const result = state.contrastResults[item.slug];
+  return `
+    <section class="usage-contrast-panel">
+      <div class="output-section-head"><div><span class="eyebrow">Usage boundaries</span><h4>近义词边界</h4></div><select id="usageContrastSelect" aria-label="近义词组">${items.map(candidate => `<option value="${candidate.slug}" ${candidate.slug === item.slug ? "selected" : ""}>${escapeHtml(candidate.title)}</option>`).join("")}</select></div>
+      <div class="contrast-dimensions">${Object.entries(item.dimensions || {}).map(([label, value]) => `<div><strong>${escapeHtml(label)}</strong><span>${escapeHtml(value)}</span></div>`).join("")}</div>
+      <p class="contrast-prompt">${searchableEnglish(item.prompt, false)}</p>
+      <div class="contrast-options">${item.options.map((option, index) => {
+        const resultClass = result ? index === result.answer_index ? "correct" : index === result.selected_index ? "wrong" : "" : "";
+        return `<button data-contrast-answer="${item.slug}" data-contrast-index="${index}" class="${resultClass}" ${result ? "disabled" : ""}>${escapeHtml(option)}</button>`;
+      }).join("")}</div>
+      ${result ? `<p class="contrast-result ${result.correct ? "correct" : "wrong"}"><strong>${result.correct ? "正确" : `正确答案：${escapeHtml(result.answer)}`}</strong> ${escapeHtml(result.explanation)}</p>` : ""}
+      <small class="muted">人工整理基础组 · 已练 ${item.history?.attempts || 0} 次，答对 ${item.history?.correct || 0} 次</small>
+    </section>`;
+}
+
 function renderOutput() {
   const article = state.selectedArticle;
   $("#outputSourceTitle").textContent = article?.title || "先选择文章";
@@ -1051,6 +1111,8 @@ function renderOutput() {
   const draft = state.outputDrafts[task.id] ?? attempt?.response_text ?? "";
   const feedback = attempt?.feedback;
   const selfReview = attempt?.self_review || {};
+  const referenceLinkSaved = (attempt?.review_links || []).some(link => link.link_type === "reference");
+  const customDefault = (task.target_chunks || [])[0] || attempt?.response_text || "";
   $("#outputTaskBody").innerHTML = `
     <div class="output-task-head">
       <div><span class="eyebrow">${escapeHtml(task.label)}</span><h3>${escapeHtml(task.prompt_text)}</h3></div>
@@ -1083,8 +1145,18 @@ function renderOutput() {
           <label>表达自然<select id="selfReviewNaturalness"><option value="1">需重做</option><option value="2">基本自然</option><option value="3">自然</option></select></label>
           <label>词块使用<select id="selfReviewChunk"><option value="1">未掌握</option><option value="2">基本正确</option><option value="3">运用自然</option></select></label>
           <textarea id="selfReviewNote" placeholder="记录下一次最需要改的一点">${escapeHtml(selfReview.note || "")}</textarea>
-          <div class="toolbar"><button data-save-output-self-review="${attempt.id}">保存自评</button><button data-save-output-review="${attempt.id}" ${attempt.review_links?.length ? "disabled" : ""}>${attempt.review_links?.length ? "已加入复习" : "将参考表达加入复习"}</button></div>
+          <div class="toolbar"><button data-save-output-self-review="${attempt.id}">保存自评</button><button data-save-output-review="${attempt.id}" ${referenceLinkSaved ? "disabled" : ""}>${referenceLinkSaved ? "参考表达已加入" : "将参考表达加入复习"}</button></div>
         </div>
+        ${semanticFeedbackHtml(attempt)}
+        <section class="custom-review-panel">
+          <div class="output-section-head"><div><span class="eyebrow">Personal correction</span><h4>保存我的错句或词块</h4></div>${badge(`${(attempt.review_links || []).filter(link => link.link_type === "custom").length} 项`)}</div>
+          <label for="customReviewTerm">要复习的英文</label>
+          <textarea id="customReviewTerm">${escapeHtml(customDefault)}</textarea>
+          <label for="customReviewContext">原文语境</label>
+          <textarea id="customReviewContext">${escapeHtml(task.source_text || task.reference_text || "")}</textarea>
+          <button data-save-output-custom-review="${attempt.id}">加入复习</button>
+        </section>
+        ${usageContrastHtml()}
       </section>` : ""}
   `;
   if (attempt) {
@@ -1099,6 +1171,16 @@ function renderOutput() {
 async function loadOutputHistory() {
   state.outputHistory = await api("/api/output/history?limit=50");
   renderOutputHistory();
+}
+
+async function loadOutputSupport() {
+  const [status, contrasts] = await Promise.all([
+    api("/api/output/feedback/status"),
+    api("/api/output/contrasts"),
+  ]);
+  state.outputFeedbackStatus = status;
+  state.usageContrasts = contrasts.contrasts || [];
+  if (!state.activeContrastSlug && state.usageContrasts[0]) state.activeContrastSlug = state.usageContrasts[0].slug;
 }
 
 async function loadOutputTasks(articleId = state.selectedArticle?.id) {
@@ -1175,6 +1257,55 @@ async function saveOutputReviewItem(attemptId) {
   await Promise.all([loadOutputHistory(), loadCards(), loadReviews(), loadToday()]);
   renderAll();
   toast("参考表达已进入复习队列");
+}
+
+async function requestOutputSemanticFeedback(attemptId) {
+  const data = await api(`/api/output-attempts/${attemptId}/semantic-feedback`, { method: "POST", body: "{}" });
+  state.outputHistory.attempts = state.outputHistory.attempts.map(item => item.id === attemptId
+    ? { ...item, semantic_feedback: data.semantic_feedback }
+    : item);
+  renderOutput();
+  toast("五维反馈已生成，原答案保持不变");
+}
+
+async function saveOutputFeedbackDecision(feedbackId, decision) {
+  const revisedResponse = decision === "modify" ? $("#semanticRevision").value.trim() : "";
+  const data = await api(`/api/output-feedback/${feedbackId}/decision`, {
+    method: "POST",
+    body: JSON.stringify({ decision, revised_response: revisedResponse }),
+  });
+  state.outputHistory.attempts = state.outputHistory.attempts.map(item => item.semantic_feedback?.id === feedbackId
+    ? { ...item, semantic_feedback: data.semantic_feedback }
+    : item);
+  renderOutput();
+  toast(decision === "keep" ? "已保留你的原表达" : decision === "accept" ? "已记录采纳建议" : "修改版本已保存");
+}
+
+async function saveCustomOutputReviewItem(attemptId) {
+  const term = $("#customReviewTerm").value.trim();
+  if (!term) return toast("先填写要复习的英文错句或词块");
+  await api(`/api/output-attempts/${attemptId}/review-items`, {
+    method: "POST",
+    body: JSON.stringify({
+      term,
+      context: $("#customReviewContext").value.trim(),
+      note: "我的输出纠正",
+    }),
+  });
+  await Promise.all([loadOutputHistory(), loadCards(), loadReviews(), loadToday()]);
+  renderAll();
+  toast("自定义错句或词块已进入复习");
+}
+
+async function answerUsageContrast(slug, selectedIndex) {
+  const data = await api(`/api/output/contrasts/${slug}/attempt`, {
+    method: "POST",
+    body: JSON.stringify({ selected_index: selectedIndex }),
+  });
+  state.contrastResults[slug] = { ...data, selected_index: selectedIndex };
+  const item = state.usageContrasts.find(candidate => candidate.slug === slug);
+  if (item) item.history = data.history;
+  renderOutput();
 }
 
 async function markSelectedArticleRead() {
@@ -3424,6 +3555,10 @@ document.addEventListener("click", async event => {
     if (button.id === "submitOutputBtn") await submitOutputResponse();
     if (button.dataset.saveOutputSelfReview) await saveOutputSelfReview(Number(button.dataset.saveOutputSelfReview));
     if (button.dataset.saveOutputReview) await saveOutputReviewItem(Number(button.dataset.saveOutputReview));
+    if (button.dataset.requestSemanticFeedback) await requestOutputSemanticFeedback(Number(button.dataset.requestSemanticFeedback));
+    if (button.dataset.outputFeedbackDecision) await saveOutputFeedbackDecision(Number(button.dataset.feedbackId), button.dataset.outputFeedbackDecision);
+    if (button.dataset.saveOutputCustomReview) await saveCustomOutputReviewItem(Number(button.dataset.saveOutputCustomReview));
+    if (button.dataset.contrastAnswer) await answerUsageContrast(button.dataset.contrastAnswer, Number(button.dataset.contrastIndex));
     if (button.dataset.outputHistoryTask) {
       if (Number(state.selectedArticle?.id) !== Number(button.dataset.outputHistoryArticle)) {
         const data = await api(`/api/articles/${button.dataset.outputHistoryArticle}?exam=${encodeURIComponent(state.style)}`);
@@ -3720,6 +3855,12 @@ $("#recommendedOnly").addEventListener("change", async event => {
   renderAll();
 });
 
+document.addEventListener("change", event => {
+  if (event.target.id !== "usageContrastSelect") return;
+  state.activeContrastSlug = event.target.value;
+  renderOutput();
+});
+
 $("#globalSearchForm").addEventListener("submit", async event => {
   event.preventDefault();
   await searchLexicon($("#globalLexiconSearch").value);
@@ -3749,7 +3890,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 async function boot() {
   await loadHealth();
   await loadActivePracticeData();
-  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), loadOutputHistory(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), loadOutputHistory(), loadOutputSupport(), searchLexicon("", { open: false, history: false })]);
   const restoredServerRun = await restoreServerPracticeRun();
   if (!restoredServerRun && !state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);

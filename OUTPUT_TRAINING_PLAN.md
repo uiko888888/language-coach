@@ -2,7 +2,7 @@
 
 ## 当前实施状态
 
-`v0.8.0-alpha.24.0` 已完成文本 MVP：schema 14、四类任务、规则检查、结构化自评、历史、每日阅读/输出/复习指标和统一复习链接均已落地。开放语义 AI 反馈、近义词边界与任意错句保存属于 `alpha.24.1`；本机录音、脱稿复述和观点表达属于 `alpha.24.2`。完整字幕拉片仍在 `v0.9`。
+`v0.8.0-alpha.24.0` 已完成文本 MVP；`alpha.24.1` 已完成可选五维 AI 反馈、证据引用校验、处理决定、自定义错句复习和六组人工近义词边界。本机录音、脱稿复述和观点表达属于下一项 `alpha.24.2`。完整字幕拉片仍在 `v0.9`。
 
 本文定义 Language Coach 的“语境输入 -> 主动输出 -> 反馈 -> 复习 -> 再次输出”方案。目标不是增加几种看起来丰富的题目，而是让阅读量、兴趣内容、词块和英语思维进入可执行、可测量的日常循环。
 
@@ -141,10 +141,14 @@ schema 14 已增加：
 - `daily_learning_metrics`：阅读词数、输出句数和复习词块数。
 - `article_reading_events`：同一文章同一天只累计一次阅读量。
 
+schema 15 已增加：
+
+- `output_semantic_feedback`：信息准确、搭配、语域、衔接、自然度、证据和反馈来源。
+- `output_feedback_decisions`：保留、采纳和用户修改，不覆盖原作答。
+- `usage_contrast_attempts`：内置人工近义词组的选择与正确性记录。
+
 后续 schema 计划增加：
 
-- `output_feedback`：信息准确、搭配、语域、衔接、自然度、证据和反馈来源。
-- `usage_contrast_sets`：近义词组、对比维度、例句、来源和审核状态。
 - `speaking_attempts`：任务、录音本机引用、时长、准备时间、转写、自评、删除状态和再次录制关联。
 
 所有 AI 反馈保存提供方、模型、提示版本和原文证据；密钥不进入数据库或前端。用户原始答案始终保留，系统建议作为独立字段，不覆盖用户表达。
@@ -157,14 +161,19 @@ GET  /api/output/tasks?article_id=
 POST /api/output-attempts
 POST /api/output-attempts/{id}/self-review
 POST /api/output-attempts/{id}/save-review-item
+POST /api/output-attempts/{id}/review-items
+GET  /api/output/feedback/status
+POST /api/output-attempts/{id}/semantic-feedback
+POST /api/output-feedback/{id}/decision
+GET  /api/output/contrasts
+POST /api/output/contrasts/{slug}/attempt
 GET  /api/output/history
 POST /api/articles/{id}/read
 ```
 
-`alpha.24.1-alpha.24.2` 计划增加：
+`alpha.24.2` 计划增加：
 
 ```text
-POST /api/output-attempts/{id}/semantic-feedback
 POST /api/speaking-attempts
 POST /api/speaking-attempts/{id}/transcribe
 POST /api/speaking-attempts/{id}/self-review
@@ -197,7 +206,7 @@ DELETE /api/speaking-attempts/{id}
 1. 可替换 AI 反馈接口及无 AI 降级。
 2. 五维反馈和证据引用。
 3. 近义词使用边界与语境选择题。
-4. 反馈采纳、撤销和“保留我的表达”。
+4. 反馈采纳、用户修改和“保留我的表达”。
 
 ### `v0.8.0-alpha.24.2` 基础口语输出
 

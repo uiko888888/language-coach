@@ -565,6 +565,41 @@ def _contextual_output_training(conn: sqlite3.Connection) -> None:
     )
 
 
+def _semantic_output_feedback(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """CREATE TABLE IF NOT EXISTS output_semantic_feedback (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             attempt_id INTEGER NOT NULL,
+             provider TEXT NOT NULL,
+             model TEXT NOT NULL,
+             prompt_version TEXT NOT NULL,
+             status TEXT NOT NULL DEFAULT 'complete',
+             feedback_json TEXT NOT NULL DEFAULT '{}',
+             created_at TEXT NOT NULL,
+             FOREIGN KEY(attempt_id) REFERENCES output_attempts(id)
+           );
+           CREATE INDEX IF NOT EXISTS idx_output_semantic_feedback_attempt
+           ON output_semantic_feedback(attempt_id, id DESC);
+           CREATE TABLE IF NOT EXISTS output_feedback_decisions (
+             feedback_id INTEGER PRIMARY KEY,
+             decision TEXT NOT NULL,
+             revised_response TEXT NOT NULL DEFAULT '',
+             created_at TEXT NOT NULL,
+             updated_at TEXT NOT NULL,
+             FOREIGN KEY(feedback_id) REFERENCES output_semantic_feedback(id)
+           );
+           CREATE TABLE IF NOT EXISTS usage_contrast_attempts (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             contrast_slug TEXT NOT NULL,
+             selected_index INTEGER NOT NULL,
+             correct INTEGER NOT NULL,
+             created_at TEXT NOT NULL
+           );
+           CREATE INDEX IF NOT EXISTS idx_usage_contrast_attempts_slug
+           ON usage_contrast_attempts(contrast_slug, created_at DESC);"""
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     (1, "consolidate legacy schema", _legacy_schema),
     (2, "add training loop metrics", _training_loop_metrics),
@@ -580,6 +615,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     (12, "add human article block labels", _article_extraction_block_labels),
     (13, "add representative extraction review batches", _article_extraction_review_batches),
     (14, "add contextual output training", _contextual_output_training),
+    (15, "add semantic output feedback", _semantic_output_feedback),
 )
 
 

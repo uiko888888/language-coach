@@ -13,7 +13,7 @@
         |
         +-- SQLite 主数据库
         +-- data/backups 本机备份
-        +-- RSS / 翻译 / 开放数据外部适配
+        +-- RSS / 翻译 / AI 反馈 / 开放数据外部适配
 
 Chrome / Edge 扩展（WXT + TypeScript）
         |
@@ -31,6 +31,9 @@ Chrome / Edge 扩展（WXT + TypeScript）
 | `backend/migrations.py` | 有序、幂等、可追踪的 SQLite 升级 | SQLite，不依赖 HTTP 或产品界面 |
 | `backend/backups.py` | 限定目录内的备份、完整性检查和恢复 | SQLite、文件系统，不依赖业务服务 |
 | `backend/practice_state.py` | 活动训练生命周期与可解释训练处方 | SQLite，不依赖 HTTP 或界面 |
+| `backend/output_training.py` | 输出任务、作答、规则反馈、自评、AI 反馈记录与决定 | SQLite，不依赖 HTTP 或前端 |
+| `backend/ai_feedback.py` | OpenAI-compatible 请求、五维 JSON 和证据引用校验 | 环境配置、外部 HTTPS，不访问 SQLite |
+| `backend/usage_contrasts.py` | 人工审核的近义词边界内容 | 静态可版本化数据，不访问用户数据库 |
 | `backend/server.py` | 当前组合根、HTTP 路由和尚未抽离的业务 | 可依赖上述基础模块 |
 | `frontend/app.js` | 当前页面状态、渲染和 API 调用 | API v1；后续按服务和视图拆分 |
 | `browser-extension/` | 网页授权采集入口 | 公共本机 API，不直接访问 SQLite |
@@ -52,6 +55,8 @@ Chrome / Edge 扩展（WXT + TypeScript）
 - 恢复前自动创建当前数据库的安全备份。
 - 恢复接口只接受系统生成的文件名，不能读取备份目录之外的路径。
 - 当前没有云同步、账号隔离或加密备份；这些能力不能由本机备份替代。
+- AI 密钥只从本机环境读取；原文和答案只有在用户主动请求时才发送给所配置服务。
+- AI 反馈与原答案分表保存，模型建议不能覆盖原作答；提供方、模型和提示版本必须可追溯。
 
 ## 渐进拆分顺序
 

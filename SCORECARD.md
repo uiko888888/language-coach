@@ -9,7 +9,7 @@ The goal is to raise every major product dimension above 6/10 through evidence, 
 | Dictionary and chunks | 5.9 | Import licensed Kaikki, Tatoeba and frequency subsets; pass polysemy, phrase, Chinese-query and attribution audit | alpha.24.3 |
 | Review scheduling | 5.8 | Replace the versioned baseline with validated FSRS; add retention target, suspension/reset and real-log calibration | alpha.24.4 |
 | Listening and clip study | 2.0 | Local media plus SRT/VTT, cue sync, loop, speed, bilingual cue and phrase capture | v0.9.0-alpha.1 |
-| Interest and fun | 5.4 | Text output is usable; local speaking, editable challenge intensity and seven-day repeated-output evidence are still required | alpha.24.1-alpha.24.2 |
+| Interest and fun | 5.6 | Text feedback and usage contrasts are usable; local speaking, editable challenge intensity and seven-day repeated-output evidence are still required | alpha.24.2 |
 | Other exams | 4.5 | At least CET and Kaoyan have independent paper structures, validated answer rules and official-format boundaries | v0.9 after clip foundation |
 | Accessibility | 4.8 | Keyboard-only core loop, visible focus, semantic labels, contrast audit and desktop browser checks | beta.1 |
 | Public delivery | 4.0 | Account ownership, server authorization, cloud database, migration, export/delete and deploy runbook | v0.10.0 |
