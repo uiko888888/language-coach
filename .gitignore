@@ -10,6 +10,7 @@ data-sources/
 browser-extension/node_modules/
 browser-extension/.wxt/
 browser-extension/.output/
+.output/fsrs-replay.sqlite
 /.wxt/
 *.py[cod]
 .DS_Store
