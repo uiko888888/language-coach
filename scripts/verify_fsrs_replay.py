@@ -4,14 +4,20 @@ import argparse
 import os
 import shutil
 import sqlite3
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Replay FSRS against a disposable database copy")
-    parser.add_argument("--database", default="data/language_coach.sqlite")
+    parser.add_argument("--database", default=str(ROOT / "data" / "language_coach.sqlite"))
     args = parser.parse_args()
     source = Path(args.database).resolve()
     if not source.exists():
