@@ -239,6 +239,44 @@ def register_private_dictionary(
     return dict(row)
 
 
+def register_private_pdf_source(
+    conn: sqlite3.Connection,
+    path: Path,
+    *,
+    name: str,
+    pages: int,
+    priority: int,
+    now: str,
+) -> dict:
+    resolved = path.resolve()
+    with resolved.open("rb") as source:
+        if source.read(5) != b"%PDF-":
+            raise ValueError("The file is not a PDF document")
+    fingerprint = _fingerprint(resolved)
+    detail = (
+        f"{max(0, int(pages))} pages; image-only scan; OCR and column-order validation required"
+    )
+    existing = conn.execute("SELECT id FROM private_dictionaries WHERE fingerprint = ?", (fingerprint,)).fetchone()
+    if existing:
+        dictionary_id = existing[0]
+        conn.execute(
+            """UPDATE private_dictionaries SET name = ?, kind = 'illustrated_dictionary',
+                      format = 'pdf', source_path = ?, priority = ?, enabled = 1,
+                      status = 'ocr_required', status_detail = ?, entry_count = 0, updated_at = ?
+               WHERE id = ?""",
+            (name, str(resolved), priority, detail, now, dictionary_id),
+        )
+    else:
+        dictionary_id = conn.execute(
+            """INSERT INTO private_dictionaries
+               (name, kind, format, source_path, fingerprint, priority, enabled, status,
+                status_detail, entry_count, updated_at)
+               VALUES (?, 'illustrated_dictionary', 'pdf', ?, ?, ?, 1, 'ocr_required', ?, 0, ?)""",
+            (name, str(resolved), fingerprint, priority, detail, now),
+        ).lastrowid
+    return dict(conn.execute("SELECT * FROM private_dictionaries WHERE id = ?", (dictionary_id,)).fetchone())
+
+
 def search_private_entries(conn: sqlite3.Connection, query: str, limit: int = 8) -> list[dict]:
     normalized = normalize_headword(query)
     if not normalized:

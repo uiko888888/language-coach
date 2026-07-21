@@ -7,6 +7,7 @@ data/edge-profile-check/
 .env.local
 backend/__pycache__/
 artifacts/
+tmp/
 data-sources/
 browser-extension/node_modules/
 browser-extension/.wxt/

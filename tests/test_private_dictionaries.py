@@ -10,6 +10,7 @@ from backend.private_dictionaries import (
     parse_dictionary_html,
     private_phrase_meanings,
     register_private_dictionary,
+    register_private_pdf_source,
     search_private_entries,
 )
 
@@ -30,6 +31,26 @@ def build_uncompressed_mobi(path: Path, document: str) -> None:
 
 
 class PrivateDictionaryTests(unittest.TestCase):
+    def test_registers_image_pdf_without_promoting_unverified_entries(self):
+        with tempfile.TemporaryDirectory() as root:
+            pdf = Path(root) / "illustrated.pdf"
+            pdf.write_bytes(b"%PDF-1.7\nimage-only-placeholder")
+            conn = sqlite3.connect(":memory:")
+            try:
+                conn.row_factory = sqlite3.Row
+                ensure_private_dictionary_schema(conn)
+                result = register_private_pdf_source(
+                    conn, pdf, name="Illustrated dictionary", pages=1263,
+                    priority=30, now="2026-07-21T00:00:00+00:00",
+                )
+                entries = conn.execute("SELECT COUNT(*) FROM private_dictionary_entries").fetchone()[0]
+            finally:
+                conn.close()
+            self.assertEqual(result["status"], "ocr_required")
+            self.assertEqual(result["format"], "pdf")
+            self.assertEqual(result["entry_count"], 0)
+            self.assertEqual(entries, 0)
+
     def test_parses_headwords_and_keeps_bilingual_entry_order(self):
         document = (
             "<html><body><mbp:pagebreak/><h2> keen </h2>"

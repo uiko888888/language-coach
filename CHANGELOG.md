@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.2] - 2026-07-21
+
+### Added
+
+- Registered the 1,263-page DK Oxford bilingual illustrated dictionary as a fingerprinted private local PDF source.
+- Added an explicit `ocr_required` source state and UI label for image-only dictionary scans.
+- Added a dependency-free registration command that validates the PDF signature without copying the 792 MB source file.
+
+### Quality Boundary
+
+- The PDF has no text layer and uses dense three-column pages, illustration panels, headers and captions. It contributes zero searchable entries until a 20-page OCR sample passes headword, column-order and Chinese-alignment gates.
+- The source remains excluded from Git, public exports, question generation and model training.
+
+### Verification
+
+- Visually sampled pages across A, D, L, R and W ranges and confirmed readable scans with mixed dictionary and illustrated encyclopedia layouts.
+- Added registration coverage proving that an image-only PDF cannot be promoted into searchable entries.
+- All 205 automated tests passed with 2 optional dependency tests skipped; SQLite integrity is `ok`.
+
 ## [0.8.0-alpha.25.1] - 2026-07-21
 
 ### Added

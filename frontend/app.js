@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.25.1";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.25.2";
 const SUPPORTED_API_VERSION = "1";
 const SUPPORTED_SCHEMA_VERSION = "21";
 
@@ -2258,7 +2258,7 @@ function renderLexicon() {
       </div>`;
     })() + (state.lexicalDataStatus.private_sources || []).map(source => `
       <div class="lexical-layer-row ${source.status === "ready" ? "installed" : "missing"}">
-        <span>${escapeHtml(source.name)} · 仅本机</span><strong>${source.status === "ready" ? Number(source.entry_count).toLocaleString("zh-CN") : source.status === "conversion_required" ? "待转换" : "导入失败"}</strong>
+        <span>${escapeHtml(source.name)} · 仅本机</span><strong>${source.status === "ready" ? Number(source.entry_count).toLocaleString("zh-CN") : source.status === "conversion_required" ? "待转换" : source.status === "ocr_required" ? "待 OCR" : "导入失败"}</strong>
       </div>`).join("");
   renderLexiconGuidance();
   renderLexiconHistory();

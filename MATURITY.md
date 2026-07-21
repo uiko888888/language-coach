@@ -64,6 +64,8 @@ Current strengths are source traceability, one-material-many-uses, evidence repl
 
 `alpha.25.1` adds private dictionary aggregation without pretending that user-owned commercial content is redistributable product data. Local lookup gains 39,108 Oxford bilingual entries and 30,268 clearly separated Britannica entries, exact phrase meanings can carry a private source label, and unsupported HUFF/CDIC input remains visibly pending. This raises local dictionary usefulness to 8.1/10, but distributable maturity only to 7.9/10: source controls are not yet editable in the UI, one supplied dictionary is not decoded, and private examples cannot support public question generation. The useful differentiation is now stronger for a personal desktop workspace, not yet for a hosted multi-user product.
 
+`alpha.25.2` registers a high-value illustrated scan without awarding itself false coverage. The 1,263-page DK Oxford PDF is traceable and visible as pending OCR, but contributes zero searchable entries because dense columns and illustration panels have not passed alignment gates. Dictionary scores therefore stay at 8.1/10 local and 7.9/10 distributable. The maturity gain is operational: the product can now distinguish “owned source”, “searchable index” and “verified content” instead of treating file presence as successful integration.
+
 Interest and exam modes now use different home workflows: immersion and expression collection versus target, weakness and question-type prescription. They still share one profile so interest activity can later contribute domain evidence without masquerading as exam-score gains.
 
 ## Universal Product Requirements

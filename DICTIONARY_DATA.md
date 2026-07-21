@@ -16,6 +16,18 @@ python .\scripts\import_private_mobi.py `
 
 The built-in importer accepts unencrypted PalmDOC or uncompressed MOBI files. DRM is rejected. HUFF/CDIC files remain `conversion_required` until converted through a trusted local tool and validated; they are never partially promoted to a ready index. Encyclopedia sources use `--kind encyclopedia` and appear as context rather than bilingual definitions.
 
+Image-only PDF dictionaries are registered before OCR so ownership, location and processing status remain auditable:
+
+```powershell
+python .\scripts\register_private_pdf.py `
+  --pdf "D:\dictionaries\illustrated-dictionary.pdf" `
+  --name "My illustrated dictionary" `
+  --pages 1263 `
+  --priority 30
+```
+
+Registration does not copy the PDF or create entries. A scan remains `ocr_required` until representative pages pass headword, reading-order and bilingual-alignment checks.
+
 ## Installed Baseline
 
 Open English WordNet is the semantic baseline. Check the running database with:

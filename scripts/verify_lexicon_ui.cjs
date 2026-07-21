@@ -30,7 +30,7 @@ async function run() {
   let browser;
   try {
     const version = await waitForServer();
-    if (version.app_version !== "0.8.0-alpha.25.1" || version.database_schema_version !== 21) {
+    if (version.app_version !== "0.8.0-alpha.25.2" || version.database_schema_version !== 21) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const lexicalPayload = await fetch(`${baseUrl}/api/lexicon/search?q=cast`).then(response => response.json());
