@@ -50,7 +50,7 @@
       <div class="global-search-wrap">
         <form class="global-search" id="globalSearchForm" role="search">
           <span class="search-symbol" aria-hidden="true">⌕</span>
-          <input id="globalLexiconSearch" autocomplete="off" placeholder="查单词、中文、词根或词源" aria-label="全局查词" />
+          <input id="globalLexiconSearch" autocomplete="off" placeholder="查词，或用逗号比较多个词" aria-label="全局查词" />
           <button type="submit" title="查词">查词</button>
         </form>
         <div class="quick-results" id="quickLexiconResults" hidden></div>
@@ -94,7 +94,7 @@
             <span class="result-count" id="lexiconResultCount">0</span>
           </div>
           <form class="toolbar master-search" id="lexiconSearchForm">
-            <input id="lexiconSearch" placeholder="inspect / 观察 / spect / specere" />
+            <input id="lexiconSearch" placeholder="inspect / 观察 / cordial, keen, zeal" />
             <button type="submit">搜索</button>
           </form>
           <div class="search-examples">
@@ -102,6 +102,7 @@
             <button data-search-query="观察">观察</button>
             <button data-search-query="spect">spect</button>
             <button data-search-query="specere">specere</button>
+            <button data-search-query="cordial, keen, zeal">多词辨析</button>
           </div>
           <div class="lexicon-guidance" id="lexiconGuidance" hidden></div>
           <div class="master-list" id="lexiconResultList"></div>

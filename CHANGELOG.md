@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.24.6] - 2026-07-21
+
+### Added
+
+- Added multi-term dictionary comparison for two to five English words or short phrases separated by commas, slashes, or `vs`.
+- Added the first manually reviewed boundary set for `cordial / keen / zeal`, covering part of speech, semantic focus, grammar, collocation, register, intensity, non-interchangeability and bilingual examples.
+- Added an evidence-only fallback that compares installed open-dictionary definitions, examples, frequency and verified collocations without inventing editorial conclusions.
+
+### Changed
+
+- The existing dictionary search box now opens comparison mode directly and preserves the desktop left-list/right-detail layout.
+- Unobserved open phrases are excluded from automatic comparison patterns; low-quality or dated Wiktionary phrases are not promoted as common collocations.
+- Reviewed semantic guidance and automatically assembled open evidence are visually and textually distinguished.
+
+### Verification
+
+- Added parser, curated-boundary, evidence-fallback, HTTP API and frontend contract coverage.
+- Schema remains at 18; this iteration adds no persistent user data or migration.
+
 ## [0.8.0-alpha.24.5] - 2026-07-21
 
 ### Added

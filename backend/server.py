@@ -33,6 +33,7 @@ try:
     from .complete_word_review import complete_word_catalog, submit_complete_word_review
     from .dictionary_quality import audit_dictionary_data
     from .lexical_data import lookup_lexical_layers, search_open_entries
+    from .lexical_compare import curated_comparison, parse_comparison_terms
     from .migrations import run_migrations
     from .output_training import (
         create_output_task_set, latest_output_task_set, output_attempt_payload,
@@ -56,6 +57,7 @@ except ImportError:
     from complete_word_review import complete_word_catalog, submit_complete_word_review
     from dictionary_quality import audit_dictionary_data
     from lexical_data import lookup_lexical_layers, search_open_entries
+    from lexical_compare import curated_comparison, parse_comparison_terms
     from migrations import run_migrations
     from output_training import (
         create_output_task_set, latest_output_task_set, output_attempt_payload,
@@ -4929,6 +4931,100 @@ def lexical_search(query: str, limit: int = 30, track: bool = False) -> dict:
     }
 
 
+def _comparison_evidence(term: str) -> dict:
+    payload = lexical_search(term, limit=8)
+    normalized = term.casefold()
+    item = next((candidate for candidate in payload["results"] if str(
+        candidate.get("headword") or candidate.get("term") or candidate.get("form") or ""
+    ).casefold() == normalized), payload["results"][0] if payload["results"] else {})
+    layers = item.get("lexical_layers") or {}
+    meaning = item.get("meaning_zh") or item.get("translation_zh") or item.get("headword_translation_zh") or ""
+    definitions: list[str] = []
+    examples: list[dict] = []
+    for sense in item.get("senses") or []:
+        definitions.extend(str(value) for value in (sense.get("definitions") or []) if value)
+        translations = sense.get("example_translations") or []
+        for index, value in enumerate(sense.get("examples") or []):
+            examples.append({"text": value, "translation_zh": translations[index] if index < len(translations) else ""})
+    for entry in layers.get("entries") or []:
+        definitions.extend(str(value) for value in (entry.get("glosses") or []) if value)
+    for value in layers.get("examples") or []:
+        if isinstance(value, dict):
+            examples.append({
+                "text": value.get("text") or value.get("sentence") or "",
+                "translation_zh": value.get("translation_zh") or value.get("translation") or "",
+            })
+    patterns = []
+    for value in item.get("collocations") or []:
+        if isinstance(value, dict):
+            source = str(value.get("source") or "")
+            if not value.get("observed_count") and not source.startswith("人工"):
+                continue
+            label = value.get("phrase")
+        else:
+            label = value
+        if label and label not in patterns:
+            patterns.append(str(label))
+    sources = []
+    for value in (item.get("source_name"), item.get("matched_by")):
+        if value and value not in sources:
+            sources.append(str(value))
+    for value in layers.get("sources") or []:
+        label = value.get("name") or value.get("source_name") if isinstance(value, dict) else value
+        if label and label not in sources:
+            sources.append(str(label))
+    frequency = item.get("frequency") or layers.get("primary_frequency") or {}
+    return {
+        "term": item.get("headword") or item.get("term") or term,
+        "pos": item.get("pos") or "",
+        "meaning_zh": meaning,
+        "core_meaning": item.get("core_meaning") or next(iter(definitions), ""),
+        "definitions": definitions[:5],
+        "patterns": patterns[:6],
+        "examples": [value for value in examples if value["text"]][:4],
+        "frequency": frequency,
+        "sources": sources,
+        "found": bool(item) and item.get("type") != "query",
+    }
+
+
+def lexical_comparison(query: str) -> dict:
+    terms = parse_comparison_terms(query)
+    evidence = {term.casefold(): _comparison_evidence(term) for term in terms}
+    curated = curated_comparison(terms)
+    if curated:
+        items = []
+        for item in curated["items"]:
+            dictionary = evidence[item["term"].casefold()]
+            items.append({**item, "dictionary": dictionary, "frequency": dictionary["frequency"], "sources": dictionary["sources"]})
+        return {
+            "query": query, "terms": terms, "mode": "curated", "reviewed": True,
+            "source_note": "语义边界由人工审核；词典证据来自本机开放数据层。",
+            **{key: value for key, value in curated.items() if key != "items"}, "items": items,
+        }
+    return {
+        "query": query, "terms": terms, "mode": "evidence", "reviewed": False,
+        "title": " / ".join(terms),
+        "shared_translation": "这些词尚未进入人工审核辨析组。",
+        "summary": "当前只并排展示词性、开放释义、搭配、例句和常用度，不根据相同中文翻译强行判断它们可以互换。",
+        "memory_rule": "先比较词性和句型，再比较搭配与具体语境。",
+        "dimensions": [],
+        "source_note": "自动汇总本机开放词典证据，不作强行结论；不是出版词典的编辑性辨析。",
+        "items": [
+            {
+                **evidence[term.casefold()],
+                "focus": evidence[term.casefold()]["core_meaning"] or "当前开放数据暂无核心英文释义。",
+                "register": "尚无人工审核语域结论。",
+                "avoid": "请根据例句和搭配判断，不要仅凭中文释义替换。",
+                "example": next((value["text"] for value in evidence[term.casefold()]["examples"]), ""),
+                "example_zh": next((value["translation_zh"] for value in evidence[term.casefold()]["examples"] if value["translation_zh"]), ""),
+                "dictionary": evidence[term.casefold()],
+            }
+            for term in terms
+        ],
+    }
+
+
 def dictionary_data_status() -> dict:
     with db() as conn:
         sources = rows_to_dicts(conn.execute(
@@ -6268,6 +6364,11 @@ class App(BaseHTTPRequestHandler):
             if path == "/api/lexicon/search":
                 tracked = query.get("track", ["0"])[0].lower() in {"1", "true", "yes"}
                 return json_response(self, lexical_search(query.get("q", [""])[0], track=tracked))
+            if path == "/api/lexicon/compare":
+                try:
+                    return json_response(self, lexical_comparison(query.get("q", [""])[0]))
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
             if path == "/api/lexicon/history":
                 return json_response(self, lexical_query_history(query.get("limit", [30])[0]))
             if path == "/api/dictionary/status":

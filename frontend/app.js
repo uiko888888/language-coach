@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.24.5";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.24.6";
 const SUPPORTED_API_VERSION = "1";
 
 const state = {
@@ -74,6 +74,7 @@ const state = {
   subscriptions: [],
   today: { lanes: [], subscription_count: 0 },
   lexiconResults: [],
+  lexicalComparison: null,
   lexiconMeta: { resolution: null, suggestions: [] },
   lexiconHistory: { recent: [], frequent: [] },
   lexicalDataStatus: { layers: [], sources: [], counts: {} },
@@ -2050,8 +2051,49 @@ function renderLexiconHistory() {
     <button class="text-action" id="clearLexiconHistoryBtn">清空本机记录</button>` : `<p class="muted">完整查词后会保存在本机，快速联想不计入。</p>`;
 }
 
+function renderLexicalComparison(comparison) {
+  const items = comparison.items || [];
+  $("#lexiconResultCount").textContent = items.length;
+  $("#lexiconResultList").innerHTML = items.map((item, index) => `
+    <button class="master-list-item" data-search-query="${escapeHtml(item.term)}">
+      <span class="master-number">${String(index + 1).padStart(2, "0")}</span>
+      <span class="master-copy"><strong>${escapeHtml(item.term)}</strong><small>${escapeHtml(item.pos || "词性待确认")}</small><em>${escapeHtml(item.meaning_zh || "中文义项待补充")}</em></span>
+    </button>`).join("");
+  const dimensions = (comparison.dimensions || []).map(item => `
+    <div><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.value)}</span></div>`).join("");
+  $("#lexiconDetail").innerHTML = `
+    <header class="comparison-header">
+      <div class="badge-row">${badge(comparison.reviewed ? "人工审核辨析" : "开放证据并排", comparison.reviewed ? "teal" : "amber")}${badge(`${items.length} 个词`)}</div>
+      <h2>${escapeHtml(comparison.title)}</h2>
+      <strong class="comparison-shared-meaning">${escapeHtml(comparison.shared_translation || "")}</strong>
+      <p>${escapeHtml(comparison.summary || "")}</p>
+    </header>
+    ${dimensions ? `<section class="comparison-dimensions" aria-label="辨析维度">${dimensions}</section>` : ""}
+    <section class="comparison-grid" aria-label="多词并排比较">
+      ${items.map(item => `
+        <article class="comparison-term-card">
+          <div class="comparison-term-head"><div><span>${escapeHtml(item.pos || "词性待确认")}</span><h3>${escapeHtml(item.term)}</h3></div>${pronunciationControls(item.term)}</div>
+          <p class="comparison-meaning">${escapeHtml(item.meaning_zh || "中文义项待补充")}</p>
+          <div class="comparison-field"><strong>英文语义焦点</strong><p>${escapeHtml(item.focus || item.core_meaning || "暂无")}</p></div>
+          <div class="comparison-field"><strong>常见结构与搭配</strong><div class="comparison-patterns">${(item.patterns || []).map(pattern => `<button data-search-query="${escapeHtml(pattern)}">${escapeHtml(pattern)}</button>`).join("") || "<span>暂无可靠搭配</span>"}</div></div>
+          <div class="comparison-field"><strong>语域</strong><p>${escapeHtml(item.register || "尚无人工审核结论")}</p></div>
+          <div class="comparison-field comparison-warning"><strong>不要这样理解</strong><p>${escapeHtml(item.avoid || "不能只凭相同中文释义直接替换")}</p></div>
+          ${item.example ? `<blockquote><p>${searchableEnglish(item.example, false)}</p>${item.example_zh ? `<small>${escapeHtml(item.example_zh)}</small>` : ""}</blockquote>` : ""}
+          <footer>${item.frequency?.frequency_band ? `${escapeHtml(item.frequency.frequency_band)} · ` : ""}${escapeHtml((item.sources || []).join(" / ") || "本机开放词典")}</footer>
+        </article>`).join("")}
+    </section>
+    <section class="comparison-memory-rule"><span>记忆抓手</span><strong>${escapeHtml(comparison.memory_rule || "先看词性和句型，再看搭配和语境。")}</strong></section>
+    <p class="source-note">${escapeHtml(comparison.source_note || "")}</p>`;
+  renderLexiconGuidance();
+  renderLexiconHistory();
+}
+
 function renderLexicon() {
   document.querySelectorAll(".lexicon-tab").forEach(tab => tab.classList.toggle("active", tab.dataset.lexiconTab === state.lexiconFilter));
+  if (state.lexicalComparison) {
+    renderLexicalComparison(state.lexicalComparison);
+    return;
+  }
   const filtered = state.lexiconResults.filter(matchesLexiconFilter);
   if (!filtered.some(item => item.type === state.selectedLexicalItem?.type && item.id === state.selectedLexicalItem?.id)) {
     state.selectedLexicalItem = filtered[0] || null;
@@ -2093,12 +2135,31 @@ async function clearLexiconHistory() {
 
 async function searchLexicon(query, { open = true, quick = false, history = true, track = true } = {}) {
   const value = String(query || "").trim();
+  if (!quick && /[,，;\/／|]|\s+(?:vs\.?|versus)\s+/i.test(value)) {
+    const comparison = await api(`/api/lexicon/compare?q=${encodeURIComponent(value)}`);
+    state.lexicalComparison = comparison;
+    state.lexiconResults = [];
+    state.lexiconMeta = { resolution: null, suggestions: [] };
+    state.selectedLexicalItem = null;
+    $("#lexiconSearch").value = value;
+    $("#globalLexiconSearch").value = value;
+    if (open) setView("lexicon", { pushHistory: false });
+    if (history) {
+      const params = new URLSearchParams(window.location.search);
+      params.set("view", "lexicon");
+      params.set("q", value);
+      window.history.pushState({ view: "lexicon", q: value }, "", `${window.location.pathname}?${params.toString()}`);
+    }
+    renderLexicon();
+    return comparison.items || [];
+  }
   const data = await api(`/api/lexicon/search?q=${encodeURIComponent(value)}${quick || !track || !value ? "" : "&track=1"}`);
   if (quick) {
     renderQuickResults(data.results || [], value);
     return data.results || [];
   }
   state.lexiconResults = data.results || [];
+  state.lexicalComparison = null;
   state.lexiconMeta = { resolution: data.resolution || null, suggestions: data.suggestions || [] };
   state.selectedLexicalItem = state.lexiconResults[0] || null;
   $("#lexiconSearch").value = value;

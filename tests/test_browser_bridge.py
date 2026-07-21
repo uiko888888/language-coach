@@ -68,6 +68,18 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertTrue(cleared["cleared"])
         self.assertEqual(cleared["recent"], [])
 
+    def test_lexicon_compare_returns_reviewed_boundaries_and_evidence_fallback(self):
+        curated, _ = self.request("/api/lexicon/compare?q=cordial%2C%20keen%2C%20zeal")
+        self.assertTrue(curated["reviewed"])
+        self.assertEqual([item["term"] for item in curated["items"]], ["cordial", "keen", "zeal"])
+        self.assertEqual(curated["items"][2]["pos"], "noun")
+        fallback, _ = self.request("/api/lexicon/compare?q=happy%2C%20glad")
+        self.assertFalse(fallback["reviewed"])
+        with self.assertRaises(urllib.error.HTTPError) as invalid:
+            self.request("/api/lexicon/compare?q=keen")
+        self.assertEqual(invalid.exception.code, 400)
+        invalid.exception.close()
+
     def test_review_api_rates_and_undoes_with_daily_progress(self):
         created, _ = self.request("/api/cards", "POST", {
             "term": "review contract phrase", "kind": "phrase", "context": "A review contract should be reversible.",

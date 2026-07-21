@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from backend import server
+from backend.lexical_compare import parse_comparison_terms
 
 
 class LexicalSearchTests(unittest.TestCase):
@@ -154,6 +155,30 @@ class LexicalSearchTests(unittest.TestCase):
         self.assertEqual(history["recent"][0]["normalized"], "inspect")
         self.assertEqual(history["recent"][0]["lookup_count"], 2)
         self.assertEqual(history["recent"][0]["query_kind"], "word")
+
+    def test_multiword_comparison_accepts_common_separators_and_preserves_order(self):
+        self.assertEqual(parse_comparison_terms("cordial, keen, zeal"), ["cordial", "keen", "zeal"])
+        self.assertEqual(parse_comparison_terms("zeal / cordial / keen"), ["zeal", "cordial", "keen"])
+        self.assertEqual(parse_comparison_terms("cordial vs. keen"), ["cordial", "keen"])
+        with self.assertRaisesRegex(ValueError, "two to five different terms"):
+            parse_comparison_terms("keen, keen")
+
+    def test_curated_comparison_explains_boundaries_instead_of_merging_chinese_meanings(self):
+        payload = server.lexical_comparison("cordial, keen, zeal")
+        self.assertTrue(payload["reviewed"])
+        self.assertEqual(payload["mode"], "curated")
+        self.assertEqual([item["pos"] for item in payload["items"]], ["adjective", "adjective", "noun"])
+        self.assertIn("人际态度", payload["dimensions"][0]["value"])
+        self.assertEqual(payload["items"][0]["patterns"][0], "a cordial welcome")
+        self.assertIn("待人 cordial", payload["memory_rule"])
+
+    def test_unreviewed_comparison_uses_evidence_without_promoting_open_phrases(self):
+        payload = server.lexical_comparison("happy, glad")
+        self.assertFalse(payload["reviewed"])
+        self.assertEqual(payload["mode"], "evidence")
+        self.assertEqual([item["term"] for item in payload["items"]], ["happy", "glad"])
+        self.assertTrue(all(not item["patterns"] for item in payload["items"]))
+        self.assertIn("不作强行结论", payload["source_note"])
 
     def test_frontend_dictionary_contract_keeps_bilingual_senses_and_two_voices(self):
         source = (Path(__file__).parents[1] / "frontend" / "app.js").read_text(encoding="utf-8")
