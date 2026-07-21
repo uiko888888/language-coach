@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.3] - 2026-07-21
+
+### Added
+
+- Added private StarDict 2.4.2/3.0.0 import for `.ifo`, `.idx`/`.idx.gz`, `.dict`/`.dict.dz` and optional `.syn` source sets.
+- Added 32/64-bit index offsets, `sametypesequence`, typed fields, plain text, HTML, XDXF and Pango text handling.
+- Added a user-center manager for importing, enabling, disabling, prioritizing and removing private dictionary indexes without deleting source files.
+- Added token-protected local APIs and a standalone CLI importer.
+
+### Reliability
+
+- Dictionary bodies are decoded and inserted one entry at a time inside one transaction; memory does not grow with the complete definition corpus.
+- Source-set fingerprints include every companion file. Counts, index sizes, UTF-8, offsets, entry sizes and synonym targets are validated before a source becomes ready.
+- Failed refreshes roll back to the previous ready index, and binary resource fields cannot be mistaken for definitions.
+
+### Verification
+
+- Added raw, compressed, HTML, synonym, low-memory, authorization, source-management and rollback coverage using deterministic synthetic StarDict fixtures.
+- All 210 automated tests pass with 2 optional-dependency tests skipped; JavaScript syntax, Python byte-compilation, patch checks and the desktop private/open dictionary Playwright workflow also pass.
+- A real user-owned StarDict source has not yet been supplied, so production coverage remains unchanged pending representative import and sampling.
+
 ## [0.8.0-alpha.25.2] - 2026-07-21
 
 ### Added

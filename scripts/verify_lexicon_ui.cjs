@@ -30,7 +30,7 @@ async function run() {
   let browser;
   try {
     const version = await waitForServer();
-    if (version.app_version !== "0.8.0-alpha.25.2" || version.database_schema_version !== 21) {
+    if (version.app_version !== "0.8.0-alpha.25.3" || version.database_schema_version !== 21) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const lexicalPayload = await fetch(`${baseUrl}/api/lexicon/search?q=cast`).then(response => response.json());
@@ -67,6 +67,15 @@ async function run() {
     if (await page.locator(".sense-meaning").count() < 1) failures.push("Chinese sense meanings are missing");
     if (await page.locator(".sense-examples .example-zh").count() < 1) failures.push("Chinese example translation is missing");
     await page.screenshot({ path: path.join(root, "artifacts", "lexicon-cast-desktop.png"), fullPage: true });
+    await page.click('[data-view="profile"]');
+    await page.waitForSelector("#view-profile.active");
+    const profileColumns = await page.locator(".user-center-layout").evaluate(element => getComputedStyle(element).gridTemplateColumns);
+    if (profileColumns.split(" ").length < 2) failures.push(`profile layout is not split: ${profileColumns}`);
+    if (await page.locator("#privateDictionaryList .private-dictionary-row").count() < 4) failures.push("registered private dictionary sources are missing");
+    if (!await page.locator("#stardictImportForm").isVisible()) failures.push("StarDict import form is missing");
+    const managerOverflow = await page.locator(".private-dictionary-manager").evaluate(element => element.scrollWidth > element.clientWidth + 1);
+    if (managerOverflow) failures.push("private dictionary manager overflows horizontally");
+    await page.screenshot({ path: path.join(root, "artifacts", "private-dictionaries-desktop.png"), fullPage: true });
   } finally {
     if (browser) await browser.close();
     server.kill();

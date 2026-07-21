@@ -47,7 +47,7 @@ async function run() {
   const failures = [];
   try {
     const version = await waitForServer();
-    if (version.app_version !== "0.8.0-alpha.25.2" || version.database_schema_version !== 21) {
+    if (version.app_version !== "0.8.0-alpha.25.3" || version.database_schema_version !== 21) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const created = await post("/api/articles", {

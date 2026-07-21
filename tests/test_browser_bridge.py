@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from backend import fsrs_adapter, server
+from tests.test_private_dictionaries import build_stardict
 
 
 class BrowserBridgeTests(unittest.TestCase):
@@ -54,6 +55,30 @@ class BrowserBridgeTests(unittest.TestCase):
             error.close()
         else:
             self.fail("Browser clips endpoint accepted a request without a token")
+
+    def test_private_stardict_api_imports_manages_and_removes_only_the_index(self):
+        source_dir = Path(self.temp_dir.name) / "stardict-api"
+        source_dir.mkdir(exist_ok=True)
+        ifo = build_stardict(source_dir, [("keen", "adj. eager; 热切的"), ("zeal", "n. enthusiasm; 热忱")])
+        payload = {"path": str(ifo), "name": "API StarDict", "priority": 12, "kind": "bilingual_dictionary"}
+        with self.assertRaises(urllib.error.HTTPError) as unauthorized:
+            self.request("/api/private-dictionaries/stardict", "POST", payload)
+        self.assertEqual(unauthorized.exception.code, 401)
+        unauthorized.exception.close()
+        imported, _ = self.request("/api/private-dictionaries/stardict", "POST", payload, token=self.token)
+        source = imported["source"]
+        self.assertEqual(source["status"], "ready")
+        lookup, _ = self.request("/api/lexicon/search?q=keen")
+        self.assertTrue(any(item.get("source_name") == "API StarDict" for item in lookup["results"]))
+        updated, _ = self.request(
+            f"/api/private-dictionaries/{source['id']}", "POST",
+            {"enabled": False, "priority": 42}, token=self.token,
+        )
+        self.assertFalse(updated["source"]["enabled"])
+        self.assertEqual(updated["source"]["priority"], 42)
+        removed, _ = self.request(f"/api/private-dictionaries/{source['id']}", "DELETE", token=self.token)
+        self.assertTrue(removed["removed"])
+        self.assertTrue(ifo.exists())
 
     def test_lexicon_history_tracks_full_queries_and_can_be_cleared(self):
         self.request("/api/lexicon/history/clear", "POST", {})

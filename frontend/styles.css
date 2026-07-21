@@ -404,7 +404,9 @@ label {
 .extraction-label-options button.active { background: var(--teal); color: white; }
 .extraction-label-footer { padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); }
 .user-center-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.85fr); gap: 14px; align-items: start; }
-.user-center-side { display: grid; gap: 14px; }
+.user-profile-main { grid-column: 1; grid-row: 1; }
+.private-dictionary-manager { grid-column: 1; grid-row: 2; }
+.user-center-side { grid-column: 2; grid-row: 1 / span 2; display: grid; gap: 14px; }
 .user-domain-list { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 14px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .user-domain-list > div { display: grid; gap: 3px; min-width: 0; padding: 11px 10px; }
 .user-domain-list > div + div { border-left: 1px solid var(--line); }
@@ -1600,6 +1602,7 @@ label {
 
   .user-center-layout,
   .user-domain-list { grid-template-columns: 1fr; }
+  .user-profile-main, .private-dictionary-manager, .user-center-side { grid-column: 1; grid-row: auto; }
 
   .user-domain-list > div + div { border-left: 0; border-top: 1px solid var(--line); }
 
@@ -1713,6 +1716,19 @@ label {
 
 .data-actions #restoreBackupBtn { grid-column: 1 / -1; }
 .data-note { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+.private-dictionary-list { display: grid; border-top: 1px solid var(--line); }
+.private-dictionary-row { display: grid; gap: 7px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.private-dictionary-row header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.private-dictionary-row header div { display: grid; gap: 2px; min-width: 0; }
+.private-dictionary-row header strong { overflow-wrap: anywhere; font-size: 13px; }
+.private-dictionary-row header small, .private-dictionary-row p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.private-dictionary-controls { display: grid; grid-template-columns: minmax(130px, 1fr) auto auto; gap: 6px; align-items: end; }
+.private-dictionary-controls label { display: grid; grid-template-columns: auto minmax(74px, 1fr); align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
+.private-dictionary-controls input { min-width: 0; }
+.private-dictionary-form { display: grid; gap: 9px; margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--line); }
+.private-dictionary-form label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
+.private-dictionary-form-row { display: grid; grid-template-columns: minmax(0, 1fr) 90px; gap: 8px; }
+.private-dictionary-form button { width: 100%; }
 
 .quiz-hint-row {
   display: flex;

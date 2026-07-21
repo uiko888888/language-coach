@@ -43,7 +43,10 @@ try:
         submit_output_attempt,
     )
     from .practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
-    from .private_dictionaries import private_dictionary_status, private_phrase_meanings, search_private_entries
+    from .private_dictionaries import (
+        private_dictionary_status, private_phrase_meanings, register_private_stardict,
+        remove_private_dictionary_index, search_private_entries, update_private_dictionary,
+    )
     from .review_scheduler import ensure_review_item, rate_review_item, review_queue, undo_last_review
     from .speaking_training import (
         attach_audio, create_speaking_attempt, create_speaking_task_set, latest_speaking_task_set,
@@ -70,7 +73,10 @@ except ImportError:
         submit_output_attempt,
     )
     from practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
-    from private_dictionaries import private_dictionary_status, private_phrase_meanings, search_private_entries
+    from private_dictionaries import (
+        private_dictionary_status, private_phrase_meanings, register_private_stardict,
+        remove_private_dictionary_index, search_private_entries, update_private_dictionary,
+    )
     from review_scheduler import ensure_review_item, rate_review_item, review_queue, undo_last_review
     from speaking_training import (
         attach_audio, create_speaking_attempt, create_speaking_task_set, latest_speaking_task_set,
@@ -7053,6 +7059,47 @@ class App(BaseHTTPRequestHandler):
                 except ValueError as exc:
                     return json_response(self, {"error": str(exc)}, 400)
                 return json_response(self, {"book": book, "created": created}, 201 if created else 200)
+            if path == "/api/private-dictionaries/stardict":
+                if not self.browser_authorized():
+                    return json_response(self, {"error": "Invalid local dictionary token"}, 401)
+                source_path = Path(str(payload.get("path") or "")).expanduser()
+                name = str(payload.get("name") or source_path.stem).strip()
+                kind = str(payload.get("kind") or "bilingual_dictionary")
+                if kind not in {"bilingual_dictionary", "monolingual_dictionary", "encyclopedia"}:
+                    return json_response(self, {"error": "Unsupported private dictionary kind"}, 400)
+                try:
+                    priority = max(0, min(999, int(payload.get("priority", 20))))
+                    if source_path.suffix.casefold() != ".ifo" or not source_path.is_file():
+                        raise ValueError("Select an existing StarDict .ifo file")
+                    with db() as conn:
+                        source = register_private_stardict(
+                            conn, source_path, name=name, kind=kind,
+                            priority=priority, now=utc_now(),
+                        )
+                        sources = private_dictionary_status(conn)
+                except (OSError, ValueError, sqlite3.DatabaseError) as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, {"source": source, "private_sources": sources}, 201)
+            match = re.fullmatch(r"/api/private-dictionaries/(\d+)", path)
+            if match:
+                if not self.browser_authorized():
+                    return json_response(self, {"error": "Invalid local dictionary token"}, 401)
+                try:
+                    priority = int(payload["priority"]) if "priority" in payload else None
+                    if "enabled" in payload and not isinstance(payload["enabled"], bool):
+                        raise ValueError("enabled must be a boolean")
+                    enabled = payload.get("enabled")
+                    with db() as conn:
+                        source = update_private_dictionary(
+                            conn, int(match.group(1)), enabled=enabled,
+                            priority=priority, now=utc_now(),
+                        )
+                        sources = private_dictionary_status(conn)
+                except (TypeError, ValueError) as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                if not source:
+                    return json_response(self, {"error": "Private dictionary not found"}, 404)
+                return json_response(self, {"source": source, "private_sources": sources})
             match = re.fullmatch(r"/api/book-chapters/(\d+)/article", path)
             if match:
                 with db() as conn:
@@ -7911,6 +7958,16 @@ class App(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:
         path = urllib.parse.urlparse(self.path).path
+        dictionary_match = re.fullmatch(r"/api/private-dictionaries/(\d+)", path)
+        if dictionary_match:
+            if not self.browser_authorized():
+                return json_response(self, {"error": "Invalid local dictionary token"}, 401)
+            with db() as conn:
+                removed = remove_private_dictionary_index(conn, int(dictionary_match.group(1)))
+                sources = private_dictionary_status(conn)
+            if not removed:
+                return json_response(self, {"error": "Private dictionary not found"}, 404)
+            return json_response(self, {"removed": True, "private_sources": sources})
         match = re.fullmatch(r"/api/speaking-attempts/(\d+)", path)
         if not match:
             return json_response(self, {"error": "Not found"}, 404)

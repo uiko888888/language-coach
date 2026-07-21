@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import gzip
 import re
 import sqlite3
 import struct
@@ -128,6 +129,251 @@ def _fingerprint(path: Path) -> str:
         for chunk in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _source_set_fingerprint(paths: list[Path]) -> str:
+    digest = hashlib.sha256()
+    for path in paths:
+        digest.update(path.name.casefold().encode("utf-8"))
+        digest.update(b"\0")
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _stardict_metadata(path: Path) -> dict[str, str]:
+    lines = path.read_text(encoding="utf-8-sig").splitlines()
+    if not lines or lines[0].strip() != "StarDict's dict ifo file":
+        raise ValueError("Invalid StarDict .ifo header")
+    metadata = {}
+    for line in lines[1:]:
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        metadata[key.strip().casefold()] = value.strip()
+    if metadata.get("version") not in {"2.4.2", "3.0.0"}:
+        raise ValueError("Unsupported StarDict version")
+    try:
+        word_count = int(metadata["wordcount"])
+        index_size = int(metadata["idxfilesize"])
+    except (KeyError, ValueError) as exc:
+        raise ValueError("StarDict .ifo is missing valid wordcount/idxfilesize") from exc
+    if word_count < 1 or index_size < 1:
+        raise ValueError("StarDict wordcount and idxfilesize must be positive")
+    metadata["wordcount"] = str(word_count)
+    metadata["idxfilesize"] = str(index_size)
+    return metadata
+
+
+def _stardict_companion(ifo_path: Path, suffixes: tuple[str, ...], required: bool = True) -> Path | None:
+    stem = ifo_path.with_suffix("")
+    for suffix in suffixes:
+        candidate = Path(str(stem) + suffix)
+        if candidate.is_file():
+            return candidate
+    if required:
+        raise ValueError(f"Missing StarDict companion file: {' or '.join(suffixes)}")
+    return None
+
+
+def _read_stardict_index(path: Path, offset_bits: int) -> tuple[list[tuple[str, int, int]], int]:
+    opener = gzip.open if path.suffix.casefold() == ".gz" else open
+    with opener(path, "rb") as source:
+        data = source.read()
+    records = []
+    cursor = 0
+    offset_bytes = 8 if offset_bits == 64 else 4
+    trailer_size = offset_bytes + 4
+    while cursor < len(data):
+        separator = data.find(b"\0", cursor)
+        if separator < 0 or separator + 1 + trailer_size > len(data):
+            raise ValueError("Malformed StarDict index record")
+        try:
+            headword = data[cursor:separator].decode("utf-8").strip()
+        except UnicodeDecodeError as exc:
+            raise ValueError("StarDict index headword is not valid UTF-8") from exc
+        cursor = separator + 1
+        offset = int.from_bytes(data[cursor:cursor + offset_bytes], "big")
+        size = int.from_bytes(data[cursor + offset_bytes:cursor + trailer_size], "big")
+        cursor += trailer_size
+        if not headword or size < 1 or size > 4 * 1024 * 1024:
+            raise ValueError("StarDict index contains an invalid headword or entry size")
+        records.append((headword, offset, size))
+    return records, len(data)
+
+
+def _decode_stardict_field(field_type: str, data: bytes) -> str:
+    if field_type.isupper():
+        return ""
+    try:
+        decoded = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("StarDict entry is not valid UTF-8") from exc
+    if field_type.casefold() in {"g", "h", "x"}:
+        return html_to_text(decoded)
+    return "".join(char for char in decoded if char in "\n\t" or ord(char) >= 32).strip()
+
+
+def _decode_stardict_entry(data: bytes, sequence: str) -> str:
+    fields: list[str] = []
+    cursor = 0
+    types = list(sequence)
+    if not types:
+        while cursor < len(data):
+            field_type = chr(data[cursor])
+            cursor += 1
+            if field_type.isupper():
+                if cursor + 4 > len(data):
+                    raise ValueError("Malformed StarDict typed field length")
+                size = int.from_bytes(data[cursor:cursor + 4], "big")
+                cursor += 4
+                payload = data[cursor:cursor + size]
+                cursor += size
+            else:
+                end = data.find(b"\0", cursor)
+                if end < 0:
+                    end = len(data)
+                payload = data[cursor:end]
+                cursor = min(len(data), end + 1)
+            fields.append(_decode_stardict_field(field_type, payload))
+    else:
+        for index, field_type in enumerate(types):
+            if field_type.isupper():
+                if cursor + 4 > len(data):
+                    raise ValueError("Malformed StarDict field length")
+                size = int.from_bytes(data[cursor:cursor + 4], "big")
+                cursor += 4
+                payload = data[cursor:cursor + size]
+                cursor += size
+            elif index == len(types) - 1:
+                payload = data[cursor:]
+                cursor = len(data)
+            else:
+                end = data.find(b"\0", cursor)
+                if end < 0:
+                    raise ValueError("Malformed StarDict null-terminated field")
+                payload = data[cursor:end]
+                cursor = end + 1
+            fields.append(_decode_stardict_field(field_type, payload))
+    return "\n\n".join(value for value in fields if value).strip()
+
+
+def _read_stardict_synonyms(path: Path | None, word_count: int) -> list[tuple[str, int]]:
+    if not path:
+        return []
+    data = path.read_bytes()
+    synonyms = []
+    cursor = 0
+    while cursor < len(data):
+        separator = data.find(b"\0", cursor)
+        if separator < 0 or separator + 5 > len(data):
+            raise ValueError("Malformed StarDict synonym record")
+        try:
+            synonym = data[cursor:separator].decode("utf-8").strip()
+        except UnicodeDecodeError as exc:
+            raise ValueError("StarDict synonym is not valid UTF-8") from exc
+        target = int.from_bytes(data[separator + 1:separator + 5], "big")
+        if not synonym or target >= word_count:
+            raise ValueError("StarDict synonym target is out of range")
+        synonyms.append((synonym, target))
+        cursor = separator + 5
+    return synonyms
+
+
+def register_private_stardict(
+    conn: sqlite3.Connection,
+    ifo_path: Path,
+    *,
+    name: str,
+    kind: str,
+    priority: int,
+    now: str,
+) -> dict:
+    resolved_ifo = ifo_path.resolve()
+    metadata = _stardict_metadata(resolved_ifo)
+    idx_path = _stardict_companion(resolved_ifo, (".idx", ".idx.gz"))
+    dict_path = _stardict_companion(resolved_ifo, (".dict", ".dict.dz"))
+    syn_path = _stardict_companion(resolved_ifo, (".syn",), required=False)
+    source_paths = [resolved_ifo, idx_path, dict_path, *([syn_path] if syn_path else [])]
+    fingerprint = _source_set_fingerprint(source_paths)
+    offset_bits = int(metadata.get("idxoffsetbits", "32"))
+    if offset_bits not in {32, 64}:
+        raise ValueError("StarDict idxoffsetbits must be 32 or 64")
+    records, decoded_index_size = _read_stardict_index(idx_path, offset_bits)
+    if len(records) != int(metadata["wordcount"]):
+        raise ValueError(f"StarDict wordcount mismatch: expected {metadata['wordcount']}, found {len(records)}")
+    if decoded_index_size != int(metadata["idxfilesize"]):
+        raise ValueError("StarDict idxfilesize does not match the .idx file")
+    synonyms = _read_stardict_synonyms(syn_path, len(records))
+    if "synwordcount" in metadata and int(metadata["synwordcount"]) != len(synonyms):
+        raise ValueError("StarDict synwordcount does not match the .syn file")
+    if dict_path.name.casefold().endswith(".dict.dz") and any(
+        records[index][1] < records[index - 1][1] for index in range(1, len(records))
+    ):
+        raise ValueError("Compressed StarDict entries must use nondecreasing offsets for low-memory import")
+    sequence = metadata.get("sametypesequence", "")
+    existing = conn.execute(
+        """SELECT id FROM private_dictionaries
+           WHERE fingerprint = ? OR (format = 'stardict' AND source_path = ?)
+           ORDER BY CASE WHEN fingerprint = ? THEN 0 ELSE 1 END LIMIT 1""",
+        (fingerprint, str(resolved_ifo), fingerprint),
+    ).fetchone()
+    if existing:
+        dictionary_id = existing[0]
+        conn.execute(
+            """UPDATE private_dictionaries SET name = ?, kind = ?, format = 'stardict', source_path = ?,
+                      fingerprint = ?, priority = ?, enabled = 1, status = 'pending', status_detail = '', updated_at = ?
+               WHERE id = ?""",
+            (name, kind, str(resolved_ifo), fingerprint, priority, now, dictionary_id),
+        )
+    else:
+        dictionary_id = conn.execute(
+            """INSERT INTO private_dictionaries
+               (name, kind, format, source_path, fingerprint, priority, enabled, status, updated_at)
+               VALUES (?, ?, 'stardict', ?, ?, ?, 1, 'pending', ?)""",
+            (name, kind, str(resolved_ifo), fingerprint, priority, now),
+        ).lastrowid
+    conn.execute("DELETE FROM private_dictionary_entries WHERE dictionary_id = ?", (dictionary_id,))
+    opener = gzip.open if dict_path.name.casefold().endswith(".dict.dz") else open
+    with opener(dict_path, "rb") as dictionary:
+        for index, (headword, offset, size) in enumerate(records):
+            dictionary.seek(offset)
+            payload = dictionary.read(size)
+            if len(payload) != size:
+                raise ValueError("StarDict entry offset or size exceeds dictionary data")
+            entry_text = _decode_stardict_entry(payload, sequence)
+            if not entry_text:
+                raise ValueError("StarDict contains an empty decoded entry")
+            conn.execute(
+                """INSERT INTO private_dictionary_entries
+                   (dictionary_id, normalized, headword, entry_text, source_locator, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (dictionary_id, normalize_headword(headword), headword, entry_text, f"entry:{index}", now),
+            )
+    for synonym, target in synonyms:
+        target_row = conn.execute(
+            """SELECT entry_text FROM private_dictionary_entries
+               WHERE dictionary_id = ? AND source_locator = ?""",
+            (dictionary_id, f"entry:{target}"),
+        ).fetchone()
+        if not target_row:
+            raise ValueError("StarDict synonym target entry is unavailable")
+        conn.execute(
+            """INSERT OR IGNORE INTO private_dictionary_entries
+               (dictionary_id, normalized, headword, entry_text, source_locator, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (dictionary_id, normalize_headword(synonym), synonym, target_row[0], f"syn:{target}:{synonym}", now),
+        )
+    count = len(records) + len(synonyms)
+    details = f"StarDict {metadata['version']}; {len(records)} entries; {len(synonyms)} synonyms; {sequence or 'typed fields'}"
+    conn.execute(
+        """UPDATE private_dictionaries SET status = 'ready', status_detail = ?, entry_count = ?,
+                  imported_at = ?, updated_at = ? WHERE id = ?""",
+        (details, count, now, now, dictionary_id),
+    )
+    return dict(conn.execute("SELECT * FROM private_dictionaries WHERE id = ?", (dictionary_id,)).fetchone())
 
 
 def parse_dictionary_html(document: str) -> list[tuple[str, str, str]]:
@@ -346,3 +592,31 @@ def private_dictionary_status(conn: sqlite3.Connection) -> list[dict]:
                   entry_count, imported_at, updated_at
            FROM private_dictionaries ORDER BY priority, name"""
     ).fetchall()]
+
+
+def update_private_dictionary(
+    conn: sqlite3.Connection,
+    dictionary_id: int,
+    *,
+    enabled: bool | None = None,
+    priority: int | None = None,
+    now: str,
+) -> dict | None:
+    row = conn.execute("SELECT * FROM private_dictionaries WHERE id = ?", (dictionary_id,)).fetchone()
+    if not row:
+        return None
+    next_enabled = int(bool(enabled)) if enabled is not None else row["enabled"]
+    next_priority = max(0, min(999, int(priority))) if priority is not None else row["priority"]
+    conn.execute(
+        "UPDATE private_dictionaries SET enabled = ?, priority = ?, updated_at = ? WHERE id = ?",
+        (next_enabled, next_priority, now, dictionary_id),
+    )
+    return dict(conn.execute("SELECT * FROM private_dictionaries WHERE id = ?", (dictionary_id,)).fetchone())
+
+
+def remove_private_dictionary_index(conn: sqlite3.Connection, dictionary_id: int) -> bool:
+    if not conn.execute("SELECT 1 FROM private_dictionaries WHERE id = ?", (dictionary_id,)).fetchone():
+        return False
+    conn.execute("DELETE FROM private_dictionary_entries WHERE dictionary_id = ?", (dictionary_id,))
+    conn.execute("DELETE FROM private_dictionaries WHERE id = ?", (dictionary_id,))
+    return True

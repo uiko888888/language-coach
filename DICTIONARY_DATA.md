@@ -28,6 +28,20 @@ python .\scripts\register_private_pdf.py `
 
 Registration does not copy the PDF or create entries. A scan remains `ocr_required` until representative pages pass headword, reading-order and bilingual-alignment checks.
 
+## StarDict
+
+Import a complete private StarDict source set by passing its `.ifo` file. Companion files are discovered beside it:
+
+```powershell
+python .\scripts\import_private_stardict.py `
+  --ifo "D:\Dictionaries\example.ifo" `
+  --name "My bilingual dictionary" `
+  --kind bilingual_dictionary `
+  --priority 20
+```
+
+Supported companions are `.idx`/`.idx.gz`, `.dict`/`.dict.dz` and optional `.syn`. The same operation is available in User Center. Import validates the complete source set and runs in one transaction; a failed refresh retains the previous ready index. Removing an index never removes source files.
+
 ## Installed Baseline
 
 Open English WordNet is the semantic baseline. Check the running database with:

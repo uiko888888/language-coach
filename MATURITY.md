@@ -66,6 +66,8 @@ Current strengths are source traceability, one-material-many-uses, evidence repl
 
 `alpha.25.2` registers a high-value illustrated scan without awarding itself false coverage. The 1,263-page DK Oxford PDF is traceable and visible as pending OCR, but contributes zero searchable entries because dense columns and illustration panels have not passed alignment gates. Dictionary scores therefore stay at 8.1/10 local and 7.9/10 distributable. The maturity gain is operational: the product can now distinguish “owned source”, “searchable index” and “verified content” instead of treating file presence as successful integration.
 
+`alpha.25.3` completes the first reusable private dictionary format rather than increasing bundled coverage. StarDict now has low-memory parsing, compound fingerprints, transactional refresh, synonym handling, token-protected APIs and user-facing source controls. Engineering operations rise from 6.7 to 7.0/10 and private dictionary maintainability improves, while dictionary coverage remains 8.1/10 local and 7.9/10 distributable until a real StarDict source is imported and sampled. The main self-critique is that format conformance from synthetic fixtures is necessary but not sufficient evidence for ecosystem compatibility.
+
 Interest and exam modes now use different home workflows: immersion and expression collection versus target, weakness and question-type prescription. They still share one profile so interest activity can later contribute domain evidence without masquerading as exam-score gains.
 
 ## Universal Product Requirements

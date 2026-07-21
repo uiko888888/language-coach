@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.25.2";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.25.3";
 const SUPPORTED_API_VERSION = "1";
 const SUPPORTED_SCHEMA_VERSION = "21";
 
@@ -2270,6 +2270,89 @@ async function loadDictionaryStatus() {
   state.lexicalDataStatus = data;
 }
 
+function renderPrivateDictionaryManager() {
+  const panel = $("#privateDictionaryList");
+  if (!panel) return;
+  const labels = {
+    ready: "已就绪", conversion_required: "待转换", ocr_required: "待 OCR", pending: "处理中", failed: "失败",
+  };
+  const formats = { stardict: "StarDict", mobi: "MOBI", pdf: "PDF", dsl: "DSL", mdx: "MDX" };
+  const sourceDetail = source => {
+    if (source.status === "conversion_required") return "需要先转换为 HTML 或 EPUB 后重新导入";
+    if (source.status === "ocr_required") {
+      const pages = String(source.status_detail || "").match(/(\d+) pages/)?.[1];
+      return `${pages ? `${pages} 页 · ` : ""}扫描版，等待 OCR 与栏序校验`;
+    }
+    if (source.format === "stardict") {
+      const entries = String(source.status_detail || "").match(/(\d+) entries/)?.[1];
+      const synonyms = String(source.status_detail || "").match(/(\d+) synonyms/)?.[1];
+      return `${entries || 0} 个主词条 · ${synonyms || 0} 个同义入口`;
+    }
+    return source.status_detail || "仅本机";
+  };
+  const sources = state.lexicalDataStatus.private_sources || [];
+  panel.innerHTML = sources.length ? sources.map(source => `
+    <article class="private-dictionary-row">
+      <header><div><strong>${escapeHtml(source.name)}</strong><small>${escapeHtml(formats[source.format] || source.format)} · ${escapeHtml(labels[source.status] || source.status)} · ${Number(source.entry_count || 0).toLocaleString("zh-CN")} 条</small></div>${badge(source.enabled ? "已启用" : "已停用", source.enabled ? "teal" : "amber")}</header>
+      <p>${escapeHtml(sourceDetail(source))}</p>
+      <div class="private-dictionary-controls">
+        <label><span>优先级</span><input type="number" min="0" max="999" value="${Number(source.priority || 0)}" data-private-priority="${source.id}" aria-label="${escapeHtml(source.name)}优先级" /></label>
+        <button type="button" data-private-toggle="${source.id}" data-private-enabled="${source.enabled ? "0" : "1"}">${source.enabled ? "停用" : "启用"}</button>
+        <button type="button" data-private-remove="${source.id}" data-private-name="${escapeHtml(source.name)}" title="只移除索引，不删除原文件">移除</button>
+      </div>
+    </article>`).join("") : `<div class="empty-state">尚未登记私人词典</div>`;
+}
+
+async function importStarDict() {
+  if (!state.bridge?.token) return toast("本机词典连接尚未就绪");
+  const button = $("#importStardictBtn");
+  button.disabled = true;
+  $("#privateDictionaryStatus").textContent = "正在校验并建立本机索引...";
+  try {
+    const data = await api("/api/private-dictionaries/stardict", {
+      method: "POST",
+      headers: { "X-Language-Coach-Token": state.bridge.token },
+      body: JSON.stringify({
+        path: $("#stardictPath").value.trim(),
+        name: $("#stardictName").value.trim(),
+        kind: $("#stardictKind").value,
+        priority: Number($("#stardictPriority").value || 20),
+      }),
+    });
+    state.lexicalDataStatus.private_sources = data.private_sources || [];
+    $("#privateDictionaryStatus").textContent = `${data.source.name} 已导入 ${Number(data.source.entry_count).toLocaleString("zh-CN")} 条。`;
+    $("#stardictImportForm").reset();
+    $("#stardictPriority").value = "20";
+    renderPrivateDictionaryManager();
+    renderLexicon();
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function updatePrivateDictionary(id, payload) {
+  const data = await api(`/api/private-dictionaries/${id}`, {
+    method: "POST",
+    headers: { "X-Language-Coach-Token": state.bridge.token || "" },
+    body: JSON.stringify(payload),
+  });
+  state.lexicalDataStatus.private_sources = data.private_sources || [];
+  renderPrivateDictionaryManager();
+  renderLexicon();
+}
+
+async function removePrivateDictionary(id, name) {
+  if (!window.confirm(`移除 ${name} 的本机索引？原词典文件不会删除。`)) return;
+  const data = await api(`/api/private-dictionaries/${id}`, {
+    method: "DELETE",
+    headers: { "X-Language-Coach-Token": state.bridge.token || "" },
+  });
+  state.lexicalDataStatus.private_sources = data.private_sources || [];
+  renderPrivateDictionaryManager();
+  renderLexicon();
+  toast("私人词典索引已移除");
+}
+
 async function loadLexiconHistory() {
   state.lexiconHistory = await api("/api/lexicon/history");
 }
@@ -2884,6 +2967,7 @@ function renderAll() {
   renderMistakes();
   renderPracticeHistory();
   renderLexicon();
+  renderPrivateDictionaryManager();
 }
 
 function renderExamTypes() {
@@ -4291,6 +4375,12 @@ document.addEventListener("click", async event => {
     if (button.id === "saveLearnerSettingsBtn") await saveLearnerSettings();
     if (button.id === "createBackupBtn") await createDataBackup();
     if (button.id === "restoreBackupBtn") await restoreDataBackup();
+    if (button.dataset.privateToggle) {
+      await updatePrivateDictionary(Number(button.dataset.privateToggle), { enabled: button.dataset.privateEnabled === "1" });
+    }
+    if (button.dataset.privateRemove) {
+      await removePrivateDictionary(Number(button.dataset.privateRemove), button.dataset.privateName || "该词典");
+    }
     if (button.dataset.profileSource) setProfileSource(button.dataset.profileSource);
     if (button.id === "saveLearnerProfileBtn") await saveLearnerProfile();
     if (button.id === "loadQuickTestBtn") await loadQuickTest();
@@ -4801,6 +4891,16 @@ $("#globalSearchForm").addEventListener("submit", async event => {
 $("#lexiconSearchForm").addEventListener("submit", async event => {
   event.preventDefault();
   await searchLexicon($("#lexiconSearch").value, { open: false });
+});
+
+$("#stardictImportForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  await importStarDict();
+});
+
+$("#privateDictionaryList").addEventListener("change", async event => {
+  if (!event.target.matches("[data-private-priority]")) return;
+  await updatePrivateDictionary(Number(event.target.dataset.privatePriority), { priority: Number(event.target.value) });
 });
 
 let quickSearchTimer;

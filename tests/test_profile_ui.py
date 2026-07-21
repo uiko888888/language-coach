@@ -29,6 +29,17 @@ class ProfileUiContractTests(unittest.TestCase):
         self.assertIn('api("/api/learner-profile"', self.js)
         self.assertIn('api("/api/profile/quick-test"', self.js)
 
+    def test_private_dictionary_manager_supports_stardict_and_local_controls(self):
+        for element_id in (
+            "privateDictionaryList", "stardictImportForm", "stardictPath", "stardictName",
+            "stardictKind", "stardictPriority", "importStardictBtn", "privateDictionaryStatus",
+        ):
+            self.assertIn(f'id="{element_id}"', self.html)
+        self.assertIn('api("/api/private-dictionaries/stardict"', self.js)
+        self.assertIn("data-private-toggle", self.js)
+        self.assertIn("data-private-remove", self.js)
+        self.assertIn("X-Language-Coach-Token", self.js)
+
     def test_profile_layout_collapses_to_one_column(self):
         self.assertIn("@media (max-width: 980px)", self.css)
         responsive = self.css.split("@media (max-width: 980px)", 1)[1]
@@ -174,7 +185,7 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.25.2";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.25.3";', self.js)
         self.assertIn('const SUPPORTED_SCHEMA_VERSION = "21";', self.js)
         self.assertIn('const schemaCompatible =', self.js)
         self.assertIn('api("/api/backups"', self.js)

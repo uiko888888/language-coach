@@ -1,3 +1,4 @@
+import gzip
 import sqlite3
 import struct
 import tempfile
@@ -11,6 +12,7 @@ from backend.private_dictionaries import (
     private_phrase_meanings,
     register_private_dictionary,
     register_private_pdf_source,
+    register_private_stardict,
     search_private_entries,
 )
 
@@ -30,7 +32,120 @@ def build_uncompressed_mobi(path: Path, document: str) -> None:
     path.write_bytes(bytes(header) + bytes(record_zero) + text)
 
 
+def build_stardict(root: Path, entries, *, sequence="m", compressed=False, synonyms=()):
+    base = root / "sample"
+    dictionary = bytearray()
+    index = bytearray()
+    for headword, definition in entries:
+        payload = definition.encode("utf-8")
+        offset = len(dictionary)
+        dictionary.extend(payload)
+        index.extend(headword.encode("utf-8") + b"\0")
+        index.extend(struct.pack(">II", offset, len(payload)))
+    ifo = base.with_suffix(".ifo")
+    ifo.write_text(
+        "\n".join((
+            "StarDict's dict ifo file", "version=3.0.0", f"wordcount={len(entries)}",
+            f"idxfilesize={len(index)}", "bookname=Sample", f"sametypesequence={sequence}",
+        )) + "\n",
+        encoding="utf-8",
+    )
+    if compressed:
+        with gzip.open(str(base) + ".idx.gz", "wb") as target:
+            target.write(index)
+        with gzip.open(str(base) + ".dict.dz", "wb") as target:
+            target.write(dictionary)
+    else:
+        Path(str(base) + ".idx").write_bytes(index)
+        Path(str(base) + ".dict").write_bytes(dictionary)
+    if synonyms:
+        data = b"".join(word.encode("utf-8") + b"\0" + struct.pack(">I", target) for word, target in synonyms)
+        Path(str(base) + ".syn").write_bytes(data)
+    return ifo
+
+
 class PrivateDictionaryTests(unittest.TestCase):
+    def test_imports_stardict_html_and_synonyms(self):
+        with tempfile.TemporaryDirectory() as root:
+            ifo = build_stardict(
+                Path(root),
+                [("keen", "<b>adj.</b> eager; 热切的<br/>be keen on 喜爱"), ("zeal", "<b>n.</b> enthusiasm; 热忱")],
+                sequence="h", synonyms=(("enthusiasm", 1),),
+            )
+            conn = sqlite3.connect(":memory:")
+            try:
+                conn.row_factory = sqlite3.Row
+                ensure_private_dictionary_schema(conn)
+                result = register_private_stardict(
+                    conn, ifo, name="Sample StarDict", kind="bilingual_dictionary",
+                    priority=5, now="2026-07-21T00:00:00+00:00",
+                )
+                keen = search_private_entries(conn, "keen")
+                synonym = search_private_entries(conn, "enthusiasm")
+            finally:
+                conn.close()
+            self.assertEqual(result["status"], "ready")
+            self.assertEqual(result["entry_count"], 3)
+            self.assertIn("be keen on 喜爱", keen[0]["entry_text"])
+            self.assertIn("enthusiasm; 热忱", synonym[0]["entry_text"])
+
+    def test_imports_compressed_stardict_without_full_dictionary_buffer(self):
+        with tempfile.TemporaryDirectory() as root:
+            ifo = build_stardict(Path(root), [("cast", "v. throw; 投掷"), ("cordial", "adj. warm and friendly; 热情友好的")], compressed=True)
+            conn = sqlite3.connect(":memory:")
+            try:
+                conn.row_factory = sqlite3.Row
+                ensure_private_dictionary_schema(conn)
+                result = register_private_stardict(
+                    conn, ifo, name="Compressed StarDict", kind="bilingual_dictionary",
+                    priority=5, now="2026-07-21T00:00:00+00:00",
+                )
+                lookup = search_private_entries(conn, "cast")
+            finally:
+                conn.close()
+            self.assertEqual(result["entry_count"], 2)
+            self.assertEqual(lookup[0]["headword"], "cast")
+
+    def test_failed_stardict_refresh_rolls_back_existing_index(self):
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+            ifo = build_stardict(root_path, [("cast", "v. throw; 投掷"), ("keen", "adj. eager; 热切的")])
+            database = root_path / "private.sqlite"
+            conn = sqlite3.connect(database)
+            try:
+                conn.row_factory = sqlite3.Row
+                ensure_private_dictionary_schema(conn)
+                register_private_stardict(
+                    conn, ifo, name="Rollback StarDict", kind="bilingual_dictionary",
+                    priority=5, now="2026-07-21T00:00:00+00:00",
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            Path(str(ifo.with_suffix("")) + ".dict").write_bytes(b"broken")
+            with self.assertRaisesRegex(ValueError, "offset or size"):
+                conn = sqlite3.connect(database)
+                try:
+                    conn.row_factory = sqlite3.Row
+                    register_private_stardict(
+                        conn, ifo, name="Rollback StarDict", kind="bilingual_dictionary",
+                        priority=5, now="2026-07-21T01:00:00+00:00",
+                    )
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    raise
+                finally:
+                    conn.close()
+            conn = sqlite3.connect(database)
+            try:
+                source = conn.execute("SELECT status, entry_count FROM private_dictionaries").fetchone()
+                count = conn.execute("SELECT COUNT(*) FROM private_dictionary_entries").fetchone()[0]
+            finally:
+                conn.close()
+            self.assertEqual(source, ("ready", 2))
+            self.assertEqual(count, 2)
+
     def test_registers_image_pdf_without_promoting_unverified_entries(self):
         with tempfile.TemporaryDirectory() as root:
             pdf = Path(root) / "illustrated.pdf"

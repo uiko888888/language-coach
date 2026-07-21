@@ -326,6 +326,21 @@
           <div class="calibration-summary" id="userCalibrationSummary"></div>
         </section>
 
+        <section class="band private-dictionary-manager">
+          <div class="band-head"><div><span class="eyebrow">Private dictionaries</span><h2>本机私人词典</h2></div></div>
+          <div class="private-dictionary-list" id="privateDictionaryList"></div>
+          <form id="stardictImportForm" class="private-dictionary-form">
+            <label><span>StarDict .ifo 路径</span><input id="stardictPath" required placeholder="D:\Dictionaries\example.ifo" /></label>
+            <label><span>显示名称</span><input id="stardictName" required placeholder="我的英汉词典" /></label>
+            <div class="private-dictionary-form-row">
+              <label><span>类型</span><select id="stardictKind"><option value="bilingual_dictionary">双语词典</option><option value="monolingual_dictionary">英英词典</option><option value="encyclopedia">百科</option></select></label>
+              <label><span>优先级</span><input id="stardictPriority" type="number" min="0" max="999" value="20" /></label>
+            </div>
+            <button class="primary" type="submit" id="importStardictBtn">导入 StarDict</button>
+          </form>
+          <p class="data-note" id="privateDictionaryStatus">原文件不会上传或删除。</p>
+        </section>
+
         <aside class="user-center-side">
           <section class="band">
             <div class="band-head"><div><span class="eyebrow">Preferences</span><h2>目标与偏好</h2></div><button data-open-profile-dialog>调整</button></div>
