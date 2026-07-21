@@ -3,6 +3,7 @@
 调研日期：2026-07-16。星标为调研时的近似值，后续会变化。调研用于提取产品机制，不代表复制实现。
 
 学习模式的统一对比、证据等级和 Complete the Words 卡片回顾边界见 [`COMPETITIVE_MODE_MATRIX.md`](COMPETITIVE_MODE_MATRIX.md)。
+2026-07-21 六轮机制调研与采用优先级见 [`RESEARCH_ROUNDS_2026-07-21.md`](RESEARCH_ROUNDS_2026-07-21.md)。
 
 ## 2026-07-17 - TOEFL 2026 Complete the Words 核验记录
 
