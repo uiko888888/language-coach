@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.1] - 2026-07-21
+
+### Added
+
+- Added schema 21 for private local dictionaries, including source fingerprinting, rights status, enablement, priority, import status and isolated entries.
+- Added a dependency-free MOBI importer for unencrypted PalmDOC/uncompressed dictionaries and an explicit conversion-required state for HUFF/CDIC files.
+- Indexed 39,108 local Oxford bilingual entries and 30,268 Britannica Micropedia entries; the latter is visibly separated as encyclopedia context.
+- Added private dictionary lookup cards and exact private phrase-meaning resolution, both labeled as local-only with retained provenance.
+
+### Safety
+
+- Private commercial content is excluded from Git, public dictionary tables, public question generation, model training and open data exports.
+- MOBI files with DRM are rejected, and unsupported compression never produces a partial ready index.
+
+### Verification
+
+- Added parser, import, phrase-gloss and local-visibility tests; representative checks cover `slaughter`, `comprise`, `cast` and `keen`.
+- `现代英汉词典` remains registered as `conversion_required` because its HUFF/CDIC stream has not passed decoding validation.
+- All 204 automated tests passed with 2 optional dependency tests skipped. The desktop Playwright check remains pending because `playwright` is not installed in this workspace.
+
 ## [0.8.0-alpha.25.0] - 2026-07-21
 
 ### Added

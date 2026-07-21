@@ -30,7 +30,7 @@ async function run() {
   let browser;
   try {
     const version = await waitForServer();
-    if (version.app_version !== "0.8.0-alpha.25.0" || version.database_schema_version !== 20) {
+    if (version.app_version !== "0.8.0-alpha.25.1" || version.database_schema_version !== 21) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const lexicalPayload = await fetch(`${baseUrl}/api/lexicon/search?q=cast`).then(response => response.json());
@@ -57,6 +57,9 @@ async function run() {
     if (sidebarPosition !== "fixed") failures.push(`sidebar is not fixed: ${sidebarPosition}`);
     const columns = await page.locator(".lexicon-layout").evaluate(element => getComputedStyle(element).gridTemplateColumns);
     if (columns.split(" ").length < 2) failures.push(`lexicon layout is not split: ${columns}`);
+    if (await page.locator(".private-dictionary-entry").count() < 1) failures.push("private dictionary entry is missing");
+    if (!await page.locator("#lexiconDetail").getByText("仅本机", { exact: true }).count()) failures.push("private local-only label is missing");
+    await page.click('button[data-lexical-type="wordnet"]');
     if (await page.locator(".dictionary-section-nav button").count() < 2) failures.push("section navigation is missing");
     if (await page.locator(".external-dictionaries a").count() < 4) failures.push("external dictionary links are incomplete");
     if (await page.locator('[data-voice="en-GB"]').count() < 1) failures.push("UK speech control is missing");
@@ -69,7 +72,7 @@ async function run() {
     server.kill();
   }
   if (failures.length) throw new Error(failures.join("\n"));
-  process.stdout.write("Lexicon bilingual desktop workflow passed on schema 20.\n");
+  process.stdout.write("Lexicon private/open bilingual desktop workflow passed on schema 21.\n");
 }
 
 run().catch(error => {

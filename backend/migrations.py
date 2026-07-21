@@ -10,10 +10,12 @@ from datetime import datetime, timezone
 try:
     from .content_extraction import extract_source_content
     from .lexical_data import ensure_lexical_data_schema
+    from .private_dictionaries import ensure_private_dictionary_schema
     from .review_scheduler import backfill_review_items
 except ImportError:
     from content_extraction import extract_source_content
     from lexical_data import ensure_lexical_data_schema
+    from private_dictionaries import ensure_private_dictionary_schema
     from review_scheduler import backfill_review_items
 
 
@@ -248,6 +250,10 @@ def _sense_aware_cards(conn: sqlite3.Connection) -> None:
         _ensure_column(conn, "cards", column, definition)
     if "term" in _columns(conn, "cards"):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_term_sense ON cards(term, sense_key)")
+
+
+def _private_dictionary_index(conn: sqlite3.Connection) -> None:
+    ensure_private_dictionary_schema(conn)
 
 
 SCRIPT_NOISE_PATTERN = re.compile(
@@ -760,6 +766,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     (18, "add Complete the Words card review", _complete_word_review),
     (19, "persist paragraph-aligned article translations", _article_paragraph_translations),
     (20, "persist sense-aware vocabulary cards", _sense_aware_cards),
+    (21, "add private local dictionary index", _private_dictionary_index),
 )
 
 

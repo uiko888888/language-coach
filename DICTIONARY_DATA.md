@@ -2,6 +2,20 @@
 
 Language Coach uses layered open data. No single source is presented as a complete commercial dictionary.
 
+## Private Local MOBI Dictionaries
+
+User-owned commercial dictionaries may be indexed for private local lookup only. They are ignored by Git and excluded from public question generation, model training and open dictionary exports.
+
+```powershell
+python .\scripts\import_private_mobi.py `
+  --mobi ".\data\private-dictionaries\imports\my-dictionary.mobi" `
+  --name "My private dictionary" `
+  --kind bilingual_dictionary `
+  --priority 10
+```
+
+The built-in importer accepts unencrypted PalmDOC or uncompressed MOBI files. DRM is rejected. HUFF/CDIC files remain `conversion_required` until converted through a trusted local tool and validated; they are never partially promoted to a ready index. Encyclopedia sources use `--kind encyclopedia` and appear as context rather than bilingual definitions.
+
 ## Installed Baseline
 
 Open English WordNet is the semantic baseline. Check the running database with:

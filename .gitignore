@@ -2,6 +2,7 @@ data/*.sqlite
 data/*.sqlite-*
 data/*.log
 data/backups/
+data/private-dictionaries/
 data/edge-profile-check/
 .env.local
 backend/__pycache__/

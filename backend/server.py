@@ -43,6 +43,7 @@ try:
         submit_output_attempt,
     )
     from .practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
+    from .private_dictionaries import private_dictionary_status, private_phrase_meanings, search_private_entries
     from .review_scheduler import ensure_review_item, rate_review_item, review_queue, undo_last_review
     from .speaking_training import (
         attach_audio, create_speaking_attempt, create_speaking_task_set, latest_speaking_task_set,
@@ -69,6 +70,7 @@ except ImportError:
         submit_output_attempt,
     )
     from practice_state import active_practice_run, finish_practice_run, save_practice_run, training_prescription
+    from private_dictionaries import private_dictionary_status, private_phrase_meanings, search_private_entries
     from review_scheduler import ensure_review_item, rate_review_item, review_queue, undo_last_review
     from speaking_training import (
         attach_audio, create_speaking_attempt, create_speaking_task_set, latest_speaking_task_set,
@@ -4618,6 +4620,11 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
             registered_phrases=lexical_layers["phrases"],
             curated_patterns=(profile or {}).get("patterns") or [],
         )
+        private_collocation_meanings = private_phrase_meanings(
+            conn,
+            [item["phrase"] for item in common_collocation_data["items"]]
+            + [str(value.get("word") if isinstance(value, dict) else value) for value in lexical_layers["phrases"]],
+        )
         synset_ids = list(dict.fromkeys(row["synset_id"] for row in rows))
         placeholders = ",".join("?" for _ in synset_ids)
         relation_rows = conn.execute(
@@ -4735,8 +4742,16 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
             "forms": lexical_layers["forms"],
             "aliases": [],
             "family": [{"term": value, "meaning_zh": cached_zh.get(value, "")} for value in family[:24]],
-            "collocations": [{**item, "meaning_zh": cached_zh.get(item["phrase"], "")} for item in collocations],
-            "common_collocations": [{**item, "meaning_zh": cached_zh.get(item["phrase"], "")} for item in common_collocations],
+            "collocations": [{
+                **item,
+                "meaning_zh": private_collocation_meanings.get(item["phrase"].casefold(), {}).get("meaning_zh") or cached_zh.get(item["phrase"], ""),
+                "meaning_source": private_collocation_meanings.get(item["phrase"].casefold(), {}).get("source", ""),
+            } for item in collocations],
+            "common_collocations": [{
+                **item,
+                "meaning_zh": private_collocation_meanings.get(item["phrase"].casefold(), {}).get("meaning_zh") or cached_zh.get(item["phrase"], ""),
+                "meaning_source": private_collocation_meanings.get(item["phrase"].casefold(), {}).get("source", ""),
+            } for item in common_collocations],
             "personal_collocations": [{**item, "meaning_zh": cached_zh.get(item["phrase"], "")} for item in personal_collocations],
             "open_phrases": [{**item, "meaning_zh": cached_zh.get(item["phrase"], item["meaning_zh"])} for item in open_phrases],
             "collocation_corpus": {
@@ -4961,6 +4976,10 @@ def lexical_search(query: str, limit: int = 30, track: bool = False) -> dict:
         results.extend(wordnet_results)
     with db() as conn:
         open_results = search_open_entries(conn, raw) if raw else []
+        private_results = search_private_entries(conn, raw) if raw else []
+    if private_results:
+        exact_lexical_match = exact_lexical_match or any(item["score"] >= 90 for item in private_results)
+        results.extend(private_results)
     if open_results and not wordnet_results:
         for item in open_results:
             learning = lexical_query_context(item["headword"])
@@ -5116,7 +5135,9 @@ def dictionary_data_status() -> dict:
             "bilingual_examples": conn.execute("SELECT COUNT(*) FROM open_bilingual_examples").fetchone()[0],
             "frequencies": conn.execute("SELECT COUNT(*) FROM lexical_frequencies").fetchone()[0],
             "curated_entries": conn.execute("SELECT COUNT(*) FROM dictionary_entries").fetchone()[0],
+            "private_entries": conn.execute("SELECT COUNT(*) FROM private_dictionary_entries").fetchone()[0],
         }
+        private_sources = private_dictionary_status(conn)
         quality = audit_dictionary_data(conn)
     installed = {item["source_key"] for item in sources}
     layers = [
@@ -5127,7 +5148,13 @@ def dictionary_data_status() -> dict:
     ]
     for layer in layers:
         layer["installed"] = layer["source_key"] in installed and layer["count"] > 0
-    return {"sources": sources, "layers": layers, "counts": counts, "quality": quality}
+    return {
+        "sources": sources,
+        "private_sources": private_sources,
+        "layers": layers,
+        "counts": counts,
+        "quality": quality,
+    }
 
 
 def progress_payload(conn: sqlite3.Connection) -> dict:

@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 API_VERSION = "1"
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
 
 
 def app_version(root: Path) -> str:

@@ -8,9 +8,9 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.25.0";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.25.1";
 const SUPPORTED_API_VERSION = "1";
-const SUPPORTED_SCHEMA_VERSION = "20";
+const SUPPORTED_SCHEMA_VERSION = "21";
 
 const state = {
   articles: [],
@@ -1779,13 +1779,14 @@ function lexicalSubtitle(item) {
   if (item.type === "entry") return `${item.pos} · ${item.meaning_zh}`;
   if (item.type === "wordnet") return `${item.pos} · ${item.meaning_zh || item.core_meaning}`;
   if (item.type === "open") return `${item.pos} · ${item.meaning_zh || item.core_meaning}`;
+  if (item.type === "private") return `${item.source_kind === "encyclopedia" ? "百科补充" : "私人双语词典"} · 仅本机`;
   if (item.type === "query") return `${item.kind === "phrase" ? "短语" : "单词"} · ${item.translation_zh || (item.saved ? "已在生词本" : "待补充释义")}`;
   return `${item.kind} · ${item.meaning_zh}`;
 }
 
 function matchesLexiconFilter(item) {
   if (state.lexiconFilter === "all") return true;
-  if (state.lexiconFilter === "family") return ["entry", "wordnet", "open"].includes(item.type);
+  if (state.lexiconFilter === "family") return ["entry", "wordnet", "open", "private"].includes(item.type);
   if (state.lexiconFilter === "morpheme") return item.type === "morpheme";
   return item.type === "morpheme" && item.kind === state.lexiconFilter;
 }
@@ -1831,6 +1832,7 @@ function phraseCards(items) {
     return `<article class="phrase-item">
       <div class="phrase-head"><div><button class="phrase-query" data-search-query="${escapeHtml(current.phrase)}"><strong>${escapeHtml(current.phrase)}</strong></button><p>${escapeHtml(current.meaning_zh || "")}</p></div><button data-save-phrase="${escapeHtml(current.phrase)}" title="加入生词本" aria-label="加入生词本">＋</button></div>
       ${source ? `<small class="phrase-source">${escapeHtml(source)}</small>` : ""}
+      ${current.meaning_source ? `<small class="phrase-source">中文义 · ${escapeHtml(current.meaning_source)} · 仅本机</small>` : ""}
       ${current.confidence ? `<small class="phrase-confidence">${escapeHtml(current.confidence)}</small>` : ""}
       ${current.contexts?.length ? `<blockquote class="phrase-evidence">${escapeHtml(current.contexts[0].text || current.contexts[0])}</blockquote>` : ""}
       ${current.synonyms?.length ? `<div class="phrase-relation"><span>近义表达</span><div class="term-grid">${termButtons(current.synonyms, "synonym")}</div></div>` : ""}
@@ -2090,6 +2092,21 @@ function renderLexicalDetail(item) {
     finalizeLexicalDetail(item);
     return;
   }
+  if (item.type === "private") {
+    const lines = String(item.entry_text || "").split(/\n+/).filter(Boolean);
+    detail.innerHTML = `
+      <div class="dictionary-hero">
+        <div><div class="badge-row">${badge(item.source_kind === "encyclopedia" ? "私人百科补充" : "私人英汉词典", "teal")}${badge("仅本机")}${badge(item.source_name)}</div><h2>${escapeHtml(item.headword)}</h2>${pronunciationControls(item.headword)}</div>
+        <div class="toolbar"><button class="primary" data-save-lookup="${escapeHtml(item.headword)}">加入生词本</button></div>
+      </div>
+      <section class="dictionary-section private-dictionary-entry">
+        <h3>${item.source_kind === "encyclopedia" ? "百科原条目" : "词典原条目"}</h3>
+        ${lines.map(line => `<p>${searchableEnglish(line, false)}</p>`).join("")}
+      </section>
+      <p class="source-note">私人词典内容只参与本机查询，不进入公共题库、开放导出或模型训练。词组中文义与例句翻译均以原条目为准，并保留来源。</p>`;
+    finalizeLexicalDetail(item);
+    return;
+  }
   if (item.type === "open") {
     const layers = item.lexical_layers || {};
     const pronunciation = dialectPronunciations(layers.pronunciations || []);
@@ -2239,7 +2256,10 @@ function renderLexicon() {
       return `<div class="lexical-quality-row ${quality.ready ? "ready" : "pending"}">
         <span>开放数据质量</span><strong>${quality.ready ? "已验证" : `待验证 ${quality.passed || 0}/${quality.total || 0}`}</strong>
       </div>`;
-    })();
+    })() + (state.lexicalDataStatus.private_sources || []).map(source => `
+      <div class="lexical-layer-row ${source.status === "ready" ? "installed" : "missing"}">
+        <span>${escapeHtml(source.name)} · 仅本机</span><strong>${source.status === "ready" ? Number(source.entry_count).toLocaleString("zh-CN") : source.status === "conversion_required" ? "待转换" : "导入失败"}</strong>
+      </div>`).join("");
   renderLexiconGuidance();
   renderLexiconHistory();
   renderLexicalDetail(state.selectedLexicalItem);
