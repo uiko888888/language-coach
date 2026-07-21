@@ -8,9 +8,9 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.24.9";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.25.0";
 const SUPPORTED_API_VERSION = "1";
-const SUPPORTED_SCHEMA_VERSION = "19";
+const SUPPORTED_SCHEMA_VERSION = "20";
 
 const state = {
   articles: [],
@@ -1827,10 +1827,12 @@ function highlightLexicalText(text, item) {
 function phraseCards(items) {
   return (items || []).map(item => {
     const current = typeof item === "string" ? { phrase: item, meaning_zh: "", synonyms: [], antonyms: [] } : item;
-    const source = current.source ? `${current.source}${current.observed_count ? ` · 出现 ${current.observed_count} 次` : ""}` : "";
+    const source = current.source ? `${current.source}${current.observed_count ? ` · ${current.observed_count} 条例证` : ""}${current.source_count ? ` · ${current.source_count} 个来源` : ""}` : "";
     return `<article class="phrase-item">
       <div class="phrase-head"><div><button class="phrase-query" data-search-query="${escapeHtml(current.phrase)}"><strong>${escapeHtml(current.phrase)}</strong></button><p>${escapeHtml(current.meaning_zh || "")}</p></div><button data-save-phrase="${escapeHtml(current.phrase)}" title="加入生词本" aria-label="加入生词本">＋</button></div>
       ${source ? `<small class="phrase-source">${escapeHtml(source)}</small>` : ""}
+      ${current.confidence ? `<small class="phrase-confidence">${escapeHtml(current.confidence)}</small>` : ""}
+      ${current.contexts?.length ? `<blockquote class="phrase-evidence">${escapeHtml(current.contexts[0].text || current.contexts[0])}</blockquote>` : ""}
       ${current.synonyms?.length ? `<div class="phrase-relation"><span>近义表达</span><div class="term-grid">${termButtons(current.synonyms, "synonym")}</div></div>` : ""}
       ${current.antonyms?.length ? `<div class="phrase-relation"><span>反义表达</span><div class="term-grid">${termButtons(current.antonyms, "antonym")}</div></div>` : ""}
     </article>`;
@@ -1903,12 +1905,19 @@ function reliableCollocations(items) {
   return (items || []).filter(item => {
     if (typeof item === "string") return false;
     const source = String(item.source || "");
-    return Number(item.observed_count || 0) > 0 || source.startsWith("人工");
+    return Number(item.observed_count || 0) > 0 || source.startsWith("人工") || source.startsWith("本地整理");
   });
 }
 
 function personalCollocations(items) {
   return (items || []).filter(item => typeof item !== "string" && Number(item.observed_count || 0) > 0);
+}
+
+function commonCollocations(item) {
+  return (item.common_collocations || item.collocations || []).filter(value => {
+    if (typeof value === "string") return false;
+    return ["开放语料", "本地整理"].includes(String(value.source || ""));
+  });
 }
 
 function abbreviatedPartOfSpeech(value) {
@@ -2032,7 +2041,9 @@ function finalizeLexicalDetail(item) {
     <button data-copy-lexical="${escapeHtml(term)}" title="复制词头与当前释义">复制</button>
     <details class="external-dictionaries"><summary>更多词典</summary><div>
       <a href="https://dict.eudic.net/dicts/en/${encodeURIComponent(term)}" target="_blank" rel="noreferrer">欧路</a>
+      <a href="https://www.oxfordlearnersdictionaries.com/definition/english/${encodeURIComponent(term)}" target="_blank" rel="noreferrer">Oxford Learner's</a>
       <a href="https://dictionary.cambridge.org/dictionary/english/${encodeURIComponent(term)}" target="_blank" rel="noreferrer">Cambridge</a>
+      <a href="https://www.ldoceonline.com/dictionary/${encodeURIComponent(term)}" target="_blank" rel="noreferrer">Longman</a>
       <a href="https://www.collinsdictionary.com/dictionary/english/${encodeURIComponent(term)}" target="_blank" rel="noreferrer">Collins</a>
       <a href="https://www.merriam-webster.com/dictionary/${encodeURIComponent(term)}" target="_blank" rel="noreferrer">Merriam-Webster</a>
     </div></details>`);
@@ -2102,7 +2113,8 @@ function renderLexicalDetail(item) {
   }
   if (item.type === "wordnet") {
     const translated = state.lookupTranslations[item.headword.toLowerCase()] || item.meaning_zh || "";
-    const observedCollocations = personalCollocations(item.collocations);
+    const observedCollocations = personalCollocations(item.personal_collocations || item.collocations);
+    const generalCollocations = commonCollocations(item);
     const relationSections = (item.semantic_relations || []).map(relation => `
       <div class="phrase-relation"><span>${escapeHtml(relation.label)}</span><div class="term-grid">${termButtons(relation.terms, relation.type === "antonym" ? "antonym" : "family")}</div></div>
     `).join("");
@@ -2114,8 +2126,10 @@ function renderLexicalDetail(item) {
       ${lexicalLearningSummary(item, translated)}
       ${lexicalFrequencyPanel(item)}
       <div class="dictionary-columns">
-        <section class="dictionary-section"><h3>义项与例句</h3><div class="sense-list">${(item.senses || []).map((sense, index) => `<article class="sense-item"><div class="sense-head"><strong>义项 ${index + 1}</strong>${sense.pos ? badge(sense.pos) : ""}</div>${(sense.definitions || []).map((definition, definitionIndex) => `${sense.definition_translations?.[definitionIndex] ? `<p class="sense-meaning">${escapeHtml(sense.definition_translations[definitionIndex])}</p>` : `<p class="muted">中文义项待翻译</p>`}<p class="sense-definition-en">${escapeHtml(definition)}</p>`).join("")}${(sense.examples || []).length ? `<div class="sense-examples">${(sense.examples || []).map((example, exampleIndex) => `<article>${sense.example_translations?.[exampleIndex] ? `<p class="example-zh">${escapeHtml(sense.example_translations[exampleIndex])}</p>` : `<p class="muted">例句译文待翻译</p>`}<p class="example-en">${searchableEnglish(example)}</p></article>`).join("")}</div>` : `<p class="muted">该义项暂无开放例句</p>`}</article>`).join("") || `<div class="empty-state">暂无义项</div>`}</div>${item.contexts?.length ? `<div class="supplemental-contexts"><h4>补充真实语境（未按义项归类）</h4>${contextExamples(item.contexts)}</div>` : ""}</section>
+        <section class="dictionary-section"><h3>义项与例句</h3><div class="sense-list">${(item.senses || []).map((sense, index) => `<article class="sense-item"><div class="sense-head"><strong>义项 ${index + 1}</strong><div>${sense.pos ? badge(sense.pos) : ""}<button data-save-sense="${index}" title="保存这个义项" aria-label="保存义项 ${index + 1}">＋</button></div></div>${(sense.definitions || []).map((definition, definitionIndex) => `${sense.definition_translations?.[definitionIndex] ? `<p class="sense-meaning">${escapeHtml(sense.definition_translations[definitionIndex])}</p>` : `<p class="muted">中文义项待翻译</p>`}<p class="sense-definition-en">${escapeHtml(definition)}</p>`).join("")}${(sense.examples || []).length ? `<div class="sense-examples">${(sense.examples || []).map((example, exampleIndex) => `<article>${sense.example_translations?.[exampleIndex] ? `<p class="example-zh">${escapeHtml(sense.example_translations[exampleIndex])}</p>` : `<p class="muted">例句译文待翻译</p>`}<p class="example-en">${searchableEnglish(example)}</p></article>`).join("")}</div>` : `<p class="muted">该义项暂无开放例句</p>`}</article>`).join("") || `<div class="empty-state">暂无义项</div>`}</div>${item.contexts?.length ? `<div class="supplemental-contexts"><h4>补充真实语境（未按义项归类）</h4>${contextExamples(item.contexts)}</div>` : ""}</section>
+        <section class="dictionary-section"><h3>通用常见搭配 ${badge(`${generalCollocations.length} 条`)}</h3><p class="source-note">来自 Tatoeba 开放例句和公开文章语料的重复观察，或本地人工整理；不是搜索结果数量，也不冒充出版词典频率。</p><div class="phrase-list">${phraseCards(generalCollocations) || `<div class="empty-state">当前开放语料样本不足，暂不把偶然相邻词标成常见搭配。</div>`}</div></section>
         <section class="dictionary-section"><h3>我的语料搭配 ${badge(`${observedCollocations.length} 条`)}</h3><p class="source-note">按你的文章、生词上下文和插件摘录中的实际出现次数排序，不代表通用英语词频。</p><div class="phrase-list">${phraseCards(observedCollocations) || `<div class="empty-state">你的文章、生词语境和插件内容中暂未观察到稳定搭配。</div>`}</div></section>
+        <section class="dictionary-section"><h3>开放词典短语 ${badge(`${(item.open_phrases || []).length} 条`)}</h3><p class="source-note">Kaikki/Wiktionary 收录但尚未通过当前语料重复验证，仅作发现入口。</p><div class="phrase-list">${phraseCards(item.open_phrases || []) || `<div class="empty-state">暂无包含当前词头的开放词典短语。</div>`}</div></section>
         <section class="dictionary-section"><h3>近义词与对比</h3><div class="comparison-candidate-list">${comparisonCandidateButtons(item.headword, item.synonyms) || `<div class="empty-state">WordNet 未提供近义词</div>`}</div><h4>反义词</h4><div class="term-grid">${termButtons(item.antonyms, "antonym") || `<div class="empty-state">WordNet 未提供直接反义词</div>`}</div></section>
         <section class="dictionary-section"><h3>语义关系</h3>${relationSections || `<div class="empty-state">暂无关系数据</div>`}<p class="source-note">英文语义：${escapeHtml(item.source_name || "Open English WordNet")} · ${escapeHtml(item.license || "CC BY 4.0")}<br>中文：开放双语数据或本地翻译缓存；机器翻译不冒充出版词典释义。</p></section>
         <section class="dictionary-section"><h3>词形与开放词源</h3><div class="term-grid">${termButtons(item.forms || [], "family")}</div>${item.origin ? `<p class="etymology-text">${escapeHtml(item.origin)}</p>` : `<p class="muted">导入 Kaikki 精选词条后显示词源与更多词形。</p>`}</section>
@@ -2569,8 +2583,12 @@ function renderQuizzes() {
 function renderCards() {
   $("#cardList").innerHTML = state.cards.map(card => `
     <div class="item">
-      <div class="badge-row">${badge(card.kind === "phrase" ? "短语" : "单词", card.kind === "phrase" ? "amber" : "teal")}${badge(reviewStateLabel(card.review_state || card.status || "new"))}</div>
+      <div class="badge-row">${badge(card.kind === "phrase" ? "短语" : "单词", card.kind === "phrase" ? "amber" : "teal")}${card.part_of_speech ? badge(abbreviatedPartOfSpeech(card.part_of_speech)) : ""}${card.sense_key ? badge("具体义项", "teal") : ""}${badge(reviewStateLabel(card.review_state || card.status || "new"))}</div>
       <h3><button class="card-term-link" data-search-query="${escapeHtml(card.term)}">${escapeHtml(card.term)}</button></h3>
+      ${card.meaning_zh ? `<p class="card-sense-meaning">${escapeHtml(card.meaning_zh)}</p>` : ""}
+      ${card.concept_en ? `<p class="card-sense-concept">${escapeHtml(card.concept_en)}</p>` : ""}
+      ${card.grammar_frame ? `<p><strong>语法与搭配：</strong>${escapeHtml(card.grammar_frame)}</p>` : ""}
+      ${card.confusion_note ? `<p class="card-confusion"><strong>易混边界：</strong>${escapeHtml(card.confusion_note)}</p>` : ""}
       <p>${card.context ? searchableEnglish(card.context) : "尚未保存语境"}</p>
       ${card.note ? `<p>${escapeHtml(card.note)}</p>` : ""}
       <div class="toolbar"><button data-search-query="${escapeHtml(card.term)}" data-open-lexicon="true">查看查询</button>${card.source_article_id ? `<button data-open-article="${card.source_article_id}">回到原文</button>` : ""}<a class="button-link" href="https://dict.eudic.net/dicts/en/${encodeURIComponent(card.term)}" target="_blank" rel="noreferrer">欧路</a></div>
@@ -2614,7 +2632,7 @@ function renderReviews() {
   detail.innerHTML = `
     <div class="review-card-head"><div><div class="badge-row">${badge(selected.kind === "mistake" ? "错题" : selected.kind === "phrase" ? "短语" : "单词", selected.kind === "phrase" ? "amber" : "teal")}${badge(reviewStateLabel(selected.state))}</div><h2>${escapeHtml(selected.front)}</h2></div><span class="review-position">${items.findIndex(item => item.id === selected.id) + 1} / ${items.length}</span></div>
     ${state.reviewAnswerRevealed ? `
-      <section class="review-answer"><span>答案与语境</span><p>${searchableEnglish(selected.answer, false)}</p>${selected.context && selected.context !== selected.answer ? `<blockquote>${searchableEnglish(selected.context, false)}</blockquote>` : ""}${selected.note ? `<small>${escapeHtml(selected.note)}</small>` : ""}</section>
+      <section class="review-answer"><span>${selected.sense_key ? "具体义项与语境" : "答案与语境"}</span><p>${searchableEnglish(selected.answer, false)}</p>${selected.confusion_note ? `<p class="card-confusion"><strong>易混边界：</strong>${escapeHtml(selected.confusion_note)}</p>` : ""}${selected.context && selected.context !== selected.answer ? `<blockquote>${searchableEnglish(selected.context, false)}</blockquote>` : ""}${selected.note ? `<small>${escapeHtml(selected.note)}</small>` : ""}</section>
       <div class="review-rating-grid">${(selected.choices || []).map(choice => `<button class="review-rating ${choice.rating}" data-rate-review="${choice.rating}" data-review-id="${selected.id}"><strong>${escapeHtml(choice.label)}</strong><small>${escapeHtml(choice.interval)}</small></button>`).join("")}</div>
       <div class="toolbar review-source-actions">${selected.kind === "mistake" ? "" : `<button data-search-query="${escapeHtml(selected.front)}" data-open-lexicon="true">查词</button>`}${selected.source_article_id ? `<button data-open-article="${selected.source_article_id}">回到原文</button>` : ""}</div>`
       : `<div class="review-recall"><p>${selected.kind === "mistake" ? "先重新作答并回想原文证据。" : "回想含义、搭配和原句，再查看答案。"}</p><button class="primary" id="revealReviewAnswerBtn">显示答案</button></div>`}
@@ -3987,7 +4005,33 @@ async function saveArticle() {
   toast("已存入文章库");
 }
 
-async function saveCard(term = $("#cardTerm").value.trim(), context = $("#cardContext").value.trim()) {
+function lexicalCardMetadata(item, sense = null) {
+  if (!item || !["wordnet", "open", "entry"].includes(item.type)) return {};
+  const profile = !sense ? item.learning_profile : null;
+  const meanings = sense?.definition_translations?.filter(Boolean)
+    || profile?.meaning_zh && [profile.meaning_zh]
+    || item.meaning_zh && [item.meaning_zh]
+    || [];
+  const definitions = sense?.definitions?.filter(Boolean)
+    || profile?.focus_en && [profile.focus_en]
+    || item.core_meaning && [item.core_meaning]
+    || [];
+  const grammarPatterns = profile?.patterns || commonCollocations(item).map(value => value.phrase).slice(0, 4);
+  const senseKey = sense?.synset_id
+    || profile?.editorial_status && `${profile.editorial_status}:${profile.term}:${profile.pos}`
+    || `${item.type}:${item.id}:${sense?.pos || profile?.pos || item.pos || ""}`;
+  return {
+    sense_key: senseKey,
+    part_of_speech: sense?.pos || profile?.pos || item.pos || "",
+    meaning_zh: meanings.join("；"),
+    concept_en: definitions.join("; "),
+    grammar_frame: grammarPatterns.join("；"),
+    confusion_note: profile?.avoid || "",
+    lexical_source: [item.source_name, item.source_version].filter(Boolean).join(" · ") || item.matched_by || "",
+  };
+}
+
+async function saveCard(term = $("#cardTerm").value.trim(), context = $("#cardContext").value.trim(), metadata = {}) {
   if (!term) return toast("词不能为空");
   const selectedBody = state.selectedArticle?.body?.toLowerCase() || "";
   const belongsToSelectedArticle = Boolean(context && state.selectedArticle && selectedBody.includes(term.toLowerCase()));
@@ -3998,6 +4042,7 @@ async function saveCard(term = $("#cardTerm").value.trim(), context = $("#cardCo
       kind: term.includes(" ") ? "phrase" : "word",
       context,
       source_article_id: belongsToSelectedArticle ? state.selectedArticle.id : null,
+      ...metadata,
     }),
   });
   await Promise.all([loadCards(), loadReviews()]);
@@ -4008,6 +4053,15 @@ async function saveCard(term = $("#cardTerm").value.trim(), context = $("#cardCo
   renderStats();
   renderDashboard();
   toast(data.created ? "已加入生词本" : "已更新已有生词的语境");
+}
+
+async function saveLexicalCard(term, senseIndex = null) {
+  const item = state.selectedLexicalItem;
+  const matchingItem = item && lexicalLabel(item).toLowerCase() === String(term).toLowerCase() ? item : null;
+  const sense = senseIndex === null ? null : matchingItem?.senses?.[senseIndex] || null;
+  const articleBody = state.selectedArticle?.body || "";
+  const context = articleBody.toLowerCase().includes(String(term).toLowerCase()) ? sentenceFor(articleBody, term) : "";
+  await saveCard(term, context, lexicalCardMetadata(matchingItem, sense));
 }
 
 async function translateLexicalTerm(term) {
@@ -4042,6 +4096,7 @@ async function translateWordNetEntry(item, { silent = false } = {}) {
     ...(item.antonyms || []).map(value => typeof value === "string" ? value : value.term),
     ...(item.family || []).map(value => typeof value === "string" ? value : value.term),
     ...(item.collocations || []).map(value => typeof value === "string" ? value : value.phrase),
+    ...(item.open_phrases || []).map(value => typeof value === "string" ? value : value.phrase),
     ...(item.semantic_relations || []).flatMap(relation => (relation.term_details || relation.terms || []).map(value => typeof value === "string" ? value : value.term)),
     ...(item.contexts || []).map(context => context.text),
   ]).filter(Boolean))];
@@ -4076,6 +4131,12 @@ async function translateWordNetEntry(item, { silent = false } = {}) {
       ...value,
       meaning_zh: translated[value.phrase] || value.meaning_zh || "",
     }));
+    ["common_collocations", "personal_collocations", "open_phrases"].forEach(field => {
+      item[field] = (item[field] || []).map(value => ({
+        ...value,
+        meaning_zh: translated[value.phrase] || value.meaning_zh || "",
+      }));
+    });
     item.semantic_relations = (item.semantic_relations || []).map(relation => ({
       ...relation,
       terms: (relation.term_details || relation.terms || []).map(value => {
@@ -4511,9 +4572,10 @@ document.addEventListener("click", async event => {
       await saveCard(button.dataset.savePhrase, typeof example === "string" ? example : example?.text || "");
     }
     if (button.dataset.saveLookup) {
-      const articleBody = state.selectedArticle?.body || "";
-      const context = articleBody.toLowerCase().includes(button.dataset.saveLookup.toLowerCase()) ? sentenceFor(articleBody, button.dataset.saveLookup) : "";
-      await saveCard(button.dataset.saveLookup, context);
+      await saveLexicalCard(button.dataset.saveLookup);
+    }
+    if (button.dataset.saveSense !== undefined && state.selectedLexicalItem?.headword) {
+      await saveLexicalCard(state.selectedLexicalItem.headword, Number(button.dataset.saveSense));
     }
     if (button.dataset.confidenceQuiz) {
       state.quizSession.confidence[Number(button.dataset.confidenceQuiz)] = normalizeConfidenceValue(button.dataset.confidence);

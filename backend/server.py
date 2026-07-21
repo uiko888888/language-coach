@@ -28,6 +28,7 @@ from pathlib import Path
 
 try:
     from .chinese_text import simplify_chinese_payload
+    from .collocations import corpus_collocations
     from .ai_feedback import feedback_provider_status, request_semantic_feedback
     from .backups import create_backup, list_backups, restore_backup
     from .content_extraction import BLOCK_LABELS, adapter_catalog, adapter_for_source, extract_source_content, suggest_annotation_blocks
@@ -53,6 +54,7 @@ try:
     from .usage_contrasts import contrast_by_slug, contrast_catalog
 except ImportError:
     from chinese_text import simplify_chinese_payload
+    from collocations import corpus_collocations
     from ai_feedback import feedback_provider_status, request_semantic_feedback
     from backups import create_backup, list_backups, restore_backup
     from content_extraction import BLOCK_LABELS, adapter_catalog, adapter_for_source, extract_source_content, suggest_annotation_blocks
@@ -4609,6 +4611,13 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
         if not rows:
             return []
         lexical_layers = lookup_lexical_layers(conn, term)
+        profile = curated_term_profile(term)
+        common_collocation_data = corpus_collocations(
+            conn,
+            term,
+            registered_phrases=lexical_layers["phrases"],
+            curated_patterns=(profile or {}).get("patterns") or [],
+        )
         synset_ids = list(dict.fromkeys(row["synset_id"] for row in rows))
         placeholders = ",".join("?" for _ in synset_ids)
         relation_rows = conn.execute(
@@ -4635,11 +4644,13 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
         bucket.setdefault(relation["relation_type"], []).extend(members)
 
     learning = lexical_query_context(term)
-    collocations = contextual_collocations(term, learning["contexts"])
+    personal_collocations = contextual_collocations(term, learning["contexts"])
+    common_collocations = common_collocation_data["items"]
+    open_phrases = []
     for phrase in lexical_layers["phrases"][:12]:
         value = phrase.get("word") if isinstance(phrase, dict) else str(phrase)
-        if value and not any(item["phrase"].casefold() == value.casefold() for item in collocations):
-            collocations.append({
+        if value and " " in value and re.search(rf"(?<![A-Za-z]){re.escape(normalized)}(?![A-Za-z])", value, re.I):
+            open_phrases.append({
                 "phrase": value,
                 "meaning_zh": phrase.get("meaning_zh", "") if isinstance(phrase, dict) else "",
                 "source": "Kaikki / Wiktionary",
@@ -4648,7 +4659,8 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
                 "synonyms": [],
                 "antonyms": [],
             })
-    source_segments = [term, *[item["phrase"] for item in collocations]]
+    collocations = [*common_collocations, *personal_collocations]
+    source_segments = [term, *[item["phrase"] for item in collocations], *[item["phrase"] for item in open_phrases]]
     for row in rows:
         source_segments.extend(json.loads(row["definitions_json"] or "[]"))
         source_segments.extend(json.loads(row["examples_json"] or "[]"))
@@ -4724,6 +4736,13 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
             "aliases": [],
             "family": [{"term": value, "meaning_zh": cached_zh.get(value, "")} for value in family[:24]],
             "collocations": [{**item, "meaning_zh": cached_zh.get(item["phrase"], "")} for item in collocations],
+            "common_collocations": [{**item, "meaning_zh": cached_zh.get(item["phrase"], "")} for item in common_collocations],
+            "personal_collocations": [{**item, "meaning_zh": cached_zh.get(item["phrase"], "")} for item in personal_collocations],
+            "open_phrases": [{**item, "meaning_zh": cached_zh.get(item["phrase"], item["meaning_zh"])} for item in open_phrases],
+            "collocation_corpus": {
+                "examples_scanned": common_collocation_data["examples_scanned"],
+                "sources": common_collocation_data["sources"],
+            },
             "synonyms": [{"term": value, "meaning_zh": cached_zh.get(value, "")} for value in synonyms[:32]],
             "antonyms": [{"term": value, "meaning_zh": cached_zh.get(value, "")} for value in antonyms[:16]],
             "examples": [{"text": value, "translation": cached_zh.get(value, "")} for value in examples[:16]],
@@ -5019,7 +5038,7 @@ def _comparison_evidence(term: str) -> dict:
     for value in item.get("collocations") or []:
         if isinstance(value, dict):
             source = str(value.get("source") or "")
-            if not value.get("observed_count") and not source.startswith("人工"):
+            if not value.get("observed_count") and not source.startswith(("人工", "本地整理")):
                 continue
             label = value.get("phrase")
         else:
@@ -7475,18 +7494,30 @@ class App(BaseHTTPRequestHandler):
                 term = (payload.get("term") or "").strip()
                 if not term:
                     return json_response(self, {"error": "Term is required"}, 400)
+                sense_fields = {
+                    "sense_key": str(payload.get("sense_key") or "").strip()[:200],
+                    "part_of_speech": str(payload.get("part_of_speech") or "").strip()[:80],
+                    "meaning_zh": str(payload.get("meaning_zh") or "").strip()[:1000],
+                    "concept_en": str(payload.get("concept_en") or "").strip()[:2000],
+                    "grammar_frame": str(payload.get("grammar_frame") or "").strip()[:1000],
+                    "confusion_note": str(payload.get("confusion_note") or "").strip()[:1000],
+                    "lexical_source": str(payload.get("lexical_source") or "").strip()[:300],
+                }
                 now = utc_now()
                 with db() as conn:
                     existing = conn.execute(
-                        "SELECT * FROM cards WHERE lower(trim(term)) = lower(?) ORDER BY updated_at DESC, id DESC LIMIT 1",
-                        (term,),
+                        """SELECT * FROM cards WHERE lower(trim(term)) = lower(?) AND sense_key = ?
+                           ORDER BY updated_at DESC, id DESC LIMIT 1""",
+                        (term, sense_fields["sense_key"]),
                     ).fetchone()
                     if existing:
                         context = (payload.get("context") or "").strip() or existing["context"]
                         source_article_id = payload.get("source_article_id") or existing["source_article_id"]
                         note = (payload.get("note") or "").strip() or existing["note"]
                         conn.execute(
-                            """UPDATE cards SET term = ?, kind = ?, context = ?, source_article_id = ?, note = ?, updated_at = ?
+                            """UPDATE cards SET term = ?, kind = ?, context = ?, source_article_id = ?, note = ?,
+                               part_of_speech = ?, meaning_zh = ?, concept_en = ?, grammar_frame = ?,
+                               confusion_note = ?, lexical_source = ?, updated_at = ?
                                WHERE id = ?""",
                             (
                                 term,
@@ -7494,6 +7525,12 @@ class App(BaseHTTPRequestHandler):
                                 context,
                                 source_article_id,
                                 note,
+                                sense_fields["part_of_speech"] or existing["part_of_speech"],
+                                sense_fields["meaning_zh"] or existing["meaning_zh"],
+                                sense_fields["concept_en"] or existing["concept_en"],
+                                sense_fields["grammar_frame"] or existing["grammar_frame"],
+                                sense_fields["confusion_note"] or existing["confusion_note"],
+                                sense_fields["lexical_source"] or existing["lexical_source"],
                                 now,
                                 existing["id"],
                             ),
@@ -7503,8 +7540,10 @@ class App(BaseHTTPRequestHandler):
                     else:
                         cursor = conn.execute(
                             """
-                            INSERT INTO cards (term, kind, context, source_article_id, status, note, created_at, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            INSERT INTO cards
+                            (term, kind, context, source_article_id, status, note, sense_key, part_of_speech,
+                             meaning_zh, concept_en, grammar_frame, confusion_note, lexical_source, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 term,
@@ -7513,6 +7552,13 @@ class App(BaseHTTPRequestHandler):
                                 payload.get("source_article_id"),
                                 payload.get("status") or "new",
                                 payload.get("note") or "",
+                                sense_fields["sense_key"],
+                                sense_fields["part_of_speech"],
+                                sense_fields["meaning_zh"],
+                                sense_fields["concept_en"],
+                                sense_fields["grammar_frame"],
+                                sense_fields["confusion_note"],
+                                sense_fields["lexical_source"],
                                 now,
                                 now,
                             ),

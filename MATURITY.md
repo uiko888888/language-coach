@@ -60,6 +60,8 @@ Current strengths are source traceability, one-material-many-uses, evidence repl
 
 `alpha.24.9` removes two workflow breaks: double-click now reaches the full dictionary directly, and individual paragraph translations persist without positional drift. Simplified-Chinese normalization improves consistency but not lexical authority. Dictionary maturity rises only to 7.6/10 and real-content workflow to 7.7/10; DeepL reachability, licensed modern Chinese coverage and the uncompleted 20-article extraction audit remain material gaps.
 
+`alpha.25.0` adds the first defensible general-collocation layer and closes sense-specific memory. General, personal and unverified phrase evidence are visibly separate; repeated open-corpus evidence is required before automatic candidates become common, and two senses of one headword can now remain distinct through review. Dictionary maturity rises to 7.9/10 and the vocabulary-review loop to 7.5/10. It remains below mature commercial dictionaries because the corpus is modest, Chinese editorial coverage is incomplete, private dictionary import is pending and no licensed Oxford/Longman content is embedded.
+
 Interest and exam modes now use different home workflows: immersion and expression collection versus target, weakness and question-type prescription. They still share one profile so interest activity can later contribute domain evidence without masquerading as exam-score gains.
 
 ## Universal Product Requirements

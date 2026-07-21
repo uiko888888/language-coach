@@ -235,6 +235,21 @@ def _article_paragraph_translations(conn: sqlite3.Connection) -> None:
         )
 
 
+def _sense_aware_cards(conn: sqlite3.Connection) -> None:
+    for column, definition in {
+        "sense_key": "TEXT NOT NULL DEFAULT ''",
+        "part_of_speech": "TEXT NOT NULL DEFAULT ''",
+        "meaning_zh": "TEXT NOT NULL DEFAULT ''",
+        "concept_en": "TEXT NOT NULL DEFAULT ''",
+        "grammar_frame": "TEXT NOT NULL DEFAULT ''",
+        "confusion_note": "TEXT NOT NULL DEFAULT ''",
+        "lexical_source": "TEXT NOT NULL DEFAULT ''",
+    }.items():
+        _ensure_column(conn, "cards", column, definition)
+    if "term" in _columns(conn, "cards"):
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_term_sense ON cards(term, sense_key)")
+
+
 SCRIPT_NOISE_PATTERN = re.compile(
     r"(?i)(?:\bGF_AJAX_POSTBACK\b|\bgform_confirmation_loaded\b|\bgform_pre_post_render\b|"
     r"\bgformRedirect\b|\bgform_wrapper_\d+\b|\bconfirmation_content\b|window\[['\"]gf_|jQuery\(['\"]#gform)"
@@ -744,6 +759,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     (17, "add optional FSRS review state", _fsrs_review_state),
     (18, "add Complete the Words card review", _complete_word_review),
     (19, "persist paragraph-aligned article translations", _article_paragraph_translations),
+    (20, "persist sense-aware vocabulary cards", _sense_aware_cards),
 )
 
 

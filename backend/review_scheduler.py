@@ -213,7 +213,8 @@ def review_item_payload(row: sqlite3.Row | dict, now: datetime) -> dict:
     is_card = item["item_type"] == "card"
     if is_card:
         front = item.get("term") or ""
-        answer = item.get("context") or item.get("note") or "请回想这个表达在原语境中的含义与搭配。"
+        answer_parts = [item.get("meaning_zh") or "", item.get("concept_en") or "", item.get("grammar_frame") or ""]
+        answer = "\n".join(value for value in answer_parts if value) or item.get("context") or item.get("note") or "请回想这个表达在原语境中的含义与搭配。"
         kind = item.get("card_kind") or "word"
         source_id = item.get("source_article_id")
         context = item.get("context") or ""
@@ -227,6 +228,9 @@ def review_item_payload(row: sqlite3.Row | dict, now: datetime) -> dict:
         "id": item["id"], "item_type": item["item_type"], "item_id": item["item_id"],
         "kind": kind, "front": front, "answer": answer, "context": context,
         "note": item.get("note") or item.get("error_type") or "", "source_article_id": source_id,
+        "sense_key": item.get("sense_key") or "", "part_of_speech": item.get("part_of_speech") or "",
+        "meaning_zh": item.get("meaning_zh") or "", "concept_en": item.get("concept_en") or "",
+        "grammar_frame": item.get("grammar_frame") or "", "confusion_note": item.get("confusion_note") or "",
         "state": item["state"], "due_at": item["due_at"], "interval_days": item["interval_days"],
         "ease_factor": item["ease_factor"], "repetitions": item["repetitions"], "lapses": item["lapses"],
         "last_review_at": item["last_review_at"], "scheduler": item["scheduler"],
@@ -246,6 +250,7 @@ def review_queue(
     safe_limit = max(1, min(100, int(limit or 20)))
     rows = conn.execute(
         f"""SELECT ri.*, c.term, c.kind AS card_kind, c.context, c.note, c.source_article_id,
+                   c.sense_key, c.part_of_speech, c.meaning_zh, c.concept_en, c.grammar_frame, c.confusion_note,
                    m.prompt, m.answer, m.evidence, m.error_type, q.article_id
             FROM review_items ri
             LEFT JOIN cards c ON ri.item_type = 'card' AND c.id = ri.item_id

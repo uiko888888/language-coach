@@ -115,12 +115,23 @@ class ProfileUiContractTests(unittest.TestCase):
         self.assertIn("机器翻译不冒充出版词典释义", self.js)
         self.assertIn("item.contexts = (item.contexts || []).map", self.js)
 
+    def test_dictionary_separates_general_personal_and_unverified_phrases(self):
+        for label in ("通用常见搭配", "我的语料搭配", "开放词典短语"):
+            self.assertIn(label, self.js)
+        self.assertIn("function commonCollocations(item)", self.js)
+        self.assertIn("Tatoeba 开放例句和公开文章语料", self.js)
+        self.assertIn("data-save-sense=", self.js)
+        self.assertIn("function lexicalCardMetadata(item, sense", self.js)
+        for field in ("sense_key", "meaning_zh", "concept_en", "grammar_frame", "confusion_note"):
+            self.assertIn(field, self.js)
+
     def test_dictionary_query_workflow_has_correction_history_and_reference_actions(self):
         for element_id in ("lexiconGuidance", "lexiconHistory", "clearLexiconHistoryBtn"):
             self.assertIn(element_id, self.html + self.js)
         for contract in (
             'api("/api/lexicon/history")', "data-copy-lexical", "data-jump-lexical-section",
-            "dictionary.cambridge.org", "collinsdictionary.com", "merriam-webster.com",
+            "oxfordlearnersdictionaries.com", "dictionary.cambridge.org", "ldoceonline.com",
+            "collinsdictionary.com", "merriam-webster.com",
         ):
             self.assertIn(contract, self.js)
         self.assertIn(".dictionary-section-nav", self.css)
@@ -163,8 +174,8 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.24.9";', self.js)
-        self.assertIn('const SUPPORTED_SCHEMA_VERSION = "19";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.25.0";', self.js)
+        self.assertIn('const SUPPORTED_SCHEMA_VERSION = "20";', self.js)
         self.assertIn('const schemaCompatible =', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)

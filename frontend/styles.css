@@ -1208,6 +1208,8 @@ label {
 .phrase-relation > span { display: block; margin-bottom: 5px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .phrase-relation .term-link { min-height: 34px; }
 .phrase-source { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
+.phrase-confidence { display: block; margin-top: 3px; color: var(--teal-dark); font-size: 11px; }
+.phrase-evidence { margin: 8px 0 0; padding-left: 10px; border-left: 2px solid var(--line); color: var(--muted); font-size: 13px; }
 .example-item { padding: 11px 0; border-top: 1px solid var(--line); }
 .example-item:first-child { padding-top: 0; border-top: 0; }
 .example-item p { margin: 0; line-height: 1.65; }
@@ -1245,6 +1247,9 @@ label {
 .morph-line { margin: 11px 0; padding: 9px; border-left: 3px solid var(--amber); background: #fffaf2; line-height: 1.55; }
 .card-term-link { min-height: 0; padding: 0; border: 0; background: transparent; color: var(--text); font-weight: 800; text-align: left; }
 .card-term-link:hover { color: var(--teal-dark); }
+.card-sense-meaning { color: var(--teal-dark); font-size: 16px; font-weight: 700; }
+.card-sense-concept { font-family: Georgia, "Times New Roman", serif; color: var(--text); }
+.card-confusion { color: #7b3f2d; }
 .query-columns .dictionary-section { min-height: 180px; }
 .lexical-learning-summary { margin-top: 16px; padding-block: 16px; border-block: 1px solid var(--line); }
 .lexical-learning-summary > header { max-width: 820px; }

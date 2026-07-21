@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.0] - 2026-07-21
+
+### Added
+
+- Added a general collocation layer derived from repeated observations in attributed Tatoeba examples and public article material, with curated patterns kept as a distinct evidence class.
+- Added separate dictionary sections for general collocations, personal-corpus collocations and unverified Kaikki/Wiktionary phrases.
+- Added schema 20 sense-aware vocabulary cards that persist a sense key, part of speech, Chinese meaning, English concept, grammar frame, confusion boundary and lexical source.
+- Added per-sense save controls and sense-aware review answers so multiple meanings of one headword can coexist.
+- Added direct same-word links to Oxford Learner's Dictionaries and Longman alongside Cambridge, Collins and Merriam-Webster.
+
+### Changed
+
+- Open corpus candidates now require repeated evidence, while a dictionary-listed phrase with one real example is shown with a lower confidence label.
+- Pronoun adjacency, infinitive fragments and weak three-word candidates are rejected before a phrase can enter the general layer.
+- Kaikki related forms are no longer presented as common collocations merely because they occur in the source entry.
+
+### Verification
+
+- Added corpus-threshold, legacy migration, duplicate-headword sense-card, review payload and frontend contract coverage; all 202 tests passed with 2 optional dependency tests skipped, and schema advanced from 19 to 20.
+
 ## [0.8.0-alpha.24.9] - 2026-07-21
 
 ### Added

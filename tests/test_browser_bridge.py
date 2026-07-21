@@ -126,6 +126,29 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(restored["state"], "new")
         self.assertEqual(progress, baseline_count)
 
+    def test_cards_preserve_two_senses_of_the_same_word_in_review(self):
+        common = {
+            "term": "cast", "kind": "word", "part_of_speech": "verb",
+            "grammar_frame": "cast a vote", "lexical_source": "Open English WordNet",
+        }
+        first, _ = self.request("/api/cards", "POST", {
+            **common, "sense_key": "wordnet:cast:throw", "meaning_zh": "投；掷",
+            "concept_en": "throw something with force", "confusion_note": "不是演员阵容。",
+        })
+        second, _ = self.request("/api/cards", "POST", {
+            **common, "sense_key": "wordnet:cast:actors", "part_of_speech": "noun",
+            "meaning_zh": "演员阵容", "concept_en": "the actors in a production",
+        })
+        self.assertTrue(first["created"])
+        self.assertTrue(second["created"])
+        self.assertNotEqual(first["card"]["id"], second["card"]["id"])
+        queue, _ = self.request("/api/reviews?kind=word&limit=100")
+        senses = {item["sense_key"]: item for item in queue["items"] if item["front"] == "cast"}
+        self.assertIn("wordnet:cast:throw", senses)
+        self.assertIn("wordnet:cast:actors", senses)
+        self.assertIn("throw something with force", senses["wordnet:cast:throw"]["answer"])
+        self.assertEqual(senses["wordnet:cast:throw"]["confusion_note"], "不是演员阵容。")
+
     def test_complete_word_review_keeps_exam_attempts_separate_and_uses_fsrs_card(self):
         now = server.utc_now()
         with server.db() as conn:
