@@ -90,6 +90,7 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
+PROCESS_APP_VERSION = app_version(ROOT)
 DATA = ROOT / "data"
 DB_PATH = Path(os.environ.get("LANGUAGE_COACH_DB_PATH", DATA / "language_coach.sqlite")).resolve()
 BACKUP_DIR = DATA / "backups"
@@ -1431,6 +1432,7 @@ def init_db() -> None:
 
 def runtime_metadata() -> dict:
     payload = version_payload(ROOT)
+    payload["app_version"] = PROCESS_APP_VERSION
     with db() as conn:
         row = conn.execute("SELECT COALESCE(MAX(version), 0) FROM schema_migrations").fetchone()
     payload["database_schema_version"] = int(row[0])
@@ -6999,12 +7001,12 @@ class App(BaseHTTPRequestHandler):
                     conn.execute("DELETE FROM lexical_queries")
                 return json_response(self, {"cleared": True, "recent": [], "frequent": []})
             if path == "/api/backups":
-                backup = create_backup(DB_PATH, BACKUP_DIR, app_version(ROOT))
+                backup = create_backup(DB_PATH, BACKUP_DIR, PROCESS_APP_VERSION)
                 return json_response(self, {"backup": backup, "backups": list_backups(BACKUP_DIR)}, 201)
             if path == "/api/backups/restore":
                 try:
                     result = restore_backup(
-                        DB_PATH, BACKUP_DIR, str(payload.get("filename") or ""), app_version(ROOT),
+                        DB_PATH, BACKUP_DIR, str(payload.get("filename") or ""), PROCESS_APP_VERSION,
                     )
                     init_db()
                 except ValueError as exc:

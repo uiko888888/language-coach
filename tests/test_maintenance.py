@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from contextlib import closing
 from pathlib import Path
+from unittest.mock import patch
 
 from backend import server
 from backend.backups import create_backup, list_backups, restore_backup
@@ -211,6 +212,26 @@ class MaintenanceTests(unittest.TestCase):
             self.assertTrue(metadata["compatible"])
         finally:
             server.DB_PATH = original_db
+
+    def test_runtime_metadata_keeps_the_process_start_version(self):
+        original_db = server.DB_PATH
+        original_version = server.PROCESS_APP_VERSION
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                server.DB_PATH = Path(temp_dir) / "coach.sqlite"
+                server.PROCESS_APP_VERSION = "process-start-version"
+                server.init_db()
+                with patch.object(server, "version_payload", return_value={
+                    "app_version": "changed-on-disk",
+                    "api_version": API_VERSION,
+                    "schema_version": SCHEMA_VERSION,
+                }):
+                    metadata = server.runtime_metadata()
+            self.assertEqual(metadata["app_version"], "process-start-version")
+            self.assertTrue(metadata["compatible"])
+        finally:
+            server.DB_PATH = original_db
+            server.PROCESS_APP_VERSION = original_version
 
 
 if __name__ == "__main__":

@@ -22,7 +22,8 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 ### Verification
 
 - Added raw, compressed, HTML, synonym, low-memory, authorization, source-management and rollback coverage using deterministic synthetic StarDict fixtures.
-- All 210 automated tests pass with 2 optional-dependency tests skipped; JavaScript syntax, Python byte-compilation, patch checks and the desktop private/open dictionary Playwright workflow also pass.
+- All 211 automated tests pass with 2 optional-dependency tests skipped; JavaScript syntax, Python byte-compilation, patch checks and the desktop private/open dictionary Playwright workflow also pass.
+- Runtime metadata now freezes the application version at process start, so an old backend cannot report a newly edited `VERSION` file before it has actually restarted.
 - A real user-owned StarDict source has not yet been supplied, so production coverage remains unchanged pending representative import and sampling.
 
 ## [0.8.0-alpha.25.2] - 2026-07-21
