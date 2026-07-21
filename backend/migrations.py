@@ -200,6 +200,41 @@ def _complete_word_review(conn: sqlite3.Connection) -> None:
     )
 
 
+def _article_paragraph_translations(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """CREATE TABLE IF NOT EXISTS article_paragraph_translations (
+             article_id INTEGER NOT NULL,
+             paragraph_index INTEGER NOT NULL,
+             source_hash TEXT NOT NULL,
+             source_text TEXT NOT NULL,
+             translation_zh TEXT NOT NULL,
+             provider TEXT NOT NULL DEFAULT 'manual',
+             updated_at TEXT NOT NULL,
+             PRIMARY KEY(article_id, paragraph_index),
+             FOREIGN KEY(article_id) REFERENCES articles(id)
+           );
+           CREATE INDEX IF NOT EXISTS idx_article_paragraph_translations_hash
+           ON article_paragraph_translations(article_id, source_hash);"""
+    )
+    if not {"id", "body", "translation_zh", "updated_at"}.issubset(_columns(conn, "articles")):
+        return
+    rows = conn.execute("SELECT id, body, translation_zh, updated_at FROM articles WHERE translation_zh != ''").fetchall()
+    for row in rows:
+        originals = [value.strip() for value in re.split(r"\n\s*\n", row[1] or "") if value.strip()]
+        translations = [value.strip() for value in re.split(r"\n\s*\n", row[2] or "") if value.strip()]
+        if not originals or len(originals) != len(translations):
+            continue
+        conn.executemany(
+            """INSERT OR IGNORE INTO article_paragraph_translations
+               (article_id, paragraph_index, source_hash, source_text, translation_zh, provider, updated_at)
+               VALUES (?, ?, ?, ?, ?, 'legacy', ?)""",
+            [
+                (row[0], index, hashlib.sha256(source.encode("utf-8")).hexdigest(), source, translated, row[3])
+                for index, (source, translated) in enumerate(zip(originals, translations))
+            ],
+        )
+
+
 SCRIPT_NOISE_PATTERN = re.compile(
     r"(?i)(?:\bGF_AJAX_POSTBACK\b|\bgform_confirmation_loaded\b|\bgform_pre_post_render\b|"
     r"\bgformRedirect\b|\bgform_wrapper_\d+\b|\bconfirmation_content\b|window\[['\"]gf_|jQuery\(['\"]#gform)"
@@ -708,6 +743,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     (16, "add local speaking output", _speaking_output_training),
     (17, "add optional FSRS review state", _fsrs_review_state),
     (18, "add Complete the Words card review", _complete_word_review),
+    (19, "persist paragraph-aligned article translations", _article_paragraph_translations),
 )
 
 

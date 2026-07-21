@@ -8,8 +8,9 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.24.8";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.24.9";
 const SUPPORTED_API_VERSION = "1";
+const SUPPORTED_SCHEMA_VERSION = "19";
 
 const state = {
   articles: [],
@@ -483,27 +484,33 @@ function articleParagraphs(text, className = "") {
   return String(text || "").split(/\n\s*\n/).filter(Boolean).map(paragraph => `<p class="${className}">${searchableEnglish(paragraph)}</p>`).join("");
 }
 
-function bilingualParagraphs(text, translation = "", showTranslation = false, className = "article-paragraph") {
+function bilingualParagraphs(text, translation = "", showTranslation = false, className = "article-paragraph", articleId = null, savedTranslations = null) {
   const originals = String(text || "").split(/\n\s*\n/).map(value => value.trim()).filter(Boolean);
-  const translations = String(translation || "").split(/\n\s*\n/).map(value => value.trim()).filter(Boolean);
+  const translations = Array.isArray(savedTranslations)
+    ? savedTranslations.map(value => String(value || "").trim())
+    : String(translation || "").split(/\n\s*\n/).map(value => value.trim()).filter(Boolean);
   return originals.map((paragraph, index) => `
     <section class="bilingual-pair">
+      ${articleId ? `<button class="paragraph-translate-button" data-translate-paragraph="${index}" data-article-id="${articleId}" title="翻译本段" aria-label="翻译第 ${index + 1} 段">译</button>` : ""}
       <p class="${className}">${searchableEnglish(paragraph)}</p>
-      ${showTranslation ? `<p class="paragraph-translation ${translations[index] ? "" : "missing"}">${translations[index] ? escapeHtml(translations[index]) : "本段暂无译文"}</p>` : ""}
+      ${showTranslation || translations[index] ? `<p class="paragraph-translation ${translations[index] ? "" : "missing"}">${translations[index] ? escapeHtml(translations[index]) : "本段暂无译文"}</p>` : ""}
     </section>
   `).join("");
 }
 
-function evidenceBilingualParagraphs(text, translation = "", showTranslation = false, evidence = "") {
+function evidenceBilingualParagraphs(text, translation = "", showTranslation = false, evidence = "", articleId = null, savedTranslations = null) {
   const originals = String(text || "").split(/\n\s*\n/).map(value => value.trim()).filter(Boolean);
-  const translations = String(translation || "").split(/\n\s*\n/).map(value => value.trim()).filter(Boolean);
+  const translations = Array.isArray(savedTranslations)
+    ? savedTranslations.map(value => String(value || "").trim())
+    : String(translation || "").split(/\n\s*\n/).map(value => value.trim()).filter(Boolean);
   const needle = String(evidence || "").trim().toLowerCase();
   return originals.map((paragraph, index) => {
     const target = needle && (paragraph.toLowerCase().includes(needle) || needle.includes(paragraph.toLowerCase().slice(0, 80)));
     return `
       <section class="bilingual-pair ${target ? "evidence-replay-target" : ""}" ${target ? "id=\"readerEvidenceTarget\"" : ""}>
+        ${articleId ? `<button class="paragraph-translate-button" data-translate-paragraph="${index}" data-article-id="${articleId}" title="翻译本段" aria-label="翻译第 ${index + 1} 段">译</button>` : ""}
         <p class="article-paragraph">${searchableEnglish(paragraph)}</p>
-        ${showTranslation ? `<p class="paragraph-translation ${translations[index] ? "" : "missing"}">${translations[index] ? escapeHtml(translations[index]) : "本段暂无译文"}</p>` : ""}
+        ${showTranslation || translations[index] ? `<p class="paragraph-translation ${translations[index] ? "" : "missing"}">${translations[index] ? escapeHtml(translations[index]) : "本段暂无译文"}</p>` : ""}
       </section>
     `;
   }).join("");
@@ -1026,8 +1033,8 @@ function renderReader() {
   $("#readerMeta").innerHTML = `${badge(article.level, "teal")}${badge(article.content_type_label || "学术解释", article.content_type === "opinion" ? "amber" : "teal")}${badge(article.content_status === "full" ? `完整正文 · ${article.content_word_count}词` : `RSS摘要 · ${article.content_word_count}词`, article.content_status === "full" ? "teal" : "amber")}${badge(`${article.exam_length_label} · ${state.style} ${article.exam_word_min}-${article.exam_word_max}词`, article.exam_length_status === "matched" ? "teal" : "amber")}${badge(`质量 ${article.content_quality_score}`)}${(article.theme_tags || []).map(theme => badge(theme, "amber")).join("")}${badge(article.source || "manual")}`;
   $("#readerContentNotice").innerHTML = `${article.content_status !== "full" ? `<div class="content-notice compact"><div><strong>这是来源摘要，不是原文</strong><span>受版权与 feed 范围限制，系统只保存来源主动提供的摘要。可打开原站，或通过插件带回你有权使用的正文。</span></div>${article.source_url ? `<a href="${escapeHtml(article.source_url)}" target="_blank" rel="noreferrer">打开原文</a>` : ""}</div>` : article.training_eligible ? "" : `<div class="content-notice compact"><div><strong>暂不适合考试出题</strong><span>${escapeHtml(article.training_block_reason)}</span></div></div>`}${sourceMetadataHtml(article)}`;
   $("#readerBody").innerHTML = state.evidenceReplay
-    ? evidenceBilingualParagraphs(article.body, article.translation_zh, state.showTranslation, state.evidenceReplay)
-    : bilingualParagraphs(article.body, article.translation_zh, state.showTranslation);
+    ? evidenceBilingualParagraphs(article.body, article.translation_zh, state.showTranslation, state.evidenceReplay, article.id, article.paragraph_translations)
+    : bilingualParagraphs(article.body, article.translation_zh, state.showTranslation, "article-paragraph", article.id, article.paragraph_translations);
   $("#articleTranslationInput").value = article.translation_zh || "";
   const translationPanel = $("#translationPanel");
   translationPanel.hidden = true;
@@ -1911,27 +1918,31 @@ function abbreviatedPartOfSpeech(value) {
 function lexicalSenseOutline(item, fallbackMeaning = "") {
   const order = [];
   const grouped = new Map();
-  const add = (pos, values) => {
+  const add = (pos, values, definitions = []) => {
     const rawPos = String(pos || "词性待确认").toLowerCase();
     const normalizedPos = ({ adj: "adjective", a: "adjective", n: "noun", v: "verb", adv: "adverb", r: "adverb" })[rawPos] || rawPos;
     if (!grouped.has(normalizedPos)) {
-      grouped.set(normalizedPos, []);
+      grouped.set(normalizedPos, { meanings: [], definitions: [] });
       order.push(normalizedPos);
     }
     const bucket = grouped.get(normalizedPos);
     (values || []).filter(Boolean).forEach(value => {
       const clean = String(value).trim();
-      if (clean && !bucket.includes(clean)) bucket.push(clean);
+      if (clean && !bucket.meanings.includes(clean)) bucket.meanings.push(clean);
+    });
+    (definitions || []).filter(Boolean).forEach(value => {
+      const clean = String(value).trim();
+      if (clean && !bucket.definitions.includes(clean)) bucket.definitions.push(clean);
     });
   };
   const profile = item.learning_profile;
-  if (profile) add(profile.pos, [profile.meaning_zh]);
+  if (profile) add(profile.pos, [profile.meaning_zh], [profile.focus_en]);
   (item.parts_of_speech || []).forEach(pos => add(pos, []));
-  (item.senses || []).forEach(sense => add(sense.pos, sense.definition_translations || []));
-  (item.open_entries || item.lexical_layers?.entries || []).forEach(entry => add(entry.pos, entry.translations_zh || []));
+  (item.senses || []).forEach(sense => add(sense.pos, sense.definition_translations || [], sense.definitions || []));
+  (item.open_entries || item.lexical_layers?.entries || []).forEach(entry => add(entry.pos, entry.translations_zh || [], entry.glosses || []));
   if (!order.length) add(profile?.pos || item.pos, []);
-  if (order.length === 1 && !grouped.get(order[0]).length && fallbackMeaning) add(order[0], [fallbackMeaning]);
-  return order.map(pos => ({ pos, meanings: grouped.get(pos) }));
+  if (order.length === 1 && !grouped.get(order[0]).meanings.length && fallbackMeaning) add(order[0], [fallbackMeaning]);
+  return order.map(pos => ({ pos, ...grouped.get(pos) }));
 }
 
 function firstLearningExample(item) {
@@ -1977,7 +1988,7 @@ function lexicalLearningSummary(item, translated = "") {
   const compareTerms = profile ? [profile.term, ...(profile.related_terms || [])].join(", ") : "";
   return `
     <section class="lexical-learning-summary">
-      <header><div class="badge-row">${badge(profile ? "人工整理基础组" : "开放词典概念", profile ? "teal" : "amber")}${profile?.pos ? badge(profile.pos) : ""}</div><ol class="lexical-sense-outline">${senseOutline.map((sense, index) => `<li><span>${index + 1}.</span><strong>${escapeHtml(abbreviatedPartOfSpeech(sense.pos))}</strong><p>${escapeHtml(sense.meanings.length ? sense.meanings.join("；") : "中文义项待翻译")}</p></li>`).join("")}</ol>${focusEn ? `<p class="learning-concept-en">${escapeHtml(focusEn)}</p>` : ""}${focusZh ? `<p class="learning-boundary-zh">${escapeHtml(focusZh)}</p>` : ""}</header>
+      <header><div class="badge-row">${badge(profile ? "本地整理 · 常用义项优先" : "开放词典 · 常用义项优先", profile ? "teal" : "amber")}${profile?.pos ? badge(profile.pos) : ""}</div><ol class="lexical-sense-outline">${senseOutline.map((sense, index) => `<li><span>${index + 1}.</span><strong>${escapeHtml(abbreviatedPartOfSpeech(sense.pos))}</strong><div><p>${escapeHtml(sense.meanings.length ? sense.meanings.join("；") : "中文义项待翻译")}</p>${sense.definitions.length ? `<small>${escapeHtml(sense.definitions.join("; "))}</small>` : ""}</div></li>`).join("")}</ol><p class="source-note">首项突出当前最常用的学习义项；其他词性和义项仍完整保留在下方。本地整理内容只进入项目版本数据，不会自动上传。</p>${focusEn ? `<p class="learning-concept-en">${escapeHtml(focusEn)}</p>` : ""}${focusZh ? `<p class="learning-boundary-zh">${escapeHtml(focusZh)}</p>` : ""}</header>
       <div class="learning-summary-grid">
         <section><strong>常见结构与搭配</strong><div class="comparison-patterns">${patterns.length ? patterns.map(pattern => `<button data-search-query="${escapeHtml(pattern)}">${escapeHtml(pattern)}</button>`).join("") : "<span>暂无经过确认的常见搭配</span>"}</div></section>
         ${register ? `<section><strong>语域</strong><p>${escapeHtml(register)}</p></section>` : ""}
@@ -2855,12 +2866,14 @@ async function loadHealth() {
   $("#serverStatus").classList.add("ok");
   const backendVersion = String(data.app_version || "旧版后端");
   const apiCompatible = String(data.api_version || "") === SUPPORTED_API_VERSION;
-  const compatible = apiCompatible && data.compatible !== false && backendVersion === FRONTEND_APP_VERSION;
-  $("#runtimeVersion").textContent = `${backendVersion} · API ${data.api_version || "未知"}`;
+  const schemaCompatible = String(data.schema_version || "") === SUPPORTED_SCHEMA_VERSION
+    && String(data.database_schema_version || "") === SUPPORTED_SCHEMA_VERSION;
+  const compatible = apiCompatible && schemaCompatible && data.compatible !== false && backendVersion === FRONTEND_APP_VERSION;
+  $("#runtimeVersion").textContent = `${backendVersion} · API ${data.api_version || "未知"} · Schema ${data.database_schema_version || "未知"}`;
   $("#compatibilityBanner").hidden = compatible;
   if (!compatible) {
     $("#compatibilityMessage").textContent = data.app_version
-      ? `页面 ${FRONTEND_APP_VERSION}，后端 ${backendVersion}。请重启后端后刷新页面。`
+      ? `页面 ${FRONTEND_APP_VERSION} / schema ${SUPPORTED_SCHEMA_VERSION}，后端 ${backendVersion} / schema ${data.database_schema_version || data.schema_version || "未知"}。请重启后端后刷新页面。`
       : "当前仍是旧版后端，请重启 Language Coach 后刷新页面。";
   }
   return data;
@@ -3721,10 +3734,18 @@ async function saveTranslation() {
 async function translateArticle(id = state.selectedArticle?.id) {
   if (!id) return toast("先选文章");
   toast("正在翻译并对齐段落");
-  const data = await api(`/api/articles/${id}/translate`, {
-    method: "POST",
-    body: JSON.stringify({ exam: state.style }),
-  });
+  let data;
+  try {
+    data = await api(`/api/articles/${id}/translate`, {
+      method: "POST",
+      body: JSON.stringify({ exam: state.style }),
+    });
+  } catch (error) {
+    const editor = document.querySelector(".translation-editor");
+    if (editor) editor.open = true;
+    toast(`自动翻译暂不可用：${error.message}。可先手动填写并保存。`);
+    return;
+  }
   const index = state.articles.findIndex(item => item.id === data.article.id);
   if (index >= 0) state.articles[index] = data.article;
   if (state.selectedArticle?.id === data.article.id) state.selectedArticle = data.article;
@@ -3733,6 +3754,29 @@ async function translateArticle(id = state.selectedArticle?.id) {
   renderReader();
   renderQuizSource();
   toast(data.cached ? "已载入缓存译文" : "翻译完成并已保存");
+}
+
+async function translateArticleParagraph(articleId, paragraphIndex) {
+  toast(`正在翻译第 ${paragraphIndex + 1} 段`);
+  let data;
+  try {
+    data = await api(`/api/articles/${articleId}/paragraphs/${paragraphIndex}/translate`, {
+      method: "POST",
+      body: JSON.stringify({ exam: state.style }),
+    });
+  } catch (error) {
+    const editor = document.querySelector(".translation-editor");
+    if (editor) editor.open = true;
+    toast(`本段自动翻译暂不可用：${error.message}`);
+    return;
+  }
+  const index = state.articles.findIndex(item => item.id === data.article.id);
+  if (index >= 0) state.articles[index] = { ...state.articles[index], ...data.article };
+  if (state.selectedArticle?.id === data.article.id) state.selectedArticle = data.article;
+  state.showTranslation = true;
+  renderReader();
+  renderArticles();
+  toast(data.cached ? `第 ${paragraphIndex + 1} 段已载入缓存译文` : `第 ${paragraphIndex + 1} 段翻译完成`);
 }
 
 async function toggleArticleTranslation() {
@@ -4215,6 +4259,7 @@ document.addEventListener("click", async event => {
     if (button.id === "saveTranslationBtn") await saveTranslation();
     if (button.id === "translateArticleBtn") await translateArticle();
     if (button.dataset.translateArticle) await translateArticle(Number(button.dataset.translateArticle));
+    if (button.dataset.translateParagraph !== undefined) await translateArticleParagraph(Number(button.dataset.articleId), Number(button.dataset.translateParagraph));
     if (button.dataset.openExtractionBatch !== undefined) await openExtractionReviewBatch();
     if (button.dataset.openExtractionLabeler) await openExtractionLabeler(Number(button.dataset.openExtractionLabeler));
     if (button.dataset.extractionBlockIndex !== undefined) {
@@ -4503,19 +4548,16 @@ document.addEventListener("click", async event => {
 });
 
 document.addEventListener("click", event => {
-  const word = event.target.closest(".reader-word");
-  if (word) renderLookup(word.dataset.word).catch(error => toast(error.message));
   if (!event.target.closest(".global-search-wrap")) $("#quickLexiconResults").hidden = true;
 });
 
 document.addEventListener("dblclick", event => {
   if (event.target.closest("input, textarea, select, button")) return;
-  const selected = window.getSelection()?.toString().trim().replace(/\s+/g, " ") || "";
+  const word = event.target.closest(".reader-word");
+  const selected = (window.getSelection()?.toString().trim().replace(/\s+/g, " ") || word?.dataset.word || "").trim();
   if (!/^[A-Za-z][A-Za-z' -]{0,79}$/.test(selected) || selected.split(" ").length > 6) return;
   $("#globalLexiconSearch").value = selected;
-  if (selected.includes(" ")) renderLookup(selected).catch(error => toast(error.message));
-  searchLexicon(selected, { quick: true }).catch(error => toast(error.message));
-  $("#globalLexiconSearch").focus();
+  searchLexicon(selected).catch(error => toast(error.message));
 });
 
 $("#globalStyle").addEventListener("change", async event => {

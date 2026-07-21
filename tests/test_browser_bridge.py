@@ -284,6 +284,46 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(data["article"]["content_type"], "explainer")
         self.assertEqual(data["article"]["source_kind"], "网页导入")
 
+    def test_single_paragraph_translation_persists_and_expires_when_source_changes(self):
+        now = server.utc_now()
+        with server.db() as conn:
+            cursor = conn.execute(
+                """INSERT INTO articles
+                   (title, language, level, topic, source, content_status, content_type, body, created_at, updated_at)
+                   VALUES ('Paragraph translation', 'en', 'B2', 'study', 'manual', 'full', 'explainer', ?, ?, ?)""",
+                ("First paragraph.\n\nSecond paragraph.", now, now),
+            )
+            article_id = cursor.lastrowid
+        translated_result = {
+            "source_segments": ["Second paragraph."], "translated_segments": ["第二段。"],
+            "provider": "test", "cached": False,
+        }
+        with patch("backend.server.translate_segments", return_value=translated_result):
+            data, _ = self.request(
+                f"/api/articles/{article_id}/paragraphs/1/translate", "POST", {"exam": "IELTS"}
+            )
+        self.assertEqual(data["paragraph_index"], 1)
+        self.assertEqual(data["article"]["paragraph_translations"], ["", "第二段。"])
+        self.assertFalse(data["article"]["translation_aligned"])
+        loaded, _ = self.request(f"/api/articles/{article_id}?exam=IELTS")
+        self.assertEqual(loaded["article"]["paragraph_translations"], ["", "第二段。"])
+        with server.db() as conn:
+            conn.execute(
+                "UPDATE articles SET body = ?, updated_at = ? WHERE id = ?",
+                ("First paragraph.\n\nChanged second paragraph.", server.utc_now(), article_id),
+            )
+        changed, _ = self.request(f"/api/articles/{article_id}?exam=IELTS")
+        self.assertEqual(changed["article"]["paragraph_translations"], ["", ""])
+        refreshed_result = {
+            "source_segments": ["First paragraph.", "Changed second paragraph."],
+            "translated_segments": ["第一段。", "更新后的第二段。"],
+            "provider": "test", "cached": False,
+        }
+        with patch("backend.server.translate_segments", return_value=refreshed_result) as translate:
+            refreshed, _ = self.request(f"/api/articles/{article_id}/translate", "POST", {"exam": "IELTS"})
+        translate.assert_called_once_with(["First paragraph.", "Changed second paragraph."])
+        self.assertEqual(refreshed["article"]["paragraph_translations"], ["第一段。", "更新后的第二段。"])
+
     def test_summary_article_is_rejected_by_server_training_gate(self):
         now = server.utc_now()
         with server.db() as conn:

@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.24.9] - 2026-07-21
+
+### Added
+
+- Added paragraph-level article translation with schema 19 persistence keyed by article, paragraph position and source hash.
+- Added Windows-native Traditional-to-Simplified conversion for API output so dictionary meanings, examples and translations are consistently returned in Simplified Chinese.
+- Added a direct double-click workflow from article text to the complete dictionary entry.
+
+### Changed
+
+- Dictionary entries now label the first sense as a learning priority without implying that other parts of speech or senses were removed; all available definitions remain below.
+- Automatic translation failures open the manual translation editor instead of leaving the learner at a dead end.
+- The reader's ambiguous `分析` command is now `学习分析`, distinct from source extraction and article-body parsing.
+
+### Fixed
+
+- Paragraph translations no longer shift when only one paragraph is translated; changing the source paragraph invalidates the stale translation automatically.
+- A single click on article words no longer competes with text selection and double-click lookup.
+- Runtime compatibility now checks schema 19 explicitly, so an old process cannot appear current merely by reading the updated version file.
+
+### Verification
+
+- Full suite passed: 198 tests, with 2 optional dependency tests skipped; schema advanced from 18 to 19.
+
 ## [0.8.0-alpha.24.8] - 2026-07-21
 
 ### Added

@@ -27,6 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 try:
+    from .chinese_text import simplify_chinese_payload
     from .ai_feedback import feedback_provider_status, request_semantic_feedback
     from .backups import create_backup, list_backups, restore_backup
     from .content_extraction import BLOCK_LABELS, adapter_catalog, adapter_for_source, extract_source_content, suggest_annotation_blocks
@@ -51,6 +52,7 @@ try:
     from .versioning import SCHEMA_VERSION, app_version, version_payload
     from .usage_contrasts import contrast_by_slug, contrast_catalog
 except ImportError:
+    from chinese_text import simplify_chinese_payload
     from ai_feedback import feedback_provider_status, request_semantic_feedback
     from backups import create_backup, list_backups, restore_backup
     from content_extraction import BLOCK_LABELS, adapter_catalog, adapter_for_source, extract_source_content, suggest_annotation_blocks
@@ -1427,7 +1429,7 @@ def runtime_metadata() -> dict:
 
 
 def json_response(handler: BaseHTTPRequestHandler, payload: object, status: int = 200) -> None:
-    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    body = json.dumps(simplify_chinese_payload(payload), ensure_ascii=False).encode("utf-8")
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
@@ -4072,6 +4074,60 @@ def enrich_article(article: dict, exam: str = "") -> dict:
     return item
 
 
+def article_paragraph_values(body: str) -> list[str]:
+    return [value.strip() for value in re.split(r"\n\s*\n", body or "") if value.strip()]
+
+
+def article_paragraph_translation_values(conn: sqlite3.Connection, article: dict) -> list[str]:
+    originals = article_paragraph_values(article.get("body", ""))
+    values = [""] * len(originals)
+    rows = conn.execute(
+        """SELECT paragraph_index, source_hash, translation_zh
+           FROM article_paragraph_translations WHERE article_id = ?""",
+        (article["id"],),
+    ).fetchall()
+    for row in rows:
+        index = int(row["paragraph_index"])
+        if 0 <= index < len(originals):
+            digest = hashlib.sha256(originals[index].encode("utf-8")).hexdigest()
+            if row["source_hash"] == digest:
+                values[index] = row["translation_zh"]
+    return values
+
+
+def article_with_paragraph_translations(conn: sqlite3.Connection, article: dict, exam: str = "") -> dict:
+    item = enrich_article(article, exam)
+    values = article_paragraph_translation_values(conn, item)
+    item["paragraph_translations"] = values
+    item["translation_paragraph_count"] = sum(bool(value.strip()) for value in values)
+    item["translation_aligned"] = bool(values) and all(value.strip() for value in values)
+    return item
+
+
+def replace_article_paragraph_translations(
+    conn: sqlite3.Connection,
+    article: dict,
+    translations: list[str],
+    provider: str,
+) -> list[str]:
+    originals = article_paragraph_values(article.get("body", ""))
+    now = utc_now()
+    conn.execute("DELETE FROM article_paragraph_translations WHERE article_id = ?", (article["id"],))
+    rows = []
+    for index, source in enumerate(originals):
+        translated = translations[index].strip() if index < len(translations) else ""
+        if translated:
+            rows.append((article["id"], index, hashlib.sha256(source.encode("utf-8")).hexdigest(), source, translated, provider, now))
+    if rows:
+        conn.executemany(
+            """INSERT INTO article_paragraph_translations
+               (article_id, paragraph_index, source_hash, source_text, translation_zh, provider, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            rows,
+        )
+    return article_paragraph_translation_values(conn, article)
+
+
 def list_articles(query: dict[str, list[str]]) -> list[dict]:
     where = []
     params: list[str] = []
@@ -6404,9 +6460,9 @@ class App(BaseHTTPRequestHandler):
             if match:
                 with db() as conn:
                     article = conn.execute("SELECT * FROM articles WHERE id = ?", (match.group(1),)).fetchone()
+                    item = article_with_paragraph_translations(conn, dict(article), query.get("exam", [""])[0]) if article else None
                 if not article:
                     return json_response(self, {"error": "Article not found"}, 404)
-                item = enrich_article(dict(article), query.get("exam", [""])[0])
                 return json_response(self, {"article": item, "analysis": analyze_payload(item)})
             if path == "/api/cards":
                 with db() as conn:
@@ -7202,25 +7258,29 @@ class App(BaseHTTPRequestHandler):
                 with db() as conn:
                     conn.execute("UPDATE articles SET translation_zh = ?, updated_at = ? WHERE id = ?", (translation, utc_now(), match.group(1)))
                     article = conn.execute("SELECT * FROM articles WHERE id = ?", (match.group(1),)).fetchone()
+                    if article:
+                        translations = [value.strip() for value in re.split(r"\n\s*\n", translation) if value.strip()]
+                        replace_article_paragraph_translations(conn, dict(article), translations, "manual")
+                        item = article_with_paragraph_translations(conn, dict(article), payload.get("exam") or "")
                 if not article:
                     return json_response(self, {"error": "Article not found"}, 404)
-                return json_response(self, {"article": enrich_article(dict(article), payload.get("exam") or "")})
+                return json_response(self, {"article": item})
             match = re.fullmatch(r"/api/articles/(\d+)/translate", path)
             if match:
                 with db() as conn:
                     article = conn.execute("SELECT * FROM articles WHERE id = ?", (match.group(1),)).fetchone()
+                    valid_translations = article_paragraph_translation_values(conn, dict(article)) if article else []
                 if not article:
                     return json_response(self, {"error": "Article not found"}, 404)
                 paragraphs = [value.strip() for value in re.split(r"\n\s*\n", article["body"]) if value.strip()]
-                existing_translation = [
-                    value.strip() for value in re.split(r"\n\s*\n", article["translation_zh"] or "") if value.strip()
-                ]
-                if len(existing_translation) == len(paragraphs) and not payload.get("force"):
+                if valid_translations and all(value.strip() for value in valid_translations) and not payload.get("force"):
+                    with db() as conn:
+                        item = article_with_paragraph_translations(conn, dict(article), payload.get("exam") or "")
                     return json_response(
                         self,
                         {
-                            "article": enrich_article(dict(article), payload.get("exam") or ""),
-                            "translated_segments": existing_translation,
+                            "article": item,
+                            "translated_segments": valid_translations,
                             "provider": "saved",
                             "cached": True,
                         },
@@ -7238,15 +7298,63 @@ class App(BaseHTTPRequestHandler):
                         (translation, utc_now(), match.group(1)),
                     )
                     updated = conn.execute("SELECT * FROM articles WHERE id = ?", (match.group(1),)).fetchone()
+                    replace_article_paragraph_translations(conn, dict(updated), result["translated_segments"], result["provider"])
+                    item = article_with_paragraph_translations(conn, dict(updated), payload.get("exam") or "")
                 return json_response(
                     self,
                     {
-                        "article": enrich_article(dict(updated), payload.get("exam") or ""),
+                        "article": item,
                         "translated_segments": result["translated_segments"],
                         "provider": result["provider"],
                         "cached": result["cached"],
                     },
                 )
+            match = re.fullmatch(r"/api/articles/(\d+)/paragraphs/(\d+)/translate", path)
+            if match:
+                article_id, paragraph_index = int(match.group(1)), int(match.group(2))
+                with db() as conn:
+                    article = conn.execute("SELECT * FROM articles WHERE id = ?", (article_id,)).fetchone()
+                if not article:
+                    return json_response(self, {"error": "Article not found"}, 404)
+                originals = article_paragraph_values(article["body"])
+                if paragraph_index < 0 or paragraph_index >= len(originals):
+                    return json_response(self, {"error": "Paragraph not found"}, 404)
+                try:
+                    result = translate_segments([originals[paragraph_index]])
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                except RuntimeError as exc:
+                    return json_response(self, {"error": str(exc), "translation": translation_status()}, 503)
+                translated = result["translated_segments"][0]
+                now = utc_now()
+                with db() as conn:
+                    conn.execute(
+                        """INSERT INTO article_paragraph_translations
+                           (article_id, paragraph_index, source_hash, source_text, translation_zh, provider, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)
+                           ON CONFLICT(article_id, paragraph_index) DO UPDATE SET
+                             source_hash = excluded.source_hash, source_text = excluded.source_text,
+                             translation_zh = excluded.translation_zh, provider = excluded.provider,
+                             updated_at = excluded.updated_at""",
+                        (article_id, paragraph_index, hashlib.sha256(originals[paragraph_index].encode("utf-8")).hexdigest(),
+                         originals[paragraph_index], translated, result["provider"], now),
+                    )
+                    updated = dict(conn.execute("SELECT * FROM articles WHERE id = ?", (article_id,)).fetchone())
+                    values = article_paragraph_translation_values(conn, updated)
+                    if values and all(value.strip() for value in values):
+                        conn.execute(
+                            "UPDATE articles SET translation_zh = ?, updated_at = ? WHERE id = ?",
+                            ("\n\n".join(values), now, article_id),
+                        )
+                        updated["translation_zh"] = "\n\n".join(values)
+                    item = article_with_paragraph_translations(conn, updated, payload.get("exam") or "")
+                return json_response(self, {
+                    "article": item,
+                    "paragraph_index": paragraph_index,
+                    "translated_text": translated,
+                    "provider": result["provider"],
+                    "cached": result["cached"],
+                })
             match = re.fullmatch(r"/api/articles/(\d+)/content", path)
             if match:
                 body = normalize_article_text(payload.get("title") or "", (payload.get("body") or "").strip())
@@ -7259,7 +7367,7 @@ class App(BaseHTTPRequestHandler):
                     body = normalize_article_text(current["title"], body)
                     conn.execute("UPDATE articles SET body = ?, content_status = 'full', updated_at = ? WHERE id = ?", (body, utc_now(), match.group(1)))
                     article = conn.execute("SELECT * FROM articles WHERE id = ?", (match.group(1),)).fetchone()
-                item = enrich_article(dict(article), payload.get("exam") or "")
+                    item = article_with_paragraph_translations(conn, dict(article), payload.get("exam") or "")
                 return json_response(self, {"article": item, "analysis": analyze_payload(item)})
             match = re.fullmatch(r"/api/articles/(\d+)/analyze", path)
             if match:

@@ -592,8 +592,18 @@ label {
 .article-paragraph { margin: 0 0 1.15em; text-indent: 2em; }
 .article-paragraph:last-child { margin-bottom: 0; }
 
-.bilingual-pair { margin-bottom: 1.3em; }
+.bilingual-pair { position: relative; margin-bottom: 1.3em; padding-right: 34px; }
 .bilingual-pair .article-paragraph { margin-bottom: 6px; }
+.paragraph-translate-button {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--teal-dark);
+  font-size: 13px;
+}
 .paragraph-translation {
   margin: 0;
   padding: 8px 12px;
@@ -625,7 +635,7 @@ label {
 .reader-word {
   padding: 1px 2px;
   border-radius: 4px;
-  cursor: pointer;
+  cursor: text;
 }
 
 .reader-word:hover {
@@ -1242,7 +1252,8 @@ label {
 .lexical-sense-outline li { display: grid; grid-template-columns: 24px 46px minmax(0, 1fr); gap: 7px; align-items: baseline; }
 .lexical-sense-outline li > span { color: var(--muted); text-align: right; }
 .lexical-sense-outline li > strong { color: var(--teal-dark); font-size: 13px; }
-.lexical-sense-outline li > p { margin: 0; color: var(--teal-dark); font-size: 17px; font-weight: 700; line-height: 1.55; }
+.lexical-sense-outline li > div > p { margin: 0; color: var(--teal-dark); font-size: 17px; font-weight: 700; line-height: 1.55; }
+.lexical-sense-outline li > div > small { display: block; margin-top: 2px; color: var(--muted); font-family: Georgia, "Times New Roman", serif; font-size: 14px; line-height: 1.5; }
 .learning-concept-en { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 19px; line-height: 1.6; }
 .learning-boundary-zh { margin: 7px 0 0; color: var(--muted); line-height: 1.65; }
 .learning-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 16px; border-top: 1px solid var(--line); }

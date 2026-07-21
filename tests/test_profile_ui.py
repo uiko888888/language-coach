@@ -163,7 +163,9 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.24.7";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.24.9";', self.js)
+        self.assertIn('const SUPPORTED_SCHEMA_VERSION = "19";', self.js)
+        self.assertIn('const schemaCompatible =', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
 
@@ -253,6 +255,15 @@ class ProfileUiContractTests(unittest.TestCase):
         self.assertIn('!article.translation_aligned', self.js)
         self.assertIn('await translateArticle(article.id)', self.js)
         self.assertIn('article?.translation_aligned ? "显示译文" : "一键翻译"', self.js)
+
+    def test_reader_supports_direct_dictionary_lookup_and_paragraph_translation(self):
+        self.assertIn('data-translate-paragraph=', self.js)
+        self.assertIn('async function translateArticleParagraph(', self.js)
+        self.assertIn('/paragraphs/${paragraphIndex}/translate', self.js)
+        self.assertIn('searchLexicon(selected).catch', self.js)
+        self.assertNotIn('if (word) renderLookup(word.dataset.word)', self.js)
+        self.assertIn('双击文章中的单词进入完整词典', self.html)
+        self.assertIn('.paragraph-translate-button', self.css)
 
     def test_article_training_actions_respect_server_quality_gate(self):
         self.assertIn("function articleTrainingAction(article", self.js)
