@@ -2,6 +2,8 @@
 
 调研日期：2026-07-16。星标为调研时的近似值，后续会变化。调研用于提取产品机制，不代表复制实现。
 
+学习模式的统一对比、证据等级和 Complete the Words 卡片回顾边界见 [`COMPETITIVE_MODE_MATRIX.md`](COMPETITIVE_MODE_MATRIX.md)。
+
 ## 2026-07-17 - TOEFL 2026 Complete the Words 核验记录
 
 - 已采用的信息：`Complete the Words` 作为 2026 TOEFL 阅读任务名称，训练目标涉及上下文词汇识别与完整拼写。
