@@ -1238,6 +1238,11 @@ label {
 .query-columns .dictionary-section { min-height: 180px; }
 
 .review-overview { margin-bottom: 14px; }
+.review-mode-bar { margin-bottom: 10px; padding-block: 8px; }
+.review-mode-switch { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); }
+.review-mode-switch button { min-width: 118px; min-height: 34px; border-color: transparent; background: transparent; color: var(--muted); }
+.review-mode-switch button.active { border-color: var(--line); background: var(--surface); color: var(--teal-dark); font-weight: 700; }
+#memoryReviewPane[hidden], #completeWordReviewPane[hidden] { display: none; }
 .review-kind-filter { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); }
 .review-kind-filter button { min-height: 30px; padding: 4px 10px; border-color: transparent; background: transparent; color: var(--muted); }
 .review-kind-filter button.active { border-color: var(--line); background: var(--surface); color: var(--teal-dark); font-weight: 700; }
@@ -1271,6 +1276,35 @@ label {
 .review-complete h2 { margin: 8px 0; font-size: 24px; }
 .review-complete p { color: var(--muted); line-height: 1.7; }
 .wordbook-management { align-items: start; }
+.complete-word-overview { margin-bottom: 14px; }
+.complete-word-search { display: grid; grid-template-columns: minmax(150px, 0.35fr) minmax(320px, 1fr); gap: 12px; align-items: end; margin-top: 14px; }
+.complete-word-search > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.complete-word-search label { margin: 0; }
+.complete-word-workspace { margin-bottom: 14px; }
+.complete-word-workspace .master-list { max-height: 660px; }
+.complete-word-detail { min-height: 560px; }
+.complete-word-card { display: grid; min-height: 390px; align-content: start; padding: 26px 6px 6px; }
+.complete-word-sentence { max-width: 820px; margin: 0 auto; color: var(--text); font-family: Georgia, "Times New Roman", serif; font-size: 23px; line-height: 1.75; text-align: center; }
+.complete-word-mask { display: flex; justify-content: center; gap: 4px; margin: 28px 0 8px; color: var(--teal-dark); font-family: Georgia, "Times New Roman", serif; font-size: 36px; font-weight: 700; }
+.complete-word-mask span { color: var(--muted); letter-spacing: 2px; }
+.complete-word-entry { display: grid; justify-items: center; gap: 10px; width: min(520px, 100%); margin: 18px auto 0; }
+.complete-word-entry > div { display: grid; grid-template-columns: minmax(220px, 1fr) auto; gap: 8px; width: 100%; }
+.complete-word-entry label { margin: 0; color: var(--muted); }
+.complete-word-entry input { min-height: 46px; font-size: 20px; text-align: center; }
+.quiet-button { min-height: 30px; padding: 3px 8px; border-color: transparent; background: transparent; color: var(--muted); }
+.complete-word-result { width: min(760px, 100%); margin: 18px auto 0; padding: 16px; border-left: 4px solid var(--line); background: var(--surface-2); }
+.complete-word-result.correct { border-left-color: var(--green); }
+.complete-word-result.wrong { border-left-color: var(--red); }
+.complete-word-result.skipped { border-left-color: var(--amber); }
+.complete-word-result > span { color: var(--muted); font-size: 12px; font-weight: 700; }
+.complete-word-result h3 { margin: 8px 0; color: var(--teal-dark); font-family: Georgia, "Times New Roman", serif; font-size: 31px; }
+.complete-word-result p { margin: 8px 0; }
+.complete-word-result blockquote { margin: 14px 0 0; padding: 11px 13px; border-left: 3px solid var(--teal); background: var(--surface); line-height: 1.7; }
+.complete-word-meaning { display: flex; gap: 10px; align-items: baseline; }
+.complete-word-meaning strong { color: var(--muted); font-size: 12px; text-transform: uppercase; }
+.complete-word-error { color: var(--red); font-weight: 700; }
+.complete-word-schedule-note { margin: 14px 0 0; padding: 10px 12px; border-left: 3px solid var(--amber); background: #fffaf2; color: var(--muted); }
+.complete-word-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 
 .daily-metric-progress {
   display: grid;
@@ -1519,6 +1553,7 @@ label {
   .review-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .daily-metric-progress { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .review-rating-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .complete-word-search { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 720px) {

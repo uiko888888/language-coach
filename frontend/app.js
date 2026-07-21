@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.24.2";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.24.5";
 const SUPPORTED_API_VERSION = "1";
 
 const state = {
@@ -21,6 +21,15 @@ const state = {
   selectedReviewId: null,
   reviewAnswerRevealed: false,
   canUndoReview: false,
+  reviewMode: localStorage.getItem("lc-v2-review-mode") || "memory",
+  completeWordReviews: { items: [], summary: { total: 0, due: 0, wrong: 0, reviewed: 0 } },
+  completeWordScope: "wrong",
+  completeWordSearch: "",
+  selectedCompleteWordId: null,
+  completeWordResults: {},
+  completeWordRevealed: false,
+  canUndoCompleteWord: false,
+  completeWordStartedAt: Date.now(),
   quizzes: [],
   mistakes: [],
   feeds: [],
@@ -2438,6 +2447,79 @@ function renderReviews() {
   `;
 }
 
+function selectedCompleteWord() {
+  return (state.completeWordReviews.items || []).find(item => item.quiz_id === state.selectedCompleteWordId);
+}
+
+function renderCompleteWordReviews() {
+  const completeMode = state.reviewMode === "complete-words";
+  $("#memoryReviewPane").hidden = completeMode;
+  $("#completeWordReviewPane").hidden = !completeMode;
+  document.querySelectorAll("[data-review-mode]").forEach(button => {
+    const active = button.dataset.reviewMode === state.reviewMode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  if (!completeMode) return;
+  const data = state.completeWordReviews || { items: [], summary: {} };
+  const items = data.items || [];
+  const summary = data.summary || {};
+  document.querySelectorAll("[data-complete-word-scope]").forEach(button => {
+    button.classList.toggle("active", button.dataset.completeWordScope === state.completeWordScope);
+  });
+  $("#completeWordUndoBtn").disabled = !state.canUndoCompleteWord;
+  $("#completeWordCount").textContent = items.length;
+  $("#completeWordSummary").innerHTML = `
+    <div><span>当前范围</span><strong>${summary.total || 0}</strong></div>
+    <div><span>今日到期</span><strong>${summary.due || 0}</strong></div>
+    <div><span>曾经答错</span><strong>${summary.wrong || 0}</strong></div>
+    <div><span>已做卡片回顾</span><strong>${summary.reviewed || 0}</strong></div>`;
+  if (!items.some(item => item.quiz_id === state.selectedCompleteWordId)) {
+    state.selectedCompleteWordId = (items.find(item => item.due) || items[0])?.quiz_id || null;
+    state.completeWordRevealed = false;
+    state.completeWordStartedAt = Date.now();
+  }
+  const selected = selectedCompleteWord();
+  $("#completeWordQueue").innerHTML = items.map((item, index) => `
+    <button class="master-list-item ${item.quiz_id === state.selectedCompleteWordId ? "active" : ""}" data-select-complete-word="${item.quiz_id}">
+      <span class="master-number">${String(index + 1).padStart(2, "0")}</span>
+      <span class="master-copy"><strong>${escapeHtml(item.answer)}</strong><small>${item.wrong_count ? `错 ${item.wrong_count} 次` : "从未答错"} · ${item.due ? "今日到期" : reviewStateLabel(item.state)}</small><em>${escapeHtml(excerpt(item.article_title || item.article_source || "本地模拟题", 42))}</em></span>
+    </button>`).join("") || `<div class="empty-state">当前范围还没有做过的 Complete the Words 题目。</div>`;
+  if (!selected) {
+    $("#completeWordDetail").innerHTML = `<div class="review-complete"><span class="eyebrow">No reviewed items</span><h2>先完成一组 Complete the Words</h2><p>这里只回顾你真正做过的模拟题，不自动生成“潜在考点”。</p></div>`;
+    return;
+  }
+  const result = state.completeWordResults[selected.quiz_id];
+  const revealed = state.completeWordRevealed;
+  const position = items.findIndex(item => item.quiz_id === selected.quiz_id) + 1;
+  $("#completeWordDetail").innerHTML = `
+    <div class="review-card-head"><div><div class="badge-row">${badge("TOEFL 模拟", "teal")}${badge(selected.due ? "今日到期" : reviewStateLabel(selected.state))}${selected.wrong_count ? badge(`历史错 ${selected.wrong_count} 次`, "red") : ""}</div><h2>Complete the Words</h2></div><span class="review-position">${position} / ${items.length}</span></div>
+    <div class="complete-word-card">
+      <p class="complete-word-sentence">${escapeHtml(selected.masked_text).replace(/\n/g, "<br>")}</p>
+      <div class="complete-word-mask" aria-label="已给前缀和缺失字母">${escapeHtml(selected.visible_prefix)}<span>${"_".repeat(selected.missing_count || 1)}</span></div>
+      ${revealed ? `
+        <section class="complete-word-result ${result?.correct ? "correct" : result?.skipped ? "skipped" : "wrong"}">
+          <span>${result?.skipped ? "已显示答案" : result?.correct ? "回答正确" : "需要重练"}</span>
+          ${result && !result.skipped ? `<p>你的答案：<strong>${escapeHtml(result.user_answer)}</strong></p>` : ""}
+          <h3>${escapeHtml(selected.answer)}</h3>
+          <div class="complete-word-meaning"><strong>${escapeHtml(selected.pos || result?.pos || "词性待补充")}</strong><span>${escapeHtml(selected.meaning_zh || result?.meaning_zh || "当前词典暂无中文义项")}</span></div>
+          <blockquote>${searchableEnglish(selected.evidence, false)}</blockquote>
+          ${(selected.evidence_translation_zh || result?.evidence_translation_zh) ? `<p class="context-meaning">${escapeHtml(selected.evidence_translation_zh || result.evidence_translation_zh)}</p>` : ""}
+          ${result?.error_type ? `<p class="complete-word-error">${escapeHtml(result.error_type)}</p>` : ""}
+        </section>
+        ${selected.due ? `<div class="review-rating-grid">${(selected.choices || []).map((choice, index) => `<button class="review-rating ${choice.rating}" data-rate-complete-word="${choice.rating}" data-review-id="${selected.review_item_id}"><strong>${index + 1} · ${escapeHtml(choice.label)}</strong><small>${escapeHtml(choice.interval)}</small></button>`).join("")}</div>` : `<p class="complete-word-schedule-note">此题尚未到期，本次回顾已记录，但不会提前改变 FSRS 排期。</p>`}
+        <div class="toolbar review-source-actions"><button data-next-complete-word>下一张</button><button data-search-query="${escapeHtml(selected.answer)}" data-open-lexicon="true">查看词典</button>${selected.article_id ? `<button data-open-article="${selected.article_id}">回到原文</button>` : ""}</div>
+      ` : `
+        <div class="complete-word-entry">
+          <label for="completeWordAnswer">输入完整单词</label>
+          <div><input id="completeWordAnswer" autocomplete="off" spellcheck="false" /><button class="primary" id="submitCompleteWordBtn">确认答案</button></div>
+          <button class="quiet-button" id="revealCompleteWordBtn">暂时想不出，显示答案</button>
+        </div>`}
+    </div>
+    <footer class="complete-word-meta"><span>${escapeHtml(selected.article_title || "本地文章")}</span><span>${escapeHtml(selected.article_source || selected.generation_source)}</span><span>${selected.official_equivalence ? "官方等价" : "规则模拟题"}</span></footer>`;
+  if (!revealed) requestAnimationFrame(() => $("#completeWordAnswer")?.focus());
+}
+
 function remedialQuizHtml(quiz, index) {
   const feedback = state.answerFeedback[quiz.id];
   return `
@@ -2586,6 +2668,7 @@ function renderAll() {
   renderQuizSource();
   renderCards();
   renderReviews();
+  renderCompleteWordReviews();
   renderMistakes();
   renderPracticeHistory();
   renderLexicon();
@@ -2961,6 +3044,73 @@ async function loadCards() {
 async function loadReviews() {
   state.reviews = await api(`/api/reviews?kind=${encodeURIComponent(state.reviewKind)}&limit=30`);
   state.canUndoReview = Boolean(state.reviews.undo?.available);
+}
+
+async function loadCompleteWordReviews() {
+  const previousId = state.selectedCompleteWordId;
+  const params = new URLSearchParams({ scope: state.completeWordScope, limit: "200" });
+  if (state.completeWordSearch) params.set("q", state.completeWordSearch);
+  state.completeWordReviews = await api(`/api/complete-word-reviews?${params.toString()}`);
+  state.canUndoCompleteWord = Boolean(state.completeWordReviews.undo?.available);
+  if (!state.completeWordReviews.items.some(item => item.quiz_id === state.selectedCompleteWordId)) {
+    state.selectedCompleteWordId = (state.completeWordReviews.items.find(item => item.due) || state.completeWordReviews.items[0])?.quiz_id || null;
+  }
+  if (state.selectedCompleteWordId !== previousId) {
+    state.completeWordRevealed = false;
+    state.completeWordStartedAt = Date.now();
+  }
+}
+
+function moveCompleteWord(step) {
+  const items = state.completeWordReviews.items || [];
+  if (!items.length) return;
+  const current = Math.max(0, items.findIndex(item => item.quiz_id === state.selectedCompleteWordId));
+  const next = Math.max(0, Math.min(items.length - 1, current + step));
+  state.selectedCompleteWordId = items[next].quiz_id;
+  state.completeWordRevealed = false;
+  state.completeWordStartedAt = Date.now();
+  renderCompleteWordReviews();
+}
+
+async function submitCompleteWordReview() {
+  const selected = selectedCompleteWord();
+  const input = $("#completeWordAnswer");
+  const answer = input?.value.trim() || "";
+  if (!selected || !answer) return toast("请输入完整单词");
+  const elapsed = Math.max(0, Math.round((Date.now() - state.completeWordStartedAt) / 1000));
+  const result = await api(`/api/complete-word-reviews/${selected.quiz_id}/answer`, {
+    method: "POST",
+    body: JSON.stringify({ answer, elapsed_seconds: elapsed }),
+  });
+  state.completeWordResults[selected.quiz_id] = result;
+  state.completeWordRevealed = true;
+  await loadCompleteWordReviews();
+  renderCompleteWordReviews();
+}
+
+async function rateCompleteWordReview(reviewId, rating) {
+  const currentId = state.selectedCompleteWordId;
+  const data = await api(`/api/reviews/${reviewId}/rate`, {
+    method: "POST",
+    body: JSON.stringify({ rating, kind: "complete-word" }),
+  });
+  state.canUndoCompleteWord = Boolean(data.queue?.undo?.available);
+  delete state.completeWordResults[currentId];
+  state.completeWordRevealed = false;
+  await Promise.all([loadCompleteWordReviews(), loadReviews(), loadToday(), loadCards()]);
+  const due = state.completeWordReviews.items.find(item => item.due && item.quiz_id !== currentId);
+  state.selectedCompleteWordId = due?.quiz_id || state.completeWordReviews.items.find(item => item.quiz_id !== currentId)?.quiz_id || currentId;
+  state.completeWordStartedAt = Date.now();
+  renderAll();
+  toast(`${{ again: "忘记", hard: "困难", good: "记得", easy: "轻松" }[rating]} · ${data.interval}后复习`);
+}
+
+async function undoCompleteWordReview() {
+  await api("/api/reviews/undo", { method: "POST", body: JSON.stringify({ kind: "complete-word" }) });
+  await Promise.all([loadCompleteWordReviews(), loadReviews(), loadToday(), loadCards()]);
+  state.canUndoCompleteWord = Boolean(state.completeWordReviews.undo?.available);
+  renderAll();
+  toast("已恢复上次 Complete the Words 评分");
 }
 
 async function rateReview(reviewId, rating) {
@@ -4038,6 +4188,41 @@ document.addEventListener("click", async event => {
       await Promise.all([loadCards(), loadReviews()]);
       renderAll();
     }
+    if (button.dataset.reviewMode) {
+      state.reviewMode = button.dataset.reviewMode;
+      localStorage.setItem("lc-v2-review-mode", state.reviewMode);
+      if (state.reviewMode === "complete-words") await loadCompleteWordReviews();
+      renderCompleteWordReviews();
+    }
+    if (button.dataset.completeWordScope) {
+      state.completeWordScope = button.dataset.completeWordScope;
+      state.selectedCompleteWordId = null;
+      state.completeWordResults = {};
+      await loadCompleteWordReviews();
+      renderCompleteWordReviews();
+    }
+    if (button.id === "completeWordSearchBtn") {
+      state.completeWordSearch = $("#completeWordSearch").value.trim();
+      state.selectedCompleteWordId = null;
+      await loadCompleteWordReviews();
+      renderCompleteWordReviews();
+    }
+    if (button.dataset.selectCompleteWord) {
+      state.selectedCompleteWordId = Number(button.dataset.selectCompleteWord);
+      state.completeWordRevealed = false;
+      state.completeWordStartedAt = Date.now();
+      renderCompleteWordReviews();
+    }
+    if (button.id === "submitCompleteWordBtn") await submitCompleteWordReview();
+    if (button.id === "revealCompleteWordBtn") {
+      const selected = selectedCompleteWord();
+      if (selected) state.completeWordResults[selected.quiz_id] = { skipped: true };
+      state.completeWordRevealed = true;
+      renderCompleteWordReviews();
+    }
+    if (button.dataset.nextCompleteWord !== undefined) moveCompleteWord(1);
+    if (button.dataset.rateCompleteWord) await rateCompleteWordReview(Number(button.dataset.reviewId), button.dataset.rateCompleteWord);
+    if (button.id === "completeWordUndoBtn") await undoCompleteWordReview();
     if (button.dataset.reviewKind) {
       state.reviewKind = button.dataset.reviewKind;
       state.selectedReviewId = null;
@@ -4252,6 +4437,44 @@ $("#articleSearch").addEventListener("keydown", async event => {
   }
 });
 
+$("#completeWordSearch").addEventListener("keydown", async event => {
+  if (event.key !== "Enter") return;
+  state.completeWordSearch = event.target.value.trim();
+  state.selectedCompleteWordId = null;
+  await loadCompleteWordReviews();
+  renderCompleteWordReviews();
+});
+
+document.addEventListener("keydown", event => {
+  if (!$("#view-cards")?.classList.contains("active") || state.reviewMode !== "complete-words") return;
+  const tag = event.target.tagName?.toLowerCase();
+  if (event.target.id === "completeWordAnswer" && event.key === "Enter") {
+    event.preventDefault();
+    submitCompleteWordReview().catch(error => toast(error.message));
+    return;
+  }
+  if (["input", "textarea", "select"].includes(tag) || event.ctrlKey || event.metaKey || event.altKey) return;
+  const selected = selectedCompleteWord();
+  if (!selected) return;
+  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    event.preventDefault();
+    moveCompleteWord(event.key === "ArrowLeft" ? -1 : 1);
+    return;
+  }
+  if (event.key === " " && !state.completeWordRevealed) {
+    event.preventDefault();
+    state.completeWordResults[selected.quiz_id] = { skipped: true };
+    state.completeWordRevealed = true;
+    renderCompleteWordReviews();
+    return;
+  }
+  const ratings = { "1": "again", "2": "hard", "3": "good", "4": "easy" };
+  if (ratings[event.key] && state.completeWordRevealed && selected.due) {
+    event.preventDefault();
+    rateCompleteWordReview(selected.review_item_id, ratings[event.key]).catch(error => toast(error.message));
+  }
+});
+
 $("#articleTopicFilter").addEventListener("change", async event => {
   state.articleTopic = event.target.value;
   await loadArticles($("#articleSearch").value.trim());
@@ -4311,7 +4534,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 async function boot() {
   await loadHealth();
   await loadActivePracticeData();
-  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), loadOutputHistory(), loadOutputSupport(), loadSpeakingHistory(), loadSpeakingSupport(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadCompleteWordReviews(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), loadOutputHistory(), loadOutputSupport(), loadSpeakingHistory(), loadSpeakingSupport(), searchLexicon("", { open: false, history: false })]);
   const restoredServerRun = await restoreServerPracticeRun();
   if (!restoredServerRun && !state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);

@@ -141,7 +141,7 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.24.2";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.24.5";', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
 
@@ -157,6 +157,21 @@ class ProfileUiContractTests(unittest.TestCase):
         ):
             self.assertIn(contract, self.js)
         for selector in (".review-workspace", ".review-rating-grid", ".review-kind-filter"):
+            self.assertIn(selector, self.css)
+
+    def test_complete_word_review_is_a_dedicated_attempt_and_fsrs_loop(self):
+        for element_id in (
+            "memoryReviewPane", "completeWordReviewPane", "completeWordSearch",
+            "completeWordQueue", "completeWordDetail", "completeWordUndoBtn",
+        ):
+            self.assertIn(f'id="{element_id}"', self.html)
+        for contract in (
+            'data-review-mode="complete-words"', "data-complete-word-scope",
+            'api(`/api/complete-word-reviews?', "submitCompleteWordReview",
+            'kind: "complete-word"', "canUndoCompleteWord", "data-rate-complete-word",
+        ):
+            self.assertIn(contract, self.html + self.js)
+        for selector in (".complete-word-workspace", ".complete-word-card", ".complete-word-result"):
             self.assertIn(selector, self.css)
 
     def test_output_workspace_is_a_split_source_attempt_review_loop(self):

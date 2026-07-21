@@ -112,6 +112,70 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(restored["state"], "new")
         self.assertEqual(progress, baseline_count)
 
+    def test_complete_word_review_keeps_exam_attempts_separate_and_uses_fsrs_card(self):
+        now = server.utc_now()
+        with server.db() as conn:
+            article_id = conn.execute("SELECT id FROM articles ORDER BY id LIMIT 1").fetchone()[0]
+            wrong_quiz = conn.execute(
+                """INSERT INTO quizzes
+                   (article_id, style, mode, type, question_type, skill, difficulty, prompt, answer,
+                    evidence, metadata_json, generation_source, created_at)
+                   VALUES (?, 'TOEFL', 'reading', 'complete-words', 'complete-words', '语境拼写', 'B2',
+                           'Complete: aggr____', 'aggregate', 'Solid particles are called aggregate.',
+                           ?, 'toefl-2026-sim-v1', ?)""",
+                (article_id, json.dumps({"masked_text": "Solid particles are called aggr____.", "visible_prefix": "aggr", "missing_count": 5}), now),
+            ).lastrowid
+            correct_quiz = conn.execute(
+                """INSERT INTO quizzes
+                   (article_id, style, mode, type, question_type, skill, difficulty, prompt, answer,
+                    evidence, metadata_json, generation_source, created_at)
+                   VALUES (?, 'TOEFL', 'reading', 'complete-words', 'complete-words', '语境拼写', 'B2',
+                           'Complete: trans____', 'transport', 'Railways transport goods efficiently.',
+                           ?, 'toefl-2026-sim-v1', ?)""",
+                (article_id, json.dumps({"masked_text": "Railways trans____ goods efficiently.", "visible_prefix": "trans", "missing_count": 4}), now),
+            ).lastrowid
+            conn.execute(
+                """INSERT INTO attempts (quiz_id, user_answer, correct, error_type, created_at)
+                   VALUES (?, 'aggregat', 0, '拼写或词形错误', ?)""", (wrong_quiz, now),
+            )
+            conn.execute(
+                """INSERT INTO attempts (quiz_id, user_answer, correct, error_type, created_at)
+                   VALUES (?, 'transport', 1, '', ?)""", (correct_quiz, now),
+            )
+
+        wrong, _ = self.request("/api/complete-word-reviews?scope=wrong")
+        self.assertEqual([item["quiz_id"] for item in wrong["items"]], [wrong_quiz])
+        self.assertEqual(wrong["items"][0]["visible_prefix"], "aggr")
+        self.assertTrue(wrong["items"][0]["due"])
+        all_items, _ = self.request("/api/complete-word-reviews?scope=all")
+        self.assertEqual({item["quiz_id"] for item in all_items["items"]}, {wrong_quiz, correct_quiz})
+        searched, _ = self.request("/api/complete-word-reviews?scope=all&q=goods")
+        self.assertEqual([item["quiz_id"] for item in searched["items"]], [correct_quiz])
+        missing, _ = self.request("/api/complete-word-reviews?scope=all&q=not-present-anywhere")
+        self.assertEqual(missing["items"], [])
+
+        reviewed, _ = self.request(f"/api/complete-word-reviews/{wrong_quiz}/answer", "POST", {
+            "answer": "aggregate", "elapsed_seconds": 8,
+        })
+        self.assertTrue(reviewed["correct"])
+        with server.db() as conn:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM attempts WHERE quiz_id = ?", (wrong_quiz,)).fetchone()[0], 1)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM complete_word_review_attempts WHERE quiz_id = ?", (wrong_quiz,)).fetchone()[0], 1)
+            card = conn.execute("SELECT * FROM cards WHERE source_quiz_id = ?", (wrong_quiz,)).fetchone()
+            review_item = conn.execute("SELECT * FROM review_items WHERE item_type = 'card' AND item_id = ?", (card["id"],)).fetchone()
+        rated, _ = self.request(f"/api/reviews/{review_item['id']}/rate", "POST", {
+            "rating": "good", "kind": "complete-word",
+        })
+        self.assertTrue(rated["interval"])
+        self.assertTrue(rated["queue"]["undo"]["available"])
+        reviewed_catalog, _ = self.request("/api/complete-word-reviews?scope=all")
+        self.assertTrue(reviewed_catalog["undo"]["available"])
+        memory, _ = self.request("/api/reviews?kind=all&limit=100")
+        self.assertFalse(any(item["kind"] == "complete-word" for item in memory["items"]))
+        self.assertFalse(memory["undo"]["available"])
+        undone, _ = self.request("/api/reviews/undo", "POST", {"kind": "complete-word"})
+        self.assertEqual(undone["review_item_id"], review_item["id"])
+
     def test_profile_api_supports_score_and_quick_test_paths(self):
         original = server.learner_settings()
         try:

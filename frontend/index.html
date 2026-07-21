@@ -586,7 +586,14 @@
     </section>
 
     <section class="view" id="view-cards">
-      <section class="band review-overview">
+      <section class="band review-mode-bar">
+        <div class="review-mode-switch" role="tablist" aria-label="复习方式">
+          <button class="active" role="tab" aria-selected="true" data-review-mode="memory">记忆复习</button>
+          <button role="tab" aria-selected="false" data-review-mode="complete-words">完成单词</button>
+        </div>
+      </section>
+      <div id="memoryReviewPane">
+      <section class="band review-overview" id="memoryReviewOverview">
         <div class="band-head">
           <div><span class="eyebrow">Memory review</span><h2>今日复习</h2></div>
           <div class="toolbar"><div class="review-kind-filter" id="reviewKindFilter">
@@ -598,14 +605,14 @@
         </div>
         <div class="review-summary" id="reviewSummary"></div>
       </section>
-      <div class="master-detail review-workspace">
+      <div class="master-detail review-workspace" id="memoryReviewWorkspace">
         <aside class="band master-list-panel">
           <div class="band-head"><h2>到期项目</h2><span class="result-count" id="reviewDueCount">0</span></div>
           <div class="master-list" id="reviewQueue"></div>
         </aside>
         <section class="band master-content-panel" id="reviewDetail"></section>
       </div>
-      <div class="split wordbook-management">
+      <div class="split wordbook-management" id="wordbookManagement">
         <section class="band">
           <h2>添加单词或短语</h2>
           <label>词 / 词块</label>
@@ -628,6 +635,33 @@
         <div class="bridge-token"><input id="bridgeToken" type="password" readonly /><button id="copyBridgeTokenBtn">复制令牌</button></div>
         <div class="bridge-meta"><span>服务地址</span><strong>http://127.0.0.1:8766</strong><span>插件目录</span><strong>browser-extension</strong></div>
       </section>
+      </div>
+      <div id="completeWordReviewPane" hidden>
+        <section class="band complete-word-overview">
+          <div class="band-head">
+            <div><span class="eyebrow">TOEFL review</span><h2>完成单词回顾</h2></div>
+            <div class="toolbar">
+              <div class="review-kind-filter" id="completeWordScopeFilter">
+                <button class="active" data-complete-word-scope="wrong">历史错题</button>
+                <button data-complete-word-scope="all">全部已做</button>
+              </div>
+              <button id="completeWordUndoBtn" disabled>撤销评分</button>
+            </div>
+          </div>
+          <div class="complete-word-search">
+            <label for="completeWordSearch">搜索原句、单词或来源</label>
+            <div><input id="completeWordSearch" autocomplete="off" /><button id="completeWordSearchBtn">搜索</button></div>
+          </div>
+          <div class="review-summary" id="completeWordSummary"></div>
+        </section>
+        <div class="master-detail complete-word-workspace">
+          <aside class="band master-list-panel">
+            <div class="band-head"><h2>回顾题目</h2><span class="result-count" id="completeWordCount">0</span></div>
+            <div class="master-list" id="completeWordQueue"></div>
+          </aside>
+          <section class="band master-content-panel complete-word-detail" id="completeWordDetail"></section>
+        </div>
+      </div>
     </section>
 
     <section class="view" id="view-mistakes">

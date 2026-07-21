@@ -39,7 +39,7 @@ async function run() {
   let browser;
   try {
     const version = await waitForServer();
-    if (version.app_version !== "0.8.0-alpha.24.2" || version.database_schema_version !== 16) {
+    if (version.app_version !== "0.8.0-alpha.24.5" || version.database_schema_version !== 18) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const cardResponse = await fetch(`${baseUrl}/api/cards`, {
@@ -52,6 +52,31 @@ async function run() {
       }),
     });
     if (!cardResponse.ok) failures.push(`failed to seed review card: ${await cardResponse.text()}`);
+    const articleResponse = await fetch(`${baseUrl}/api/articles`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Complete the Words review contract",
+        source: "manual",
+        body: "Smart devices promise convenience, but they also create a quiet record of daily life. A speaker can learn when a family is at home, a watch can reveal health patterns, and a doorbell camera can capture people who never agreed to be recorded. Supporters argue that these tools save time and improve safety. However, critics point out that privacy policies are often difficult to read, and users may not understand how much information is stored or shared. The central challenge is whether companies can design useful products while giving people meaningful control over their own data. Clearer consent, shorter privacy notices, and stronger limits on data sharing would make smart devices easier to trust. Without those safeguards, convenience may gradually become a form of surveillance.",
+      }),
+    });
+    const articleData = await articleResponse.json();
+    if (!articleResponse.ok) failures.push(`failed to seed article: ${JSON.stringify(articleData)}`);
+    const quizResponse = await fetch(`${baseUrl}/api/articles/${articleData.article.id}/quizzes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "cloze", style: "TOEFL", question_type: "complete-words" }),
+    });
+    const quizData = await quizResponse.json();
+    if (!quizResponse.ok || !quizData.quizzes?.length) failures.push(`failed to seed complete-word quiz: ${JSON.stringify(quizData)}`);
+    const completeWordQuiz = quizData.quizzes[0];
+    const attemptResponse = await fetch(`${baseUrl}/api/attempts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quiz_id: completeWordQuiz.id, answer: completeWordQuiz.answer.slice(0, 2), confidence: 2 }),
+    });
+    if (!attemptResponse.ok) failures.push(`failed to seed complete-word attempt: ${await attemptResponse.text()}`);
 
     const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
     browser = await chromium.launch({
@@ -91,6 +116,20 @@ async function run() {
     if (await page.locator("#undoReviewBtn").isDisabled()) failures.push("undo did not become available");
     await page.click("#undoReviewBtn");
     await page.waitForFunction(expected => Number(document.querySelector("#reviewDueCount")?.textContent.trim()) === expected, initialDueCount);
+
+    await page.click('[data-review-mode="complete-words"]');
+    await page.waitForSelector("#completeWordReviewPane:not([hidden])");
+    const completeColumns = await page.locator(".complete-word-workspace").evaluate(element => getComputedStyle(element).gridTemplateColumns);
+    if (completeColumns.split(" ").length < 2) failures.push(`complete-word workspace is not split: ${completeColumns}`);
+    if (Number(await page.locator("#completeWordCount").innerText()) !== 1) failures.push("attempted complete-word item is missing");
+    await page.fill("#completeWordAnswer", completeWordQuiz.answer);
+    await page.press("#completeWordAnswer", "Enter");
+    await page.waitForSelector(".complete-word-result.correct");
+    if (await page.locator("[data-rate-complete-word]").count() !== 4) failures.push("complete-word FSRS ratings are missing");
+    await page.screenshot({ path: path.join(root, "artifacts", "complete-word-review-desktop.png"), fullPage: true });
+    await page.click('[data-rate-complete-word="good"]');
+    if (await page.locator("#completeWordUndoBtn").isDisabled()) failures.push("complete-word undo did not become available");
+    await page.click("#completeWordUndoBtn");
   } finally {
     if (browser) await browser.close();
     server.kill();
@@ -98,7 +137,7 @@ async function run() {
     removeDatabase();
   }
   if (failures.length) throw new Error(failures.join("\n"));
-  process.stdout.write("Review desktop workflow passed on isolated schema 16.\n");
+  process.stdout.write("Memory and Complete the Words review workflows passed on isolated schema 18.\n");
 }
 
 run().catch(error => {

@@ -180,6 +180,26 @@ def _fsrs_review_state(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "review_items", "fsrs_state_json", "TEXT NOT NULL DEFAULT ''")
 
 
+def _complete_word_review(conn: sqlite3.Connection) -> None:
+    _ensure_column(conn, "cards", "source_quiz_id", "INTEGER")
+    conn.executescript(
+        """CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_source_quiz
+           ON cards(source_quiz_id) WHERE source_quiz_id IS NOT NULL;
+           CREATE TABLE IF NOT EXISTS complete_word_review_attempts (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             quiz_id INTEGER NOT NULL,
+             user_answer TEXT NOT NULL,
+             correct INTEGER NOT NULL,
+             error_type TEXT NOT NULL DEFAULT '',
+             elapsed_seconds INTEGER NOT NULL DEFAULT 0,
+             created_at TEXT NOT NULL,
+             FOREIGN KEY(quiz_id) REFERENCES quizzes(id)
+           );
+           CREATE INDEX IF NOT EXISTS idx_complete_word_review_quiz
+           ON complete_word_review_attempts(quiz_id, created_at DESC, id DESC);"""
+    )
+
+
 SCRIPT_NOISE_PATTERN = re.compile(
     r"(?i)(?:\bGF_AJAX_POSTBACK\b|\bgform_confirmation_loaded\b|\bgform_pre_post_render\b|"
     r"\bgformRedirect\b|\bgform_wrapper_\d+\b|\bconfirmation_content\b|window\[['\"]gf_|jQuery\(['\"]#gform)"
@@ -687,6 +707,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     (15, "add semantic output feedback", _semantic_output_feedback),
     (16, "add local speaking output", _speaking_output_training),
     (17, "add optional FSRS review state", _fsrs_review_state),
+    (18, "add Complete the Words card review", _complete_word_review),
 )
 
 

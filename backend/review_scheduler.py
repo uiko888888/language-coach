@@ -203,7 +203,9 @@ def _kind_clause(kind: str) -> tuple[str, tuple]:
         return "ri.item_type = 'card' AND c.kind = 'phrase'", ()
     if kind == "mistake":
         return "ri.item_type = 'mistake'", ()
-    return "1 = 1", ()
+    if kind == "complete-word":
+        return "ri.item_type = 'card' AND c.kind = 'complete-word'", ()
+    return "(ri.item_type != 'card' OR c.kind != 'complete-word')", ()
 
 
 def review_item_payload(row: sqlite3.Row | dict, now: datetime) -> dict:
@@ -278,20 +280,23 @@ def review_queue(
         "items": [review_item_payload(row, current) for row in rows],
         "summary": {**counts, "due": sum(counts.values()), "next_due": next_due, "kind": kind},
         "scheduler": {"id": FSRS_ID if fsrs_enabled() else SCHEDULER_ID, "fsrs": fsrs_enabled(), "description": "FSRS 6.3.1" if fsrs_enabled() else "可替换的保守间隔调度；当前不是 FSRS。"},
-        "undo": review_undo_status(conn, current, learner_key),
+        "undo": review_undo_status(conn, current, learner_key, kind),
     }
 
 
 def review_undo_status(
     conn: sqlite3.Connection, now: datetime | None = None, learner_key: str = "local",
+    kind: str = "all",
 ) -> dict:
     current = now or utc_now()
+    kind_clause, kind_params = _kind_clause(kind)
     row = conn.execute(
-        """SELECT l.id, l.review_item_id, l.rating, l.reviewed_at FROM review_logs l
+        f"""SELECT l.id, l.review_item_id, l.rating, l.reviewed_at FROM review_logs l
            JOIN review_items ri ON ri.id = l.review_item_id
-           WHERE ri.learner_key = ? AND l.reverted_at = ''
+           LEFT JOIN cards c ON ri.item_type = 'card' AND c.id = ri.item_id
+           WHERE ri.learner_key = ? AND l.reverted_at = '' AND ({kind_clause})
            ORDER BY l.reviewed_at DESC, l.id DESC LIMIT 1""",
-        (learner_key,),
+        (learner_key, *kind_params),
     ).fetchone()
     available = bool(row) and current - parse_time(row["reviewed_at"], current) <= timedelta(minutes=UNDO_WINDOW_MINUTES)
     return {
@@ -335,14 +340,17 @@ def rate_review_item(
 
 def undo_last_review(
     conn: sqlite3.Connection, now: datetime | None = None, learner_key: str = "local",
+    kind: str = "all",
 ) -> dict:
     current = now or utc_now()
+    kind_clause, kind_params = _kind_clause(kind)
     row = conn.execute(
-        """SELECT l.*, ri.learner_key FROM review_logs l
+        f"""SELECT l.*, ri.learner_key FROM review_logs l
            JOIN review_items ri ON ri.id = l.review_item_id
-           WHERE ri.learner_key = ? AND l.reverted_at = ''
+           LEFT JOIN cards c ON ri.item_type = 'card' AND c.id = ri.item_id
+           WHERE ri.learner_key = ? AND l.reverted_at = '' AND ({kind_clause})
            ORDER BY l.reviewed_at DESC, l.id DESC LIMIT 1""",
-        (learner_key,),
+        (learner_key, *kind_params),
     ).fetchone()
     if not row:
         raise ValueError("No review can be undone")

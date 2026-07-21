@@ -30,6 +30,7 @@ try:
     from .ai_feedback import feedback_provider_status, request_semantic_feedback
     from .backups import create_backup, list_backups, restore_backup
     from .content_extraction import BLOCK_LABELS, adapter_catalog, adapter_for_source, extract_source_content, suggest_annotation_blocks
+    from .complete_word_review import complete_word_catalog, submit_complete_word_review
     from .dictionary_quality import audit_dictionary_data
     from .lexical_data import lookup_lexical_layers, search_open_entries
     from .migrations import run_migrations
@@ -52,6 +53,7 @@ except ImportError:
     from ai_feedback import feedback_provider_status, request_semantic_feedback
     from backups import create_backup, list_backups, restore_backup
     from content_extraction import BLOCK_LABELS, adapter_catalog, adapter_for_source, extract_source_content, suggest_annotation_blocks
+    from complete_word_review import complete_word_catalog, submit_complete_word_review
     from dictionary_quality import audit_dictionary_data
     from lexical_data import lookup_lexical_layers, search_open_entries
     from migrations import run_migrations
@@ -993,11 +995,13 @@ def init_db() -> None:
               kind TEXT NOT NULL DEFAULT 'word',
               context TEXT NOT NULL DEFAULT '',
               source_article_id INTEGER,
+              source_quiz_id INTEGER,
               status TEXT NOT NULL DEFAULT 'new',
               note TEXT NOT NULL DEFAULT '',
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL,
-              FOREIGN KEY (source_article_id) REFERENCES articles(id)
+              FOREIGN KEY (source_article_id) REFERENCES articles(id),
+              FOREIGN KEY (source_quiz_id) REFERENCES quizzes(id)
             );
 
             CREATE TABLE IF NOT EXISTS quizzes (
@@ -6303,6 +6307,16 @@ class App(BaseHTTPRequestHandler):
                 with db() as conn:
                     payload = review_queue(conn, kind=kind, limit=limit)
                 return json_response(self, payload)
+            if path == "/api/complete-word-reviews":
+                scope = query.get("scope", ["wrong"])[0]
+                search = query.get("q", [""])[0]
+                try:
+                    limit = int(query.get("limit", [200])[0])
+                except (TypeError, ValueError):
+                    limit = 200
+                with db() as conn:
+                    payload = complete_word_catalog(conn, scope=scope, search=search, limit=limit)
+                return json_response(self, payload)
             if path == "/api/quizzes":
                 article_id = query.get("article_id", [""])[0]
                 style = query.get("style", [""])[0]
@@ -6730,10 +6744,22 @@ class App(BaseHTTPRequestHandler):
                 except ValueError as exc:
                     return json_response(self, {"error": str(exc)}, 400)
                 return json_response(self, {**result, "queue": queue})
+            match = re.fullmatch(r"/api/complete-word-reviews/(\d+)/answer", path)
+            if match:
+                try:
+                    with db() as conn:
+                        result = submit_complete_word_review(
+                            conn, int(match.group(1)), str(payload.get("answer") or ""),
+                            elapsed_seconds=payload.get("elapsed_seconds") or 0,
+                        )
+                except ValueError as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, result, 201)
             if path == "/api/reviews/undo":
                 try:
                     with db() as conn:
-                        result = undo_last_review(conn)
+                        kind = str(payload.get("kind") or "all")
+                        result = undo_last_review(conn, kind=kind)
                         review_item = conn.execute(
                             "SELECT item_type FROM review_items WHERE id = ?", (result["review_item_id"],)
                         ).fetchone()
@@ -6742,7 +6768,7 @@ class App(BaseHTTPRequestHandler):
                             decrement_daily_progress(conn, "review", 1, reviewed_day)
                             if review_item and review_item["item_type"] == "card":
                                 decrement_daily_metric(conn, "review_chunks", 1, reviewed_day)
-                        queue = review_queue(conn, kind=str(payload.get("kind") or "all"), limit=20)
+                        queue = review_queue(conn, kind=kind, limit=20)
                 except ValueError as exc:
                     return json_response(self, {"error": str(exc)}, 400)
                 return json_response(self, {**result, "queue": queue})

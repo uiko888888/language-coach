@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.24.5] - 2026-07-21
+
+### Added
+
+- Added a dedicated Complete the Words card review for historically wrong or all attempted TOEFL items.
+- Added word, sentence and article search, whole-word recall, Chinese lexical hints, evidence replay and source links.
+- Added separate card-review attempts so repeated spelling recall does not alter formal exam attempts or exam analytics.
+
+### Changed
+
+- Attempted Complete the Words items materialize as traceable FSRS cards only when the learner opens the dedicated review catalog.
+- General memory review excludes these cards; rating and ten-minute undo are isolated by review kind.
+- The desktop review area keeps a left question list and right focused card with Enter, Space, arrow and 1-4 keyboard controls.
+
+### Verification
+
+- Full suite passed: 186 tests, with 2 optional dependency tests skipped where their provider is unavailable.
+- Schema 18 adds the quiz-to-card link and dedicated review-attempt history without changing formal exam attempts.
+- Remaining known warning: an existing lexical-search test reports an unclosed SQLite `ResourceWarning`; beta.1 retains this cleanup task.
+
 ## [0.8.0-alpha.24.4] - 2026-07-20
 
 ### Added
