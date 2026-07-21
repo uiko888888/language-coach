@@ -5517,9 +5517,17 @@ def verify_deepl_configuration() -> dict:
         except urllib.error.HTTPError as error:
             errors.append(error.code)
             error.close()
+        except urllib.error.URLError as error:
+            errors.append(f"network:{type(error.reason).__name__}")
         except Exception as error:
             errors.append(type(error).__name__)
-    message = "DeepL 拒绝了当前 API Key（403），请使用 DeepL API 账户生成的有效密钥。" if 403 in errors else "无法连接 DeepL 验证接口。"
+    if 403 in errors:
+        message = "DeepL 拒绝了当前 API Key（403），请使用 DeepL API 账户生成的有效密钥。"
+    elif any(str(value).startswith("network:") for value in errors):
+        detail = ", ".join(str(value).split(":", 1)[1] for value in errors if str(value).startswith("network:"))
+        message = f"当前网络无法连接 DeepL 验证接口（{detail}）；尚未验证 API Key 是否有效。"
+    else:
+        message = "无法连接 DeepL 验证接口；尚未验证 API Key 是否有效。"
     TRANSLATION_RUNTIME.update({"verified": False, "last_error": message, "deepl_url": ""})
     return translation_status()
 

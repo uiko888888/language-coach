@@ -56,6 +56,8 @@ Current strengths are source traceability, one-material-many-uses, evidence repl
 
 `alpha.24.7` applies that clearer hierarchy to ordinary lookup: the first viewport now anchors a selected sense in an English concept, verified patterns, register, cautions and one bilingual example, while full polysemy stays available below. It also removes unverified open phrases from the common-collocation surface. The remaining structural gap is sense-aware saving and review; cards still do not persist the selected sense frame.
 
+`alpha.24.8` improves scanability and provenance rather than raw coverage. Numbered part-of-speech meanings make polysemy easier to parse, and personal-corpus collocations now disclose exactly which private learning sources produced them. The dictionary score remains 7.5/10: this is a meaningful usability gain, but it does not create missing Chinese senses, editorial coverage or complete UK/US audio.
+
 Interest and exam modes now use different home workflows: immersion and expression collection versus target, weakness and question-type prescription. They still share one profile so interest activity can later contribute domain evidence without masquerading as exam-score gains.
 
 ## Universal Product Requirements

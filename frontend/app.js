@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.24.7";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.24.8";
 const SUPPORTED_API_VERSION = "1";
 
 const state = {
@@ -1900,6 +1900,40 @@ function reliableCollocations(items) {
   });
 }
 
+function personalCollocations(items) {
+  return (items || []).filter(item => typeof item !== "string" && Number(item.observed_count || 0) > 0);
+}
+
+function abbreviatedPartOfSpeech(value) {
+  return ({ adjective: "adj.", noun: "n.", verb: "v.", adverb: "adv.", preposition: "prep.", conjunction: "conj." })[String(value || "").toLowerCase()] || value || "词性待确认";
+}
+
+function lexicalSenseOutline(item, fallbackMeaning = "") {
+  const order = [];
+  const grouped = new Map();
+  const add = (pos, values) => {
+    const rawPos = String(pos || "词性待确认").toLowerCase();
+    const normalizedPos = ({ adj: "adjective", a: "adjective", n: "noun", v: "verb", adv: "adverb", r: "adverb" })[rawPos] || rawPos;
+    if (!grouped.has(normalizedPos)) {
+      grouped.set(normalizedPos, []);
+      order.push(normalizedPos);
+    }
+    const bucket = grouped.get(normalizedPos);
+    (values || []).filter(Boolean).forEach(value => {
+      const clean = String(value).trim();
+      if (clean && !bucket.includes(clean)) bucket.push(clean);
+    });
+  };
+  const profile = item.learning_profile;
+  if (profile) add(profile.pos, [profile.meaning_zh]);
+  (item.parts_of_speech || []).forEach(pos => add(pos, []));
+  (item.senses || []).forEach(sense => add(sense.pos, sense.definition_translations || []));
+  (item.open_entries || item.lexical_layers?.entries || []).forEach(entry => add(entry.pos, entry.translations_zh || []));
+  if (!order.length) add(profile?.pos || item.pos, []);
+  if (order.length === 1 && !grouped.get(order[0]).length && fallbackMeaning) add(order[0], [fallbackMeaning]);
+  return order.map(pos => ({ pos, meanings: grouped.get(pos) }));
+}
+
 function firstLearningExample(item) {
   const profile = item.learning_profile;
   if (profile?.example) return { text: profile.example, translation: profile.example_zh || "" };
@@ -1933,6 +1967,7 @@ function firstSenseTranslation(item) {
 function lexicalLearningSummary(item, translated = "") {
   const profile = item.learning_profile || null;
   const meaning = profile?.meaning_zh || firstSenseTranslation(item) || translated || item.meaning_zh || "中文义项待补充";
+  const senseOutline = lexicalSenseOutline(item, meaning);
   const focusEn = profile?.focus_en || item.core_meaning || item.lexical_layers?.entries?.[0]?.glosses?.[0] || "";
   const focusZh = profile?.focus || "";
   const patterns = profile?.patterns || reliableCollocations(item.collocations).map(value => value.phrase).filter(Boolean).slice(0, 4);
@@ -1942,7 +1977,7 @@ function lexicalLearningSummary(item, translated = "") {
   const compareTerms = profile ? [profile.term, ...(profile.related_terms || [])].join(", ") : "";
   return `
     <section class="lexical-learning-summary">
-      <header><div class="badge-row">${badge(profile ? "人工整理基础组" : "开放词典概念", profile ? "teal" : "amber")}${profile?.pos ? badge(profile.pos) : ""}</div><h3>${escapeHtml(meaning)}</h3>${focusEn ? `<p class="learning-concept-en">${escapeHtml(focusEn)}</p>` : ""}${focusZh ? `<p class="learning-boundary-zh">${escapeHtml(focusZh)}</p>` : ""}</header>
+      <header><div class="badge-row">${badge(profile ? "人工整理基础组" : "开放词典概念", profile ? "teal" : "amber")}${profile?.pos ? badge(profile.pos) : ""}</div><ol class="lexical-sense-outline">${senseOutline.map((sense, index) => `<li><span>${index + 1}.</span><strong>${escapeHtml(abbreviatedPartOfSpeech(sense.pos))}</strong><p>${escapeHtml(sense.meanings.length ? sense.meanings.join("；") : "中文义项待翻译")}</p></li>`).join("")}</ol>${focusEn ? `<p class="learning-concept-en">${escapeHtml(focusEn)}</p>` : ""}${focusZh ? `<p class="learning-boundary-zh">${escapeHtml(focusZh)}</p>` : ""}</header>
       <div class="learning-summary-grid">
         <section><strong>常见结构与搭配</strong><div class="comparison-patterns">${patterns.length ? patterns.map(pattern => `<button data-search-query="${escapeHtml(pattern)}">${escapeHtml(pattern)}</button>`).join("") : "<span>暂无经过确认的常见搭配</span>"}</div></section>
         ${register ? `<section><strong>语域</strong><p>${escapeHtml(register)}</p></section>` : ""}
@@ -2056,6 +2091,7 @@ function renderLexicalDetail(item) {
   }
   if (item.type === "wordnet") {
     const translated = state.lookupTranslations[item.headword.toLowerCase()] || item.meaning_zh || "";
+    const observedCollocations = personalCollocations(item.collocations);
     const relationSections = (item.semantic_relations || []).map(relation => `
       <div class="phrase-relation"><span>${escapeHtml(relation.label)}</span><div class="term-grid">${termButtons(relation.terms, relation.type === "antonym" ? "antonym" : "family")}</div></div>
     `).join("");
@@ -2068,7 +2104,7 @@ function renderLexicalDetail(item) {
       ${lexicalFrequencyPanel(item)}
       <div class="dictionary-columns">
         <section class="dictionary-section"><h3>义项与例句</h3><div class="sense-list">${(item.senses || []).map((sense, index) => `<article class="sense-item"><div class="sense-head"><strong>义项 ${index + 1}</strong>${sense.pos ? badge(sense.pos) : ""}</div>${(sense.definitions || []).map((definition, definitionIndex) => `${sense.definition_translations?.[definitionIndex] ? `<p class="sense-meaning">${escapeHtml(sense.definition_translations[definitionIndex])}</p>` : `<p class="muted">中文义项待翻译</p>`}<p class="sense-definition-en">${escapeHtml(definition)}</p>`).join("")}${(sense.examples || []).length ? `<div class="sense-examples">${(sense.examples || []).map((example, exampleIndex) => `<article>${sense.example_translations?.[exampleIndex] ? `<p class="example-zh">${escapeHtml(sense.example_translations[exampleIndex])}</p>` : `<p class="muted">例句译文待翻译</p>`}<p class="example-en">${searchableEnglish(example)}</p></article>`).join("")}</div>` : `<p class="muted">该义项暂无开放例句</p>`}</article>`).join("") || `<div class="empty-state">暂无义项</div>`}</div>${item.contexts?.length ? `<div class="supplemental-contexts"><h4>补充真实语境（未按义项归类）</h4>${contextExamples(item.contexts)}</div>` : ""}</section>
-        <section class="dictionary-section"><h3>搭配（按个人语料排序）</h3><div class="phrase-list">${phraseCards(reliableCollocations(item.collocations)) || `<div class="empty-state">个人语料中暂无可确认搭配；开放派生词不会冒充常见搭配。</div>`}</div></section>
+        <section class="dictionary-section"><h3>我的语料搭配 ${badge(`${observedCollocations.length} 条`)}</h3><p class="source-note">按你的文章、生词上下文和插件摘录中的实际出现次数排序，不代表通用英语词频。</p><div class="phrase-list">${phraseCards(observedCollocations) || `<div class="empty-state">你的文章、生词语境和插件内容中暂未观察到稳定搭配。</div>`}</div></section>
         <section class="dictionary-section"><h3>近义词与对比</h3><div class="comparison-candidate-list">${comparisonCandidateButtons(item.headword, item.synonyms) || `<div class="empty-state">WordNet 未提供近义词</div>`}</div><h4>反义词</h4><div class="term-grid">${termButtons(item.antonyms, "antonym") || `<div class="empty-state">WordNet 未提供直接反义词</div>`}</div></section>
         <section class="dictionary-section"><h3>语义关系</h3>${relationSections || `<div class="empty-state">暂无关系数据</div>`}<p class="source-note">英文语义：${escapeHtml(item.source_name || "Open English WordNet")} · ${escapeHtml(item.license || "CC BY 4.0")}<br>中文：开放双语数据或本地翻译缓存；机器翻译不冒充出版词典释义。</p></section>
         <section class="dictionary-section"><h3>词形与开放词源</h3><div class="term-grid">${termButtons(item.forms || [], "family")}</div>${item.origin ? `<p class="etymology-text">${escapeHtml(item.origin)}</p>` : `<p class="muted">导入 Kaikki 精选词条后显示词源与更多词形。</p>`}</section>

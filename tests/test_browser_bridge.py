@@ -644,6 +644,16 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertIn("403", status["last_error"])
         self.assertNotIn("test-key", status["last_error"])
 
+    def test_deepl_verification_distinguishes_network_failure_from_rejected_key(self):
+        unavailable = urllib.error.URLError(OSError("connection unavailable"))
+        with patch.dict(server.os.environ, {"DEEPL_API_KEY": "test-key", "DEEPL_API_URL": "https://api-free.deepl.com/v2/translate"}), \
+                patch("backend.server.urllib.request.urlopen", side_effect=[unavailable, unavailable]):
+            status = server.verify_deepl_configuration()
+        self.assertFalse(status["verified"])
+        self.assertIn("当前网络无法连接", status["last_error"])
+        self.assertIn("尚未验证 API Key", status["last_error"])
+        self.assertNotIn("test-key", status["last_error"])
+
     def test_extension_origin_receives_cors_headers(self):
         request = urllib.request.Request(
             self.base + "/api/browser/status",

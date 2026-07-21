@@ -110,7 +110,8 @@ class ProfileUiContractTests(unittest.TestCase):
         self.assertIn("function contextExamples(contexts)", self.js)
         self.assertIn('class="sense-meaning"', self.js)
         self.assertIn('class="sense-examples"', self.js)
-        self.assertIn("搭配（按个人语料排序）", self.js)
+        self.assertIn("我的语料搭配", self.js)
+        self.assertIn("按你的文章、生词上下文和插件摘录中的实际出现次数排序", self.js)
         self.assertIn("机器翻译不冒充出版词典释义", self.js)
         self.assertIn("item.contexts = (item.contexts || []).map", self.js)
 
@@ -137,12 +138,13 @@ class ProfileUiContractTests(unittest.TestCase):
     def test_single_dictionary_entry_starts_with_an_english_first_learning_summary(self):
         for contract in (
             "function lexicalLearningSummary(item", "function reliableCollocations(items)",
+            "function personalCollocations(items)", "function lexicalSenseOutline(item",
             "function comparisonCandidateButtons(baseTerm, terms)", "英文语义焦点",
             "人工整理基础组", "另有其他义项", "与易混词一起比较",
         ):
             self.assertIn(contract, self.js)
-        self.assertIn("phraseCards(reliableCollocations(item.collocations))", self.js)
-        for selector in (".lexical-learning-summary", ".learning-concept-en", ".learning-summary-grid", ".comparison-candidate-list"):
+        self.assertIn("phraseCards(observedCollocations)", self.js)
+        for selector in (".lexical-learning-summary", ".lexical-sense-outline", ".learning-concept-en", ".learning-summary-grid", ".comparison-candidate-list"):
             self.assertIn(selector, self.css)
 
     def test_content_center_uses_hubs_without_expanding_sidebar_sources(self):

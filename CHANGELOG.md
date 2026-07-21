@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.24.8] - 2026-07-21
+
+### Added
+
+- Added a numbered part-of-speech outline to the first viewport of a dictionary entry, following the compact `1. adj. / 2. n.` reading pattern while retaining full senses below.
+- Added an explicit provenance note for personal-corpus collocations: they come from the learner's articles, saved vocabulary context and browser clips, not general English frequency.
+- Added a distinct DeepL network-failure diagnostic that does not misreport an unreachable endpoint as an invalid API key.
+
+### Changed
+
+- The curated learning part of speech is placed first, followed by other attested parts of speech and their available Chinese meanings.
+- The collocation section is now named `我的语料搭配` and hides unobserved open-data phrases.
+
+### Verification
+
+- Full suite passed: 194 tests, with 2 optional dependency tests skipped; schema remains at 18.
+
 ## [0.8.0-alpha.24.7] - 2026-07-21
 
 ### Added
