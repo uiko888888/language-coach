@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.24.7] - 2026-07-21
+
+### Added
+
+- Added an English-first learning summary to single-word entries: selected Chinese sense, English concept, usage boundary, verified patterns, register, caution and a bilingual anchor example.
+- Added direct synonym-to-comparison actions so a learner can move from one word into a two-term evidence comparison without retyping.
+- Added curated single-term profiles for `cordial`, `keen` and `zeal` while preserving every deeper WordNet and open-dictionary sense below.
+
+### Changed
+
+- A curated learning sense now takes precedence in the result subtitle and first viewport; `cordial` no longer presents the secondary syrup noun sense as the primary learning meaning.
+- The full collocation section now uses the same quality gate as comparison mode: manually curated or actually observed personal-corpus patterns only.
+- UI labels now say `人工整理基础组` instead of implying expert or institutional dictionary review.
+
+### Verification
+
+- Added single-word profile, API and frontend structure contracts; schema remains at 18.
+
 ## [0.8.0-alpha.24.6] - 2026-07-21
 
 ### Added

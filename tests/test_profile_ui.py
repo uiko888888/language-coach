@@ -129,9 +129,20 @@ class ProfileUiContractTests(unittest.TestCase):
         self.assertIn('data-search-query="cordial, keen, zeal"', self.html)
         self.assertIn('api(`/api/lexicon/compare?', self.js)
         self.assertIn("function renderLexicalComparison(comparison)", self.js)
-        self.assertIn("comparison.reviewed ? \"人工审核辨析\" : \"开放证据并排\"", self.js)
+        self.assertIn("comparison.reviewed ? \"人工整理基础组\" : \"开放证据并排\"", self.js)
         self.assertIn("不要这样理解", self.js)
         for selector in (".comparison-grid", ".comparison-term-card", ".comparison-dimensions", ".comparison-memory-rule"):
+            self.assertIn(selector, self.css)
+
+    def test_single_dictionary_entry_starts_with_an_english_first_learning_summary(self):
+        for contract in (
+            "function lexicalLearningSummary(item", "function reliableCollocations(items)",
+            "function comparisonCandidateButtons(baseTerm, terms)", "英文语义焦点",
+            "人工整理基础组", "另有其他义项", "与易混词一起比较",
+        ):
+            self.assertIn(contract, self.js)
+        self.assertIn("phraseCards(reliableCollocations(item.collocations))", self.js)
+        for selector in (".lexical-learning-summary", ".learning-concept-en", ".learning-summary-grid", ".comparison-candidate-list"):
             self.assertIn(selector, self.css)
 
     def test_content_center_uses_hubs_without_expanding_sidebar_sources(self):
@@ -150,7 +161,7 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.24.6";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.24.7";', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
 

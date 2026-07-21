@@ -69,6 +69,8 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(cleared["recent"], [])
 
     def test_lexicon_compare_returns_reviewed_boundaries_and_evidence_fallback(self):
+        single, _ = self.request("/api/lexicon/search?q=cordial")
+        self.assertEqual(single["results"][0]["learning_profile"]["meaning_zh"], "热情友好的；诚恳而有礼的")
         curated, _ = self.request("/api/lexicon/compare?q=cordial%2C%20keen%2C%20zeal")
         self.assertTrue(curated["reviewed"])
         self.assertEqual([item["term"] for item in curated["items"]], ["cordial", "keen", "zeal"])

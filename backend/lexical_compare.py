@@ -21,6 +21,7 @@ CURATED_COMPARISONS = (
             "cordial": {
                 "pos": "adjective",
                 "meaning_zh": "热情友好的；诚恳而有礼的",
+                "focus_en": "warm and friendly toward other people, especially in formal social relations",
                 "focus": "对他人表现出的温暖、友好和礼貌，常用于社交或正式关系。",
                 "patterns": ["a cordial welcome", "cordial relations", "a cordial meeting"],
                 "register": "较正式；常见于欢迎、会面、外交或工作关系。",
@@ -31,6 +32,7 @@ CURATED_COMPARISONS = (
             "keen": {
                 "pos": "adjective",
                 "meaning_zh": "渴望的；热衷的；兴趣强烈的",
+                "focus_en": "strongly interested in something or eager to do it",
                 "focus": "个人很想做某事，或对某个对象具有强烈兴趣。另有“敏锐、锋利”等独立义项。",
                 "patterns": ["be keen to do", "be keen on something", "a keen interest in"],
                 "register": "日常和正式语境都常见；be keen on 在英式英语中尤其自然。",
@@ -41,6 +43,7 @@ CURATED_COMPARISONS = (
             "zeal": {
                 "pos": "noun",
                 "meaning_zh": "热忱；干劲；为目标投入的热情",
+                "focus_en": "great energy and committed enthusiasm for a cause, goal, or activity",
                 "focus": "为事业、信念、改革或活动付出的强烈精力和投入。",
                 "patterns": ["zeal for reform", "with great zeal", "missionary zeal"],
                 "register": "较正式，常见于评论、历史、政治和学术写作。",
@@ -88,5 +91,22 @@ def curated_comparison(terms: list[str]) -> dict | None:
                 {"term": original, **comparison["items"][normalized_term]}
                 for original, normalized_term in zip(terms, normalized)
             ],
+        }
+    return None
+
+
+def curated_term_profile(term: str) -> dict | None:
+    normalized = re.sub(r"\s+", " ", str(term or "")).strip().casefold()
+    for comparison in CURATED_COMPARISONS:
+        item = comparison["items"].get(normalized)
+        if not item:
+            continue
+        return {
+            "term": normalized,
+            **item,
+            "comparison_slug": comparison["slug"],
+            "comparison_title": comparison["title"],
+            "related_terms": [value for value in comparison["terms"] if value != normalized],
+            "editorial_status": "manually_curated_base",
         }
     return None

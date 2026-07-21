@@ -172,6 +172,15 @@ class LexicalSearchTests(unittest.TestCase):
         self.assertEqual(payload["items"][0]["patterns"][0], "a cordial welcome")
         self.assertIn("待人 cordial", payload["memory_rule"])
 
+    def test_single_word_search_promotes_the_curated_learning_sense_without_deleting_polysemy(self):
+        item = server.lexical_search("cordial")["results"][0]
+        profile = item["learning_profile"]
+        self.assertEqual(profile["pos"], "adjective")
+        self.assertEqual(profile["meaning_zh"], "热情友好的；诚恳而有礼的")
+        self.assertIn("warm and friendly", profile["focus_en"])
+        self.assertEqual(profile["patterns"][0], "a cordial welcome")
+        self.assertEqual(profile["related_terms"], ["keen", "zeal"])
+
     def test_unreviewed_comparison_uses_evidence_without_promoting_open_phrases(self):
         payload = server.lexical_comparison("happy, glad")
         self.assertFalse(payload["reviewed"])

@@ -33,7 +33,7 @@ try:
     from .complete_word_review import complete_word_catalog, submit_complete_word_review
     from .dictionary_quality import audit_dictionary_data
     from .lexical_data import lookup_lexical_layers, search_open_entries
-    from .lexical_compare import curated_comparison, parse_comparison_terms
+    from .lexical_compare import curated_comparison, curated_term_profile, parse_comparison_terms
     from .migrations import run_migrations
     from .output_training import (
         create_output_task_set, latest_output_task_set, output_attempt_payload,
@@ -57,7 +57,7 @@ except ImportError:
     from complete_word_review import complete_word_catalog, submit_complete_word_review
     from dictionary_quality import audit_dictionary_data
     from lexical_data import lookup_lexical_layers, search_open_entries
-    from lexical_compare import curated_comparison, parse_comparison_terms
+    from lexical_compare import curated_comparison, curated_term_profile, parse_comparison_terms
     from migrations import run_migrations
     from output_training import (
         create_output_task_set, latest_output_task_set, output_attempt_payload,
@@ -4917,6 +4917,11 @@ def lexical_search(query: str, limit: int = 30, track: bool = False) -> dict:
             **learning,
         })
 
+    for item in results:
+        label = item.get("headword") or item.get("term") or ""
+        profile = curated_term_profile(label)
+        if profile:
+            item["learning_profile"] = profile
     results.sort(key=lambda item: (-item["score"], item.get("headword", item.get("form", ""))))
     with db() as conn:
         suggestions = [] if not raw or exact_lexical_match or resolved_to else spelling_suggestions(conn, raw, entries)
@@ -4999,7 +5004,7 @@ def lexical_comparison(query: str) -> dict:
             items.append({**item, "dictionary": dictionary, "frequency": dictionary["frequency"], "sources": dictionary["sources"]})
         return {
             "query": query, "terms": terms, "mode": "curated", "reviewed": True,
-            "source_note": "语义边界由人工审核；词典证据来自本机开放数据层。",
+            "source_note": "语义边界来自人工整理基础组；词典证据来自本机开放数据层。",
             **{key: value for key, value in curated.items() if key != "items"}, "items": items,
         }
     return {
