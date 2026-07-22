@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from backend import server
-from backend.lexical_compare import parse_comparison_terms
+from backend.lexical_compare import curated_comparison_catalog, parse_comparison_terms
 
 
 class LexicalSearchTests(unittest.TestCase):
@@ -175,8 +175,8 @@ class LexicalSearchTests(unittest.TestCase):
     def test_common_curated_groups_are_complete_and_queryable_in_any_order(self):
         from backend.lexical_compare import CURATED_COMPARISONS
 
-        self.assertEqual(len(CURATED_COMPARISONS), 11)
-        self.assertEqual(sum(len(group["terms"]) for group in CURATED_COMPARISONS), 29)
+        self.assertEqual(len(CURATED_COMPARISONS), 31)
+        self.assertEqual(sum(len(group["terms"]) for group in CURATED_COMPARISONS), 88)
         for group in CURATED_COMPARISONS:
             query = ", ".join(reversed(group["terms"]))
             payload = server.lexical_comparison(query)
@@ -194,6 +194,23 @@ class LexicalSearchTests(unittest.TestCase):
                 self.assertTrue(item["example_zh"])
                 self.assertEqual(item["sources"], ["本地人工整理基础组"])
                 self.assertIn("evidence_sources", item)
+
+    def test_composition_group_preserves_whole_part_direction(self):
+        payload = server.lexical_comparison("comprise, compose, constitute, consist of")
+        self.assertTrue(payload["reviewed"])
+        self.assertEqual([item["term"] for item in payload["items"]], [
+            "comprise", "compose", "constitute", "consist of",
+        ])
+        self.assertIn("整体 comprises", payload["memory_rule"])
+        self.assertIn("不用被动", payload["items"][3]["avoid"])
+
+    def test_curated_catalog_exposes_every_group_without_editorial_body_duplication(self):
+        catalog = curated_comparison_catalog()
+        self.assertEqual(len(catalog), 31)
+        self.assertEqual(catalog[0]["query"], "cordial, keen, zeal")
+        composition = next(item for item in catalog if item["slug"] == "compose-comprise-constitute-consist-of")
+        self.assertEqual(composition["terms"], ["compose", "comprise", "constitute", "consist of"])
+        self.assertNotIn("items", composition)
 
     def test_single_word_search_links_to_its_common_confusion_group(self):
         profile = server.lexical_search("efficient")["results"][0]["learning_profile"]

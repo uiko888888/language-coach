@@ -1148,8 +1148,12 @@ label {
 .lexicon-guidance > span { color: var(--muted); font-size: 12px; font-weight: 700; }
 .lexicon-guidance div { display: flex; flex-wrap: wrap; gap: 6px; }
 .lexicon-guidance button { min-height: 30px; padding: 5px 8px; background: var(--surface); }
-.lexicon-history, .lexical-data-status { margin-top: 12px; border-top: 1px solid var(--line); }
-.lexicon-history summary, .lexical-data-status summary { padding: 10px 0 7px; cursor: pointer; color: var(--teal-dark); font-weight: 700; }
+.lexicon-history, .lexical-data-status, .lexical-comparison-library { margin-top: 12px; border-top: 1px solid var(--line); }
+.lexicon-history summary, .lexical-data-status summary, .lexical-comparison-library summary { padding: 10px 0 7px; cursor: pointer; color: var(--teal-dark); font-weight: 700; }
+.lexical-comparison-library > div { display: grid; gap: 6px; max-height: 280px; overflow-y: auto; padding-right: 4px; }
+.lexical-comparison-library button { display: grid; gap: 2px; width: 100%; min-height: 48px; padding: 7px 8px; text-align: left; background: var(--surface); }
+.lexical-comparison-library button strong { color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
+.lexical-comparison-library button small { color: var(--muted); font-size: 11px; line-height: 1.35; }
 .history-query-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .history-query-list button { display: inline-flex; min-height: 29px; gap: 5px; align-items: center; padding: 4px 8px; background: var(--surface); }
 .history-query-list small { color: var(--muted); }

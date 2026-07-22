@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.6] - 2026-07-22
+
+### Added
+
+- Expanded curated Chinese-learner confusion coverage from 11 groups/29 terms to 31 groups/88 terms.
+- Added the whole/part direction group `compose/comprise/constitute/consist of` with active/passive and subject-direction boundaries.
+- Added broad academic and general groups for inclusion, achievement, acquisition, assurance, inference, adaptation, change, placement, acceptance, refusal, normality, probability, problems, methods, purposes, results, participation, provision and requirements.
+- Added `/api/lexicon/comparisons` and a scroll-bounded “常见易混词库” directory in the fixed desktop sidebar so every curated group is discoverable and directly queryable.
+
+### Reliability
+
+- The catalog exposes compact discovery metadata without duplicating the full editorial body.
+- Existing structural validation now covers all 88 terms and prevents a term from silently belonging to multiple learning groups.
+- Curated conclusions remain labeled as local editorial learning content; open/private dictionaries are retained only as separate sense-check evidence.
+
+### Scope Boundary
+
+- The broader catalog improves common coverage but is still a manually selected foundation, not a statistically complete thesaurus.
+- Future expansion should be ranked by actual lookup and mistake evidence, and user boundary errors still need FSRS integration.
+
+### Verification
+
+- All 223 automated tests pass with 2 optional-dependency tests skipped; the API catalog, all 31 groups, 88 unique terms and the `compose/comprise` direction contract are covered.
+
 ## [0.8.0-alpha.25.5] - 2026-07-22
 
 ### Added

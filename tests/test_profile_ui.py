@@ -152,6 +152,9 @@ class ProfileUiContractTests(unittest.TestCase):
         self.assertIn('data-search-query="cordial, keen, zeal"', self.html)
         self.assertIn('data-search-query="say, tell, speak, talk"', self.html)
         self.assertIn('data-search-query="effective, efficient"', self.html)
+        self.assertIn('id="lexicalComparisonCatalog"', self.html)
+        self.assertIn('api("/api/lexicon/comparisons")', self.js)
+        self.assertIn("function renderLexicalComparisonCatalog()", self.js)
         self.assertIn('api(`/api/lexicon/compare?', self.js)
         self.assertIn("function renderLexicalComparison(comparison)", self.js)
         self.assertIn("comparison.reviewed ? \"人工整理基础组\" : \"开放证据并排\"", self.js)
@@ -187,7 +190,7 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.25.5";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.25.6";', self.js)
         self.assertIn('const SUPPORTED_SCHEMA_VERSION = "21";', self.js)
         self.assertIn('const schemaCompatible =', self.js)
         self.assertIn('api("/api/backups"', self.js)

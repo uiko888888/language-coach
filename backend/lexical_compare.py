@@ -4,8 +4,10 @@ import re
 
 try:
     from .lexical_compare_data import COMMON_CURATED_COMPARISONS
+    from .lexical_compare_data_extended import EXTENDED_CURATED_COMPARISONS
 except ImportError:
     from lexical_compare_data import COMMON_CURATED_COMPARISONS
+    from lexical_compare_data_extended import EXTENDED_CURATED_COMPARISONS
 
 
 CURATED_COMPARISONS = (
@@ -60,7 +62,7 @@ CURATED_COMPARISONS = (
     },
 )
 
-CURATED_COMPARISONS += COMMON_CURATED_COMPARISONS
+CURATED_COMPARISONS += COMMON_CURATED_COMPARISONS + EXTENDED_CURATED_COMPARISONS
 
 
 def validate_curated_comparisons() -> None:
@@ -86,6 +88,20 @@ def validate_curated_comparisons() -> None:
 
 
 validate_curated_comparisons()
+
+
+def curated_comparison_catalog() -> list[dict]:
+    return [
+        {
+            "slug": comparison["slug"],
+            "title": comparison["title"],
+            "terms": list(comparison["terms"]),
+            "query": ", ".join(comparison["terms"]),
+            "shared_translation": comparison["shared_translation"],
+            "memory_rule": comparison["memory_rule"],
+        }
+        for comparison in CURATED_COMPARISONS
+    ]
 
 
 def parse_comparison_terms(query: str, minimum: int = 2, maximum: int = 5) -> list[str]:

@@ -35,7 +35,7 @@ try:
     from .complete_word_review import complete_word_catalog, submit_complete_word_review
     from .dictionary_quality import audit_dictionary_data
     from .lexical_data import lookup_lexical_layers, search_open_entries
-    from .lexical_compare import curated_comparison, curated_term_profile, parse_comparison_terms
+    from .lexical_compare import curated_comparison, curated_comparison_catalog, curated_term_profile, parse_comparison_terms
     from .migrations import run_migrations
     from .output_training import (
         create_output_task_set, latest_output_task_set, output_attempt_payload,
@@ -65,7 +65,7 @@ except ImportError:
     from complete_word_review import complete_word_catalog, submit_complete_word_review
     from dictionary_quality import audit_dictionary_data
     from lexical_data import lookup_lexical_layers, search_open_entries
-    from lexical_compare import curated_comparison, curated_term_profile, parse_comparison_terms
+    from lexical_compare import curated_comparison, curated_comparison_catalog, curated_term_profile, parse_comparison_terms
     from migrations import run_migrations
     from output_training import (
         create_output_task_set, latest_output_task_set, output_attempt_payload,
@@ -6498,6 +6498,8 @@ class App(BaseHTTPRequestHandler):
                     return json_response(self, lexical_comparison(query.get("q", [""])[0]))
                 except ValueError as exc:
                     return json_response(self, {"error": str(exc)}, 400)
+            if path == "/api/lexicon/comparisons":
+                return json_response(self, {"groups": curated_comparison_catalog()})
             if path == "/api/lexicon/history":
                 return json_response(self, lexical_query_history(query.get("limit", [30])[0]))
             if path == "/api/dictionary/status":

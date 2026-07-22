@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.25.5";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.25.6";
 const SUPPORTED_API_VERSION = "1";
 const SUPPORTED_SCHEMA_VERSION = "21";
 
@@ -76,6 +76,7 @@ const state = {
   today: { lanes: [], subscription_count: 0 },
   lexiconResults: [],
   lexicalComparison: null,
+  lexicalComparisonCatalog: [],
   lexiconMeta: { resolution: null, suggestions: [] },
   lexiconHistory: { recent: [], frequent: [] },
   lexicalDataStatus: { layers: [], sources: [], counts: {} },
@@ -2195,6 +2196,16 @@ function renderLexiconHistory() {
     <button class="text-action" id="clearLexiconHistoryBtn">清空本机记录</button>` : `<p class="muted">完整查词后会保存在本机，快速联想不计入。</p>`;
 }
 
+function renderLexicalComparisonCatalog() {
+  const panel = $("#lexicalComparisonCatalog");
+  if (!panel) return;
+  panel.innerHTML = state.lexicalComparisonCatalog.map(group => `
+    <button data-search-query="${escapeHtml(group.query)}" title="${escapeHtml(group.shared_translation)}">
+      <strong>${escapeHtml(group.title)}</strong>
+      <small>${escapeHtml(group.memory_rule)}</small>
+    </button>`).join("");
+}
+
 function renderLexicalComparison(comparison) {
   const items = comparison.items || [];
   $("#lexiconResultCount").textContent = items.length;
@@ -2268,6 +2279,12 @@ function renderLexicon() {
 async function loadDictionaryStatus() {
   const data = await api("/api/dictionary/status");
   state.lexicalDataStatus = data;
+}
+
+async function loadLexicalComparisonCatalog() {
+  const data = await api("/api/lexicon/comparisons");
+  state.lexicalComparisonCatalog = data.groups || [];
+  renderLexicalComparisonCatalog();
 }
 
 function renderPrivateDictionaryManager() {
@@ -4921,7 +4938,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 async function boot() {
   await loadHealth();
   await loadActivePracticeData();
-  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadCompleteWordReviews(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), loadOutputHistory(), loadOutputSupport(), loadSpeakingHistory(), loadSpeakingSupport(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadCompleteWordReviews(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexicalComparisonCatalog(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), loadOutputHistory(), loadOutputSupport(), loadSpeakingHistory(), loadSpeakingSupport(), searchLexicon("", { open: false, history: false })]);
   const restoredServerRun = await restoreServerPracticeRun();
   if (!restoredServerRun && !state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);

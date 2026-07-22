@@ -30,7 +30,7 @@ async function run() {
   let browser;
   try {
     const version = await waitForServer();
-    if (version.app_version !== "0.8.0-alpha.25.5" || version.database_schema_version !== 21) {
+    if (version.app_version !== "0.8.0-alpha.25.6" || version.database_schema_version !== 21) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const lexicalPayload = await fetch(`${baseUrl}/api/lexicon/search?q=cast`).then(response => response.json());
@@ -67,13 +67,17 @@ async function run() {
     if (await page.locator(".sense-meaning").count() < 1) failures.push("Chinese sense meanings are missing");
     if (await page.locator(".sense-examples .example-zh").count() < 1) failures.push("Chinese example translation is missing");
     await page.screenshot({ path: path.join(root, "artifacts", "lexicon-cast-desktop.png"), fullPage: true });
-    await page.goto(`${baseUrl}/?view=lexicon&q=${encodeURIComponent("say, tell, speak, talk")}`, { waitUntil: "networkidle" });
+    await page.locator(".lexical-comparison-library summary").click();
+    if (await page.locator("#lexicalComparisonCatalog > button").count() !== 31) failures.push("comparison catalog does not expose all 31 groups");
+    const catalogOverflow = await page.locator("#lexicalComparisonCatalog").evaluate(element => element.scrollHeight > element.clientHeight);
+    if (!catalogOverflow) failures.push("comparison catalog is not scroll bounded");
+    await page.click('[data-search-query="compose, comprise, constitute, consist of"]');
     await page.waitForSelector(".comparison-grid");
-    if (await page.locator(".comparison-term-card").count() !== 4) failures.push("common comparison does not show four term cards");
+    if (await page.locator(".comparison-term-card").count() !== 4) failures.push("composition comparison does not show four term cards");
     if (!await page.locator(".comparison-header").getByText("人工整理基础组", { exact: true }).count()) failures.push("curated comparison label is missing");
     if (await page.locator(".comparison-patterns button").count() < 8) failures.push("curated syntax and collocations are incomplete");
-    if (!await page.locator(".comparison-memory-rule").getByText(/say 内容/).count()) failures.push("comparison memory rule is missing");
-    await page.screenshot({ path: path.join(root, "artifacts", "lexicon-common-comparison-desktop.png"), fullPage: true });
+    if (!await page.locator(".comparison-memory-rule").getByText(/整体 comprises/).count()) failures.push("whole-part memory rule is missing");
+    await page.screenshot({ path: path.join(root, "artifacts", "lexicon-compose-comprise-desktop.png"), fullPage: true });
     await page.click('[data-view="profile"]');
     await page.waitForSelector("#view-profile.active");
     const profileColumns = await page.locator(".user-center-layout").evaluate(element => getComputedStyle(element).gridTemplateColumns);
