@@ -111,7 +111,7 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(len(catalog["groups"]), 200)
         self.assertTrue(any(group["query"].startswith("compose, comprise") for group in catalog["groups"]))
         self.assertTrue(any(group["confusion_type"] == "lookalike" for group in catalog["groups"]))
-        self.assertEqual(sum(group["reviewed"] for group in catalog["groups"]), 45)
+        self.assertEqual(sum(group["reviewed"] for group in catalog["groups"]), 65)
         self.assertEqual(sum("IELTS" in group.get("exam_tags", []) for group in catalog["groups"]), 95)
 
     def test_comparison_review_api_persists_progress_and_blocks_false_publication(self):

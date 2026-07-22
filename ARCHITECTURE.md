@@ -3,6 +3,7 @@
 ## Schema 22 lexical comparison editorial boundary
 
 - `backend/lexical_compare*.py` owns the versioned reviewed foundation and the discoverable candidate registry.
+- `backend/lexical_compare_data_ielts_charts.py` owns the reviewed IELTS chart-language batch; future editorial batches remain separate modules with their own structural and factual tests.
 - `backend/comparison_review.py` owns mutable local workflow state and applies fail-closed evidence and publication gates.
 - Schema 22 keeps editorial workflow metadata separate from open/private dictionary indexes and learner review data.
 - Dictionary examples and corpus observations are evidence sources; they do not automatically become editorial conclusions.

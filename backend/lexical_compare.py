@@ -6,11 +6,13 @@ try:
     from .lexical_compare_candidates import COMPARISON_CANDIDATES
     from .lexical_compare_data import COMMON_CURATED_COMPARISONS
     from .lexical_compare_data_extended import EXTENDED_CURATED_COMPARISONS
+    from .lexical_compare_data_ielts_charts import IELTS_CHART_CURATED_COMPARISONS
     from .lexical_compare_data_lookalike import LOOKALIKE_CURATED_COMPARISONS
 except ImportError:
     from lexical_compare_candidates import COMPARISON_CANDIDATES
     from lexical_compare_data import COMMON_CURATED_COMPARISONS
     from lexical_compare_data_extended import EXTENDED_CURATED_COMPARISONS
+    from lexical_compare_data_ielts_charts import IELTS_CHART_CURATED_COMPARISONS
     from lexical_compare_data_lookalike import LOOKALIKE_CURATED_COMPARISONS
 
 
@@ -70,6 +72,7 @@ CURATED_COMPARISONS += (
     COMMON_CURATED_COMPARISONS
     + EXTENDED_CURATED_COMPARISONS
     + LOOKALIKE_CURATED_COMPARISONS
+    + IELTS_CHART_CURATED_COMPARISONS
 )
 
 
@@ -127,6 +130,8 @@ def curated_comparison_catalog() -> list[dict]:
             "confusion_type": comparison.get("confusion_type", "semantic"),
             "catalog_status": "reviewed",
             "reviewed": True,
+            "exam_tags": list(comparison.get("exam_tags", [])),
+            "topic": comparison.get("topic", "general"),
         }
         for comparison in CURATED_COMPARISONS
     ]

@@ -25,9 +25,21 @@ class ComparisonReviewTests(unittest.TestCase):
     def test_registry_sync_preserves_reviewed_and_candidate_boundaries(self):
         queue = comparison_review_queue(self.conn)
         self.assertEqual(queue["total"], 200)
-        self.assertEqual(queue["counts"]["published"], 45)
-        self.assertEqual(queue["counts"]["candidate"], 155)
+        self.assertEqual(queue["counts"]["published"], 65)
+        self.assertEqual(queue["counts"]["candidate"], 135)
         self.assertEqual(len(comparison_review_queue(self.conn, exam="IELTS")["items"]), 95)
+
+    def test_versioned_chart_review_promotes_existing_candidate_without_erasing_notes(self):
+        chart = next(group for group in curated_comparison_catalog() if group["topic"] == "charts")
+        candidate = {**chart, "reviewed": False, "catalog_status": "candidate"}
+        sync_comparison_registry(self.conn, [candidate])
+        self.conn.execute(
+            "UPDATE lexical_comparison_reviews SET workflow_status = 'reviewing', editor_notes = '核对过原始图表' WHERE slug = ?",
+            (chart["slug"],),
+        )
+        sync_comparison_registry(self.conn, [chart])
+        promoted = next(item for item in comparison_review_queue(self.conn, "published")["items"] if item["slug"] == chart["slug"])
+        self.assertEqual(promoted["editor_notes"], "核对过原始图表")
 
     def test_repeated_sync_does_not_overwrite_manual_progress(self):
         update_comparison_review(self.conn, "accept-except", {

@@ -58,7 +58,16 @@ def sync_comparison_registry(conn: sqlite3.Connection, catalog: list[dict]) -> N
                  terms_json = excluded.terms_json,
                  confusion_type = excluded.confusion_type,
                  topic = excluded.topic,
-                 exam_tags_json = excluded.exam_tags_json""",
+                 exam_tags_json = excluded.exam_tags_json,
+                 workflow_status = CASE
+                   WHEN excluded.workflow_status = 'published' THEN 'published'
+                   ELSE lexical_comparison_reviews.workflow_status
+                 END,
+                 reviewed_at = CASE
+                   WHEN excluded.workflow_status = 'published' AND lexical_comparison_reviews.workflow_status != 'published'
+                     THEN excluded.reviewed_at
+                   ELSE lexical_comparison_reviews.reviewed_at
+                 END""",
             (
                 group["slug"], json.dumps(group["terms"], ensure_ascii=False),
                 group.get("confusion_type", "semantic"), group.get("topic", "general"),

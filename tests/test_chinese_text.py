@@ -15,3 +15,9 @@ class ChineseTextTests(unittest.TestCase):
         self.assertEqual(payload["count"], 2)
         if payload["items"][0] != "熱情":
             self.assertEqual(payload["items"], ["热情", {"meaning": "糖浆"}])
+
+    def test_windows_normalizer_preserves_standard_simplified_zhu_lexemes(self):
+        converted = to_simplified_chinese("顯著的原著由著名作者撰寫；開始著手後仍執著地看著它")
+        if converted.startswith("顯著"):
+            self.skipTest("The host has no Traditional-to-Simplified converter")
+        self.assertEqual(converted, "显著的原著由著名作者撰写；开始着手后仍执着地看着它")

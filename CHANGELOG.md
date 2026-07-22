@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.11] - 2026-07-22
+
+### Added
+
+- Promoted all 20 IELTS chart-language groups from candidates to complete reviewed comparisons, covering 59 terms.
+- Added Simplified-Chinese meanings, English concepts, grammar, at least two patterns, register, misuse boundaries, three comparison dimensions and sourced original bilingual examples for every term.
+- Added explicit statistical boundaries for percentage points, proportions/rates/ratios, mean/median, doubling and twofold expressions.
+
+### Reliability
+
+- The catalog remains exactly 200 groups: 65 reviewed and 135 candidates; all 95 IELTS groups remain discoverable and the chart subset is 20/20 reviewed.
+- Registry sync promotes only groups that enter the versioned reviewed source while preserving local notes, priorities and decision records.
+- Simplified-Chinese normalization now repairs Windows over-conversion of standard `著` words and missed `後`/`乾净` forms.
+
+### Verification
+
+- A real database copy retained 225 articles, 3 cards and 49 attempts, passed SQLite integrity validation and promoted exactly 20 chart groups.
+- All 239 automated tests pass with 2 optional-dependency tests skipped; desktop Playwright passes on schema 22 with no fixed-sidebar or split-layout regression.
+
+### Scope Boundary
+
+- Reviewed comparison coverage is 65/200. The remaining 135 groups are still evidence-only candidates.
+- This release improves reference content; it does not yet prove better IELTS writing or add boundary-choice items to FSRS.
+
 ## [0.8.0-alpha.25.10] - 2026-07-22
 
 ### Added

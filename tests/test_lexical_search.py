@@ -180,8 +180,8 @@ class LexicalSearchTests(unittest.TestCase):
     def test_common_curated_groups_are_complete_and_queryable_in_any_order(self):
         from backend.lexical_compare import CURATED_COMPARISONS
 
-        self.assertEqual(len(CURATED_COMPARISONS), 45)
-        self.assertEqual(sum(len(group["terms"]) for group in CURATED_COMPARISONS), 117)
+        self.assertEqual(len(CURATED_COMPARISONS), 65)
+        self.assertEqual(sum(len(group["terms"]) for group in CURATED_COMPARISONS), 176)
         for group in CURATED_COMPARISONS:
             query = ", ".join(reversed(group["terms"]))
             payload = server.lexical_comparison(query)
@@ -216,9 +216,32 @@ class LexicalSearchTests(unittest.TestCase):
         composition = next(item for item in catalog if item["slug"] == "compose-comprise-constitute-consist-of")
         self.assertEqual(composition["terms"], ["compose", "comprise", "constitute", "consist of"])
         self.assertNotIn("items", composition)
-        self.assertEqual(sum(group["reviewed"] for group in catalog), 45)
-        self.assertEqual(sum(group["catalog_status"] == "candidate" for group in catalog), 155)
+        self.assertEqual(sum(group["reviewed"] for group in catalog), 65)
+        self.assertEqual(sum(group["catalog_status"] == "candidate" for group in catalog), 135)
         self.assertEqual(sum("IELTS" in group.get("exam_tags", []) for group in catalog), 95)
+
+    def test_ielts_chart_groups_are_complete_sourced_and_statistically_safe(self):
+        from backend.lexical_compare_data_ielts_charts import IELTS_CHART_CURATED_COMPARISONS, SOURCE
+
+        self.assertEqual(len(IELTS_CHART_CURATED_COMPARISONS), 20)
+        self.assertEqual(sum(len(group["terms"]) for group in IELTS_CHART_CURATED_COMPARISONS), 59)
+        for group in IELTS_CHART_CURATED_COMPARISONS:
+            self.assertEqual(group["exam_tags"], ["IELTS"])
+            self.assertEqual(group["topic"], "charts")
+            self.assertGreaterEqual(len(group["dimensions"]), 3)
+            self.assertEqual(set(group["items"]), set(group["terms"]))
+            for term, lexical_item in group["items"].items():
+                self.assertTrue(lexical_item["meaning_zh"], term)
+                self.assertTrue(lexical_item["focus_en"], term)
+                self.assertGreaterEqual(len(lexical_item["patterns"]), 2, term)
+                self.assertEqual(lexical_item["example_source"], SOURCE)
+                self.assertTrue(lexical_item["example_zh"], term)
+        percentage = server.lexical_comparison("proportion, percentage, rate, ratio")
+        self.assertIn("百分点", next(item for item in percentage["items"] if item["term"] == "percentage")["avoid"])
+        average = server.lexical_comparison("average, mean, median")
+        self.assertIn("排序", next(item for item in average["items"] if item["term"] == "median")["focus"])
+        doubling = server.lexical_comparison("double, multiply, increase twofold")
+        self.assertIn("triple", next(item for item in doubling["items"] if item["term"] == "double")["avoid"])
 
     def test_lookalike_groups_expose_spelling_grammar_and_category(self):
         payload = server.lexical_comparison("complement, compliment")

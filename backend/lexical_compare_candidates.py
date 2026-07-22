@@ -204,4 +204,5 @@ COMPARISON_CANDIDATES += tuple(
         exam_tags=("IELTS",), topic=topic,
     )
     for topic, terms in IELTS_CANDIDATE_GROUPS
+    if topic != "charts"
 )
