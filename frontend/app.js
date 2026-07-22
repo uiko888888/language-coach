@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.25.8.1";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.25.9";
 const SUPPORTED_API_VERSION = "1";
 const SUPPORTED_SCHEMA_VERSION = "21";
 
@@ -2201,7 +2201,9 @@ function renderLexicalComparisonCatalog() {
   const panel = $("#lexicalComparisonCatalog");
   if (!panel) return;
   const groups = state.lexicalComparisonCatalog.filter(group =>
-    state.lexicalComparisonFilter === "all" || group.confusion_type === state.lexicalComparisonFilter
+    state.lexicalComparisonFilter === "all"
+    || group.confusion_type === state.lexicalComparisonFilter
+    || (state.lexicalComparisonFilter === "ielts" && group.exam_tags?.includes("IELTS"))
   );
   document.querySelectorAll("[data-comparison-filter]").forEach(button => {
     const active = button.dataset.comparisonFilter === state.lexicalComparisonFilter;
@@ -2243,7 +2245,7 @@ function renderLexicalComparison(comparison) {
           <div class="comparison-field"><strong>常见结构与搭配</strong><div class="comparison-patterns">${(item.patterns || []).map(pattern => `<button data-search-query="${escapeHtml(pattern)}">${escapeHtml(pattern)}</button>`).join("") || "<span>暂无可靠搭配</span>"}</div></div>
           <div class="comparison-field"><strong>语域</strong><p>${escapeHtml(item.register || "尚无人工整理结论")}</p></div>
           <div class="comparison-field comparison-warning"><strong>不要这样理解</strong><p>${escapeHtml(item.avoid || "不能只凭相同中文释义直接替换")}</p></div>
-          ${item.example ? `<blockquote><p>${searchableEnglish(item.example, false)}</p>${item.example_zh ? `<small>${escapeHtml(item.example_zh)}</small>` : ""}</blockquote>` : ""}
+          ${item.example ? `<blockquote><p>${searchableEnglish(item.example, false)}</p>${item.example_zh ? `<small>${escapeHtml(item.example_zh)}</small>` : ""}${item.example_source ? `<small class="example-source">${escapeHtml(item.example_source)}</small>` : ""}</blockquote>` : ""}
           <footer>${item.frequency?.frequency_band ? `${escapeHtml(item.frequency.frequency_band)} · ` : ""}${escapeHtml((item.sources || []).join(" / ") || "本机开放词典")}</footer>
         </article>`).join("")}
     </section>

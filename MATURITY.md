@@ -78,6 +78,8 @@ Current strengths are source traceability, one-material-many-uses, evidence repl
 
 `alpha.25.8` creates a maintainable route past 100 groups without pretending all content has equal authority. The catalog contains 105 groups, while only 45 retain reviewed teaching status and 60 remain evidence-only candidates. Discoverability and roadmap coverage improve, but confusion teaching stays at 7.6/10 because unreviewed titles are not learning content. Engineering maintainability rises modestly through validated candidate metadata and explicit promotion boundaries. The central self-critique is numerical: crossing 100 is a planning milestone, not a quality milestone; the next score increase requires reviewed promotion and measured reduction in repeat errors.
 
+`alpha.25.9` expands planning coverage to 200 groups and adds a 95-group IELTS-priority view. It also repairs the evidence path so attributed Tatoeba examples survive private-dictionary aggregation. Discoverability rises, but confusion teaching remains 7.6/10 and reviewed completion falls proportionally to 45/200: catalog breadth is not editorial maturity. The useful gain is a lawful, attributable route to examples for 128/150 audited terms. The main gap is now collocation and boundary review, not raw group discovery.
+
 Interest and exam modes now use different home workflows: immersion and expression collection versus target, weakness and question-type prescription. They still share one profile so interest activity can later contribute domain evidence without masquerading as exam-score gains.
 
 ## Universal Product Requirements

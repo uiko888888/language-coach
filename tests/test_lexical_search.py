@@ -211,13 +211,14 @@ class LexicalSearchTests(unittest.TestCase):
 
     def test_curated_catalog_exposes_every_group_without_editorial_body_duplication(self):
         catalog = curated_comparison_catalog()
-        self.assertEqual(len(catalog), 105)
+        self.assertEqual(len(catalog), 200)
         self.assertEqual(catalog[0]["query"], "cordial, keen, zeal")
         composition = next(item for item in catalog if item["slug"] == "compose-comprise-constitute-consist-of")
         self.assertEqual(composition["terms"], ["compose", "comprise", "constitute", "consist of"])
         self.assertNotIn("items", composition)
         self.assertEqual(sum(group["reviewed"] for group in catalog), 45)
-        self.assertEqual(sum(group["catalog_status"] == "candidate" for group in catalog), 60)
+        self.assertEqual(sum(group["catalog_status"] == "candidate" for group in catalog), 155)
+        self.assertEqual(sum("IELTS" in group.get("exam_tags", []) for group in catalog), 95)
 
     def test_lookalike_groups_expose_spelling_grammar_and_category(self):
         payload = server.lexical_comparison("complement, compliment")
@@ -242,12 +243,16 @@ class LexicalSearchTests(unittest.TestCase):
         self.assertEqual(payload["catalog_status"], "candidate")
         self.assertIn("等待", payload["summary"])
         self.assertTrue(all(not item["patterns"] for item in payload["items"]))
+        server_source = (Path(__file__).parents[1] / "backend" / "server.py").read_text(encoding="utf-8")
+        self.assertIn('"license": value.get("license")', server_source)
+        self.assertIn('"source_author": value.get("source_author")', server_source)
 
     def test_frontend_comparison_catalog_can_filter_lookalikes(self):
         source = (Path(__file__).parents[1] / "frontend" / "app.js").read_text(encoding="utf-8")
         markup = (Path(__file__).parents[1] / "frontend" / "index.html").read_text(encoding="utf-8")
         self.assertIn('group.confusion_type === state.lexicalComparisonFilter', source)
         self.assertIn('data-comparison-filter="lookalike"', markup)
+        self.assertIn('data-comparison-filter="ielts"', markup)
 
     def test_single_word_search_links_to_its_common_confusion_group(self):
         profile = server.lexical_search("efficient")["results"][0]["learning_profile"]

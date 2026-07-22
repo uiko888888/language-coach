@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.9] - 2026-07-22
+
+### Added
+
+- Expanded the confusion catalog from 105 to exactly 200 groups with 95 IELTS-focused candidates.
+- Added IELTS categories for chart language, argument links, academic verbs/adjectives and recurring education, environment, government, health, employment, transport and crime topics.
+- Added an `雅思重点` filter to the fixed desktop dictionary sidebar.
+- Comparison evidence now merges Tatoeba examples even when a private dictionary is the top lookup result, retaining sentence authors, licence, record id and source URL.
+
+### Research Boundary
+
+- Live web search and the official IELTS site were unreachable in the current environment. IELTS priorities therefore use the existing official-format research record and established academic-language categories, not a claimed live query-volume ranking.
+- Commercial dictionary and preparation-site example text is not copied. Tatoeba CC BY examples are preferred; missing terms require original examples or another explicitly licensed corpus.
+
+### Coverage Audit
+
+- 128 of 150 unique terms in the first 60 pending groups now have at least one attributed bilingual Tatoeba example; 102 have four or more. Twenty-two still need another legal example source.
+- The catalog contains 45 fully reviewed groups and 155 candidates. Expansion does not change reviewed completion.
+
+### Verification
+
+- All 228 automated tests pass with 2 optional-dependency tests skipped.
+- Desktop Playwright passes 200-group discovery, 95-group IELTS filtering, 44-group spelling filtering, candidate status and reviewed comparison regressions on schema 21.
+
 ## [0.8.0-alpha.25.8.1] - 2026-07-22
 
 ### Fixed

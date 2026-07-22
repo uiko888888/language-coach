@@ -5064,7 +5064,8 @@ def _comparison_evidence(term: str) -> dict:
     item = next((candidate for candidate in payload["results"] if str(
         candidate.get("headword") or candidate.get("term") or candidate.get("form") or ""
     ).casefold() == normalized), payload["results"][0] if payload["results"] else {})
-    layers = item.get("lexical_layers") or {}
+    with db() as conn:
+        layers = lookup_lexical_layers(conn, term, example_limit=8)
     meaning = item.get("meaning_zh") or item.get("translation_zh") or item.get("headword_translation_zh") or ""
     definitions: list[str] = []
     examples: list[dict] = []
@@ -5078,8 +5079,14 @@ def _comparison_evidence(term: str) -> dict:
     for value in layers.get("examples") or []:
         if isinstance(value, dict):
             examples.append({
-                "text": value.get("text") or value.get("sentence") or "",
-                "translation_zh": value.get("translation_zh") or value.get("translation") or "",
+                "text": value.get("text") or value.get("sentence") or value.get("source_text") or "",
+                "translation_zh": value.get("translation_zh") or value.get("translation") or value.get("target_text") or "",
+                "source": value.get("source_name") or value.get("source_key") or "",
+                "source_author": value.get("source_author") or "",
+                "target_author": value.get("target_author") or "",
+                "license": value.get("license") or "",
+                "source_url": value.get("source_url") or "",
+                "source_record_id": value.get("source_record_id") or "",
             })
     patterns = []
     for value in item.get("collocations") or []:
@@ -5154,6 +5161,13 @@ def lexical_comparison(query: str) -> dict:
                 "avoid": "请根据例句和搭配判断，不要仅凭中文释义替换。",
                 "example": next((value["text"] for value in evidence[term.casefold()]["examples"]), ""),
                 "example_zh": next((value["translation_zh"] for value in evidence[term.casefold()]["examples"] if value["translation_zh"]), ""),
+                "example_source": next((
+                    " · ".join(filter(None, (
+                        value.get("source"), value.get("source_author"), value.get("license")
+                    )))
+                    for value in evidence[term.casefold()]["examples"]
+                    if value.get("translation_zh") and (value.get("source") or value.get("license"))
+                ), ""),
                 "dictionary": evidence[term.casefold()],
             }
             for term in terms

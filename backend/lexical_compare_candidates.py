@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-def candidate(slug, terms, confusion_type, reason):
+def candidate(slug, terms, confusion_type, reason, *, exam_tags=(), topic="general"):
     return {
         "slug": slug,
         "terms": terms,
@@ -12,6 +12,8 @@ def candidate(slug, terms, confusion_type, reason):
         "reviewed": False,
         "shared_translation": reason,
         "memory_rule": "待完成语料、句法、搭配和双语例句核对后发布。",
+        "exam_tags": list(exam_tags),
+        "topic": topic,
     }
 
 
@@ -89,4 +91,117 @@ COMPARISON_CANDIDATES = tuple(
 ) + tuple(
     candidate(slug, terms, "lookalike", reason)
     for slug, terms, reason in LOOKALIKE_CANDIDATES
+)
+
+
+IELTS_CANDIDATE_GROUPS = (
+    ("charts", ("increase", "grow", "expand")),
+    ("charts", ("decrease", "decline", "drop")),
+    ("charts", ("fluctuate", "oscillate")),
+    ("charts", ("stable", "steady", "constant")),
+    ("charts", ("slight", "marginal", "modest")),
+    ("charts", ("sharp", "steep", "dramatic")),
+    ("charts", ("proportion", "percentage", "rate", "ratio")),
+    ("charts", ("amount", "number", "quantity")),
+    ("charts", ("trend", "pattern", "tendency")),
+    ("charts", ("peak", "maximum", "high")),
+    ("charts", ("minimum", "lowest", "nadir")),
+    ("charts", ("approximately", "roughly", "about")),
+    ("charts", ("respectively", "correspondingly")),
+    ("charts", ("overall", "generally", "on the whole")),
+    ("charts", ("remain", "stay", "maintain")),
+    ("charts", ("reach", "hit", "attain")),
+    ("charts", ("double", "multiply", "increase twofold")),
+    ("charts", ("average", "mean", "median")),
+    ("charts", ("total", "sum", "aggregate")),
+    ("charts", ("difference", "gap", "disparity")),
+    ("argument", ("because", "because of", "due to")),
+    ("argument", ("however", "nevertheless", "nonetheless")),
+    ("argument", ("although", "despite", "in spite of")),
+    ("argument", ("while", "whereas")),
+    ("argument", ("also", "moreover", "furthermore")),
+    ("argument", ("example", "instance", "illustration")),
+    ("argument", ("claim", "argue", "assert", "maintain")),
+    ("argument", ("suggest", "propose", "recommend")),
+    ("argument", ("believe", "think", "consider")),
+    ("argument", ("advantage", "benefit", "merit")),
+    ("argument", ("disadvantage", "drawback", "limitation")),
+    ("argument", ("solution", "measure", "remedy")),
+    ("argument", ("support", "back", "endorse")),
+    ("argument", ("oppose", "object", "resist")),
+    ("argument", ("responsibility", "duty", "obligation")),
+    ("argument", ("right", "entitlement", "permission")),
+    ("argument", ("freedom", "liberty", "independence")),
+    ("argument", ("choice", "option", "alternative")),
+    ("argument", ("true", "correct", "valid")),
+    ("argument", ("false", "incorrect", "invalid")),
+    ("academic", ("solve", "address", "tackle")),
+    ("academic", ("deal with", "handle", "manage")),
+    ("academic", ("predict", "forecast", "project")),
+    ("academic", ("assess", "evaluate", "estimate")),
+    ("academic", ("explain", "describe", "discuss")),
+    ("academic", ("illustrate", "depict", "portray")),
+    ("academic", ("compare", "contrast", "differentiate")),
+    ("academic", ("consume", "use", "utilize")),
+    ("academic", ("spend", "expend", "invest")),
+    ("academic", ("save", "conserve", "preserve")),
+    ("academic", ("develop", "evolve", "progress")),
+    ("academic", ("replace", "substitute", "exchange")),
+    ("academic", ("improve", "boost", "enhance")),
+    ("academic", ("reduce", "decrease", "cut")),
+    ("academic", ("change", "shift", "transition")),
+    ("academic", ("impact", "influence", "effect")),
+    ("academic", ("common", "widespread", "prevalent")),
+    ("academic", ("rare", "scarce", "uncommon")),
+    ("academic", ("serious", "severe", "grave")),
+    ("academic", ("rapid", "quick", "swift")),
+    ("academic", ("gradual", "steady", "progressive")),
+    ("academic", ("temporary", "transient", "provisional")),
+    ("academic", ("permanent", "lasting", "enduring")),
+    ("academic", ("complex", "complicated", "sophisticated")),
+    ("academic", ("simple", "easy", "straightforward")),
+    ("academic", ("relevant", "related", "applicable")),
+    ("academic", ("obvious", "apparent", "evident")),
+    ("academic", ("possible", "feasible", "viable")),
+    ("academic", ("harmful", "detrimental", "adverse")),
+    ("academic", ("useful", "beneficial", "valuable")),
+    ("academic", ("enough", "adequate", "sufficient")),
+    ("academic", ("lack", "shortage", "scarcity")),
+    ("topics", ("society", "community", "the public")),
+    ("topics", ("environment", "ecology", "surroundings")),
+    ("topics", ("education", "training", "instruction")),
+    ("topics", ("technology", "technique", "tool")),
+    ("topics", ("research", "study", "investigation")),
+    ("topics", ("data", "information", "evidence")),
+    ("topics", ("policy", "law", "regulation")),
+    ("topics", ("government", "state", "administration")),
+    ("topics", ("country", "nation", "state")),
+    ("topics", ("people", "persons", "individuals")),
+    ("topics", ("child", "youth", "adolescent")),
+    ("topics", ("old", "elderly", "aged")),
+    ("topics", ("workforce", "labour", "employment")),
+    ("topics", ("salary", "wage", "income", "revenue")),
+    ("topics", ("poverty", "deprivation", "inequality")),
+    ("topics", ("health", "healthcare", "medicine")),
+    ("topics", ("disease", "illness", "disorder")),
+    ("topics", ("pollution", "emission", "waste")),
+    ("topics", ("energy", "power", "electricity")),
+    ("topics", ("transport", "traffic", "transit")),
+    ("topics", ("urban", "city", "metropolitan")),
+    ("topics", ("rural", "countryside", "agricultural")),
+    ("topics", ("crime", "offence", "violation")),
+)
+
+
+def _ielts_slug(terms):
+    return "ielts-" + "-".join(term.replace(" ", "-").replace("'", "") for term in terms)
+
+
+COMPARISON_CANDIDATES += tuple(
+    candidate(
+        _ielts_slug(terms), terms, "semantic",
+        "雅思写作与阅读中常被混用，需核对语义焦点、搭配、语域和论证功能。",
+        exam_tags=("IELTS",), topic=topic,
+    )
+    for topic, terms in IELTS_CANDIDATE_GROUPS
 )

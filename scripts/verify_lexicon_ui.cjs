@@ -37,7 +37,7 @@ async function run() {
     } catch (error) {
       throw new Error(`${error.message}${serverError ? `\nBackend stderr:\n${serverError}` : ""}`);
     }
-    if (version.app_version !== "0.8.0-alpha.25.8.1" || version.database_schema_version !== 21) {
+    if (version.app_version !== "0.8.0-alpha.25.9" || version.database_schema_version !== 21) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const lexicalPayload = await fetch(`${baseUrl}/api/lexicon/search?q=cast`).then(response => response.json());
@@ -76,11 +76,14 @@ async function run() {
     if (await page.locator(".sense-examples .example-zh").count() < 1) failures.push("Chinese example translation is missing");
     await page.screenshot({ path: path.join(root, "artifacts", "lexicon-cast-desktop.png"), fullPage: true });
     await page.locator(".lexical-comparison-library summary").click();
-    if (await page.locator("#lexicalComparisonCatalog > button").count() !== 105) failures.push("comparison catalog does not expose all 105 groups");
+    if (await page.locator("#lexicalComparisonCatalog > button").count() !== 200) failures.push("comparison catalog does not expose all 200 groups");
     const catalogOverflow = await page.locator("#lexicalComparisonCatalog").evaluate(element => element.scrollHeight > element.clientHeight);
     if (!catalogOverflow) failures.push("comparison catalog is not scroll bounded");
     await page.click('[data-comparison-filter="lookalike"]');
     if (await page.locator("#lexicalComparisonCatalog > button").count() !== 44) failures.push("lookalike filter does not expose 44 groups");
+    await page.click('[data-comparison-filter="ielts"]');
+    if (await page.locator("#lexicalComparisonCatalog > button").count() !== 95) failures.push("IELTS filter does not expose 95 groups");
+    await page.click('[data-comparison-filter="lookalike"]');
     await page.click('[data-search-query="compliment, complement"]');
     await page.waitForSelector(".comparison-grid");
     if (await page.locator(".comparison-term-card").count() !== 2) failures.push("lookalike comparison does not show two term cards");

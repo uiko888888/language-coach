@@ -1151,7 +1151,7 @@ label {
 .lexicon-history, .lexical-data-status, .lexical-comparison-library { margin-top: 12px; border-top: 1px solid var(--line); }
 .lexicon-history summary, .lexical-data-status summary, .lexical-comparison-library summary { padding: 10px 0 7px; cursor: pointer; color: var(--teal-dark); font-weight: 700; }
 .lexical-comparison-library > #lexicalComparisonCatalog { display: grid; gap: 6px; max-height: 280px; overflow-y: auto; padding-right: 4px; }
-.comparison-library-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin: 8px 0; }
+.comparison-library-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin: 8px 0; }
 .comparison-library-filters button { min-height: 30px; padding: 4px; font-size: 11px; background: var(--surface); }
 .comparison-library-filters button.active { border-color: var(--teal); background: var(--teal-pale); color: var(--teal-dark); }
 .lexical-comparison-library button { display: grid; gap: 2px; width: 100%; min-height: 48px; padding: 7px 8px; text-align: left; background: var(--surface); }
