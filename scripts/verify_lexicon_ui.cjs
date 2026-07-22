@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 const root = path.resolve(__dirname, "..");
-const port = 8767;
+const port = 8877;
 const baseUrl = `http://127.0.0.1:${port}`;
 
 async function waitForServer() {
@@ -26,11 +26,18 @@ async function run() {
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
   });
+  let serverError = "";
+  server.stderr.on("data", chunk => { serverError += chunk.toString(); });
   const failures = [];
   let browser;
   try {
-    const version = await waitForServer();
-    if (version.app_version !== "0.8.0-alpha.25.6" || version.database_schema_version !== 21) {
+    let version;
+    try {
+      version = await waitForServer();
+    } catch (error) {
+      throw new Error(`${error.message}${serverError ? `\nBackend stderr:\n${serverError}` : ""}`);
+    }
+    if (version.app_version !== "0.8.0-alpha.25.7" || version.database_schema_version !== 21) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const lexicalPayload = await fetch(`${baseUrl}/api/lexicon/search?q=cast`).then(response => response.json());
@@ -50,6 +57,7 @@ async function run() {
       }
     });
     await page.goto(`${baseUrl}/?view=lexicon&q=cast`, { waitUntil: "networkidle" });
+    if (await page.locator("#compatibilityBanner").isVisible()) failures.push("frontend/backend compatibility warning is visible");
     if (await page.locator("#assistantDialog[open]").count()) await page.click("#closeAssistantBtn");
     if (await page.locator("#profileEditor[open]").count()) await page.click("#cancelProfileDialogBtn");
     await page.waitForSelector("#view-lexicon.active");
@@ -68,11 +76,19 @@ async function run() {
     if (await page.locator(".sense-examples .example-zh").count() < 1) failures.push("Chinese example translation is missing");
     await page.screenshot({ path: path.join(root, "artifacts", "lexicon-cast-desktop.png"), fullPage: true });
     await page.locator(".lexical-comparison-library summary").click();
-    if (await page.locator("#lexicalComparisonCatalog > button").count() !== 31) failures.push("comparison catalog does not expose all 31 groups");
+    if (await page.locator("#lexicalComparisonCatalog > button").count() !== 45) failures.push("comparison catalog does not expose all 45 groups");
     const catalogOverflow = await page.locator("#lexicalComparisonCatalog").evaluate(element => element.scrollHeight > element.clientHeight);
     if (!catalogOverflow) failures.push("comparison catalog is not scroll bounded");
-    await page.click('[data-search-query="compose, comprise, constitute, consist of"]');
+    await page.click('[data-comparison-filter="lookalike"]');
+    if (await page.locator("#lexicalComparisonCatalog > button").count() !== 14) failures.push("lookalike filter does not expose 14 groups");
+    await page.click('[data-search-query="compliment, complement"]');
     await page.waitForSelector(".comparison-grid");
+    if (await page.locator(".comparison-term-card").count() !== 2) failures.push("lookalike comparison does not show two term cards");
+    if (!await page.locator(".comparison-header").getByText("拼写形近", { exact: true }).count()) failures.push("lookalike comparison label is missing");
+    await page.screenshot({ path: path.join(root, "artifacts", "lexicon-compliment-complement-desktop.png"), fullPage: true });
+    await page.click('[data-comparison-filter="all"]');
+    await page.click('[data-search-query="compose, comprise, constitute, consist of"]');
+    await page.waitForFunction(() => document.querySelector(".comparison-header h2")?.textContent.includes("compose / comprise"));
     if (await page.locator(".comparison-term-card").count() !== 4) failures.push("composition comparison does not show four term cards");
     if (!await page.locator(".comparison-header").getByText("人工整理基础组", { exact: true }).count()) failures.push("curated comparison label is missing");
     if (await page.locator(".comparison-patterns button").count() < 8) failures.push("curated syntax and collocations are incomplete");

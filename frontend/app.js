@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.25.6";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.25.7";
 const SUPPORTED_API_VERSION = "1";
 const SUPPORTED_SCHEMA_VERSION = "21";
 
@@ -77,6 +77,7 @@ const state = {
   lexiconResults: [],
   lexicalComparison: null,
   lexicalComparisonCatalog: [],
+  lexicalComparisonFilter: "all",
   lexiconMeta: { resolution: null, suggestions: [] },
   lexiconHistory: { recent: [], frequent: [] },
   lexicalDataStatus: { layers: [], sources: [], counts: {} },
@@ -2199,11 +2200,20 @@ function renderLexiconHistory() {
 function renderLexicalComparisonCatalog() {
   const panel = $("#lexicalComparisonCatalog");
   if (!panel) return;
-  panel.innerHTML = state.lexicalComparisonCatalog.map(group => `
+  const groups = state.lexicalComparisonCatalog.filter(group =>
+    state.lexicalComparisonFilter === "all" || group.confusion_type === state.lexicalComparisonFilter
+  );
+  document.querySelectorAll("[data-comparison-filter]").forEach(button => {
+    const active = button.dataset.comparisonFilter === state.lexicalComparisonFilter;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  panel.innerHTML = groups.map(group => `
     <button data-search-query="${escapeHtml(group.query)}" title="${escapeHtml(group.shared_translation)}">
+      <span>${group.confusion_type === "lookalike" ? "形近" : "义近"}</span>
       <strong>${escapeHtml(group.title)}</strong>
       <small>${escapeHtml(group.memory_rule)}</small>
-    </button>`).join("");
+    </button>`).join("") || `<p class="muted">该分类暂无已审核词组。</p>`;
 }
 
 function renderLexicalComparison(comparison) {
@@ -2218,7 +2228,7 @@ function renderLexicalComparison(comparison) {
     <div><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.value)}</span></div>`).join("");
   $("#lexiconDetail").innerHTML = `
     <header class="comparison-header">
-      <div class="badge-row">${badge(comparison.reviewed ? "人工整理基础组" : "开放证据并排", comparison.reviewed ? "teal" : "amber")}${badge(`${items.length} 个词`)}</div>
+      <div class="badge-row">${badge(comparison.reviewed ? "人工整理基础组" : "开放证据并排", comparison.reviewed ? "teal" : "amber")}${comparison.reviewed ? badge(comparison.confusion_type === "lookalike" ? "拼写形近" : "中文义近") : ""}${badge(`${items.length} 个词`)}</div>
       <h2>${escapeHtml(comparison.title)}</h2>
       <strong class="comparison-shared-meaning">${escapeHtml(comparison.shared_translation || "")}</strong>
       <p>${escapeHtml(comparison.summary || "")}</p>
@@ -4358,6 +4368,11 @@ document.addEventListener("click", async event => {
       renderAll();
     }
     if (button.dataset.lexiconFilter) state.lexiconFilter = button.dataset.lexiconFilter;
+    if (button.dataset.comparisonFilter) {
+      state.lexicalComparisonFilter = button.dataset.comparisonFilter;
+      renderLexicalComparisonCatalog();
+      return;
+    }
     if (button.dataset.learningMode) await setLearningMode(button.dataset.learningMode);
     if (button.dataset.view) setView(button.dataset.view);
     if (button.id === "backBtn") {

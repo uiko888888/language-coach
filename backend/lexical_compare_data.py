@@ -15,7 +15,10 @@ def item(pos, meaning_zh, focus_en, focus, patterns, register, avoid, example, e
     }
 
 
-def comparison(slug, terms, shared_translation, summary, memory_rule, dimensions, items):
+def comparison(
+    slug, terms, shared_translation, summary, memory_rule, dimensions, items,
+    *, confusion_type="semantic",
+):
     return {
         "slug": slug,
         "terms": terms,
@@ -28,6 +31,7 @@ def comparison(slug, terms, shared_translation, summary, memory_rule, dimensions
             for label, value in dimensions
         ],
         "items": items,
+        "confusion_type": confusion_type,
     }
 
 

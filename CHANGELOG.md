@@ -4,6 +4,31 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.7] - 2026-07-22
+
+### Added
+
+- Added 14 manually reviewed spelling-confusion groups covering 29 terms, including `compliment/complement`, `principal/principle`, `stationary/stationery`, `advice/advise`, `device/devise`, `loose/lose`, `quiet/quite`, `cite/site/sight` and migration-direction pairs.
+- Added an explicit confusion taxonomy to the catalog and comparison payloads: Chinese-semantic overlap versus spelling/form overlap.
+- Added fixed-sidebar catalog filters and comparison badges so learners can browse the two learning problems independently.
+- Every spelling group includes a visual spelling anchor, part-of-speech/sentence-position boundary, collocations, a misuse warning and a bilingual example.
+
+### Reliability
+
+- Curated group validation now rejects unknown confusion categories while retaining all existing structural completeness checks.
+- The spelling anchor also serves as the compact memory rule, preventing two separately maintained explanations from drifting.
+- Commercial dictionary text and random web lists were not copied; private/open dictionary layers remain evidence only.
+
+### Scope Boundary
+
+- The catalog now contains 45 groups and 117 unique terms, but its order is still editorial rather than driven by real learner errors.
+- This release does not yet persist candidate groups, automatically publish suggestions, or send boundary errors to FSRS.
+
+### Verification
+
+- All 226 automated tests pass with 2 optional-dependency tests skipped.
+- Desktop Playwright passed category metadata, 45-group discovery, 14-group spelling filtering, reviewed spelling cards, the original composition group and private/open dictionary regression checks on schema 21.
+
 ## [0.8.0-alpha.25.6] - 2026-07-22
 
 ### Added

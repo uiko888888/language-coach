@@ -5,9 +5,11 @@ import re
 try:
     from .lexical_compare_data import COMMON_CURATED_COMPARISONS
     from .lexical_compare_data_extended import EXTENDED_CURATED_COMPARISONS
+    from .lexical_compare_data_lookalike import LOOKALIKE_CURATED_COMPARISONS
 except ImportError:
     from lexical_compare_data import COMMON_CURATED_COMPARISONS
     from lexical_compare_data_extended import EXTENDED_CURATED_COMPARISONS
+    from lexical_compare_data_lookalike import LOOKALIKE_CURATED_COMPARISONS
 
 
 CURATED_COMPARISONS = (
@@ -62,7 +64,11 @@ CURATED_COMPARISONS = (
     },
 )
 
-CURATED_COMPARISONS += COMMON_CURATED_COMPARISONS + EXTENDED_CURATED_COMPARISONS
+CURATED_COMPARISONS += (
+    COMMON_CURATED_COMPARISONS
+    + EXTENDED_CURATED_COMPARISONS
+    + LOOKALIKE_CURATED_COMPARISONS
+)
 
 
 def validate_curated_comparisons() -> None:
@@ -72,6 +78,8 @@ def validate_curated_comparisons() -> None:
         "register", "avoid", "example", "example_zh",
     }
     for comparison in CURATED_COMPARISONS:
+        if comparison.get("confusion_type", "semantic") not in {"semantic", "lookalike"}:
+            raise ValueError(f"Invalid confusion type: {comparison['slug']}")
         terms = tuple(comparison["terms"])
         if not 2 <= len(terms) <= 5 or len(set(terms)) != len(terms):
             raise ValueError(f"Invalid curated comparison terms: {comparison['slug']}")
@@ -99,6 +107,7 @@ def curated_comparison_catalog() -> list[dict]:
             "query": ", ".join(comparison["terms"]),
             "shared_translation": comparison["shared_translation"],
             "memory_rule": comparison["memory_rule"],
+            "confusion_type": comparison.get("confusion_type", "semantic"),
         }
         for comparison in CURATED_COMPARISONS
     ]
@@ -134,6 +143,7 @@ def curated_comparison(terms: list[str]) -> dict | None:
             "shared_translation": comparison["shared_translation"],
             "summary": comparison["summary"],
             "memory_rule": comparison["memory_rule"],
+            "confusion_type": comparison.get("confusion_type", "semantic"),
             "dimensions": [dict(item) for item in comparison["dimensions"]],
             "items": [
                 {"term": original, **comparison["items"][normalized_term]}
@@ -156,5 +166,6 @@ def curated_term_profile(term: str) -> dict | None:
             "comparison_title": comparison["title"],
             "related_terms": [value for value in comparison["terms"] if value != normalized],
             "editorial_status": "manually_curated_base",
+            "confusion_type": comparison.get("confusion_type", "semantic"),
         }
     return None

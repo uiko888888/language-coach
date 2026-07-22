@@ -110,6 +110,11 @@
           <div class="master-list" id="lexiconResultList"></div>
           <details class="lexical-comparison-library">
             <summary>常见易混词库</summary>
+            <div class="comparison-library-filters" role="group" aria-label="易混词类型">
+              <button class="active" data-comparison-filter="all" aria-pressed="true">全部</button>
+              <button data-comparison-filter="semantic" aria-pressed="false">中文义近</button>
+              <button data-comparison-filter="lookalike" aria-pressed="false">拼写形近</button>
+            </div>
             <div id="lexicalComparisonCatalog"></div>
           </details>
           <details class="lexicon-history" open>

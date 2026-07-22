@@ -175,8 +175,8 @@ class LexicalSearchTests(unittest.TestCase):
     def test_common_curated_groups_are_complete_and_queryable_in_any_order(self):
         from backend.lexical_compare import CURATED_COMPARISONS
 
-        self.assertEqual(len(CURATED_COMPARISONS), 31)
-        self.assertEqual(sum(len(group["terms"]) for group in CURATED_COMPARISONS), 88)
+        self.assertEqual(len(CURATED_COMPARISONS), 45)
+        self.assertEqual(sum(len(group["terms"]) for group in CURATED_COMPARISONS), 117)
         for group in CURATED_COMPARISONS:
             query = ", ".join(reversed(group["terms"]))
             payload = server.lexical_comparison(query)
@@ -206,11 +206,33 @@ class LexicalSearchTests(unittest.TestCase):
 
     def test_curated_catalog_exposes_every_group_without_editorial_body_duplication(self):
         catalog = curated_comparison_catalog()
-        self.assertEqual(len(catalog), 31)
+        self.assertEqual(len(catalog), 45)
         self.assertEqual(catalog[0]["query"], "cordial, keen, zeal")
         composition = next(item for item in catalog if item["slug"] == "compose-comprise-constitute-consist-of")
         self.assertEqual(composition["terms"], ["compose", "comprise", "constitute", "consist of"])
         self.assertNotIn("items", composition)
+
+    def test_lookalike_groups_expose_spelling_grammar_and_category(self):
+        payload = server.lexical_comparison("complement, compliment")
+        self.assertTrue(payload["reviewed"])
+        self.assertEqual(payload["confusion_type"], "lookalike")
+        self.assertEqual(payload["dimensions"][0]["label"], "拼写锚点")
+        self.assertIn("词性", payload["dimensions"][1]["label"])
+        self.assertEqual(payload["items"][0]["pos"], "noun/verb")
+        self.assertIn("补充", payload["items"][0]["meaning_zh"])
+
+    def test_lookalike_catalog_has_high_frequency_homophone_and_direction_groups(self):
+        catalog = curated_comparison_catalog()
+        lookalikes = [group for group in catalog if group["confusion_type"] == "lookalike"]
+        self.assertEqual(len(lookalikes), 14)
+        self.assertTrue(any(group["slug"] == "cite-site-sight" for group in lookalikes))
+        self.assertTrue(any(group["slug"] == "emigrate-immigrate" for group in lookalikes))
+
+    def test_frontend_comparison_catalog_can_filter_lookalikes(self):
+        source = (Path(__file__).parents[1] / "frontend" / "app.js").read_text(encoding="utf-8")
+        markup = (Path(__file__).parents[1] / "frontend" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('group.confusion_type === state.lexicalComparisonFilter', source)
+        self.assertIn('data-comparison-filter="lookalike"', markup)
 
     def test_single_word_search_links_to_its_common_confusion_group(self):
         profile = server.lexical_search("efficient")["results"][0]["learning_profile"]

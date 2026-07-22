@@ -108,8 +108,9 @@ class BrowserBridgeTests(unittest.TestCase):
         invalid.exception.close()
 
         catalog, _ = self.request("/api/lexicon/comparisons")
-        self.assertEqual(len(catalog["groups"]), 31)
+        self.assertEqual(len(catalog["groups"]), 45)
         self.assertTrue(any(group["query"].startswith("compose, comprise") for group in catalog["groups"]))
+        self.assertTrue(any(group["confusion_type"] == "lookalike" for group in catalog["groups"]))
 
     def test_review_api_rates_and_undoes_with_daily_progress(self):
         created, _ = self.request("/api/cards", "POST", {
