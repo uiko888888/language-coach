@@ -37,7 +37,7 @@ async function run() {
     } catch (error) {
       throw new Error(`${error.message}${serverError ? `\nBackend stderr:\n${serverError}` : ""}`);
     }
-    if (version.app_version !== "0.8.0-alpha.25.8" || version.database_schema_version !== 21) {
+    if (version.app_version !== "0.8.0-alpha.25.8.1" || version.database_schema_version !== 21) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const lexicalPayload = await fetch(`${baseUrl}/api/lexicon/search?q=cast`).then(response => response.json());

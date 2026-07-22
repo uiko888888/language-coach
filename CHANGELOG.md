@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.8.1] - 2026-07-22
+
+### Fixed
+
+- Normalized structured WordNet definition/example objects before translation-cache lookup and response assembly; affected entries such as `value`, `continuous`, `sensible`, `hardly`, `coarse` and `decent` no longer fail with unhashable dictionary keys.
+
+### Editorial Audit
+
+- Audited all 151 terms in the 60 pending groups against the current local evidence layer.
+- All terms resolve and 144 expose Chinese headword meanings, but only 3 currently expose two verified collocations and none expose a bilingual example through this comparison path.
+- Consequently, zero pending groups qualify for reviewed promotion. They remain visibly pending until original bilingual examples and collocation evidence are completed; no status-only promotion was made.
+
 ## [0.8.0-alpha.25.8] - 2026-07-22
 
 ### Added

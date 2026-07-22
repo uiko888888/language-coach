@@ -58,6 +58,11 @@ class LexicalSearchTests(unittest.TestCase):
         self.assertIn("inspected", entry["examples"][1]["text"].lower())
         self.assertEqual(entry["examples"][1]["translation"], "这些文件在批准之前必须经过审查。")
 
+    def test_translation_cache_normalizes_structured_lexical_segments(self):
+        self.assertEqual(server.translation_source_text({"text": "  a definition  "}), "a definition")
+        self.assertEqual(server.translation_source_text({"gloss": {"value": "nested gloss"}}), "nested gloss")
+        self.assertEqual(server.translation_source_text(["first", {"sentence": "second"}]), "first second")
+
     def test_phrase_relations_are_searchable(self):
         results = server.lexical_search("check for damage")["results"]
         self.assertEqual(results[0]["type"], "query")

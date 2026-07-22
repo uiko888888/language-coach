@@ -4515,8 +4515,22 @@ def contextual_collocations(term: str, contexts: list[dict], limit: int = 8) -> 
     return ranked[:limit]
 
 
-def cached_segment_translations(segments: list[str], source_lang: str = "EN", target_lang: str = "ZH-HANS") -> dict[str, str]:
-    values = list(dict.fromkeys(segment.strip() for segment in segments if segment and segment.strip()))
+def translation_source_text(value) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        for key in ("text", "definition", "gloss", "sentence", "value"):
+            text = translation_source_text(value.get(key))
+            if text:
+                return text
+        return ""
+    if isinstance(value, (list, tuple)):
+        return " ".join(filter(None, (translation_source_text(item) for item in value))).strip()
+    return ""
+
+
+def cached_segment_translations(segments: list, source_lang: str = "EN", target_lang: str = "ZH-HANS") -> dict[str, str]:
+    values = list(dict.fromkeys(filter(None, (translation_source_text(segment) for segment in segments))))
     if not values:
         return {}
     hashes = {hashlib.sha256(value.encode("utf-8")).hexdigest(): value for value in values}
@@ -4695,8 +4709,14 @@ def wordnet_lookup(term: str, limit: int = 8) -> list[dict]:
         semantic_relations: dict[str, list[str]] = {}
         for row in sense_rows:
             generic_pronunciations.extend(json.loads(row["pronunciations_json"] or "[]"))
-            definitions = json.loads(row["definitions_json"] or "[]")
-            sense_examples = json.loads(row["examples_json"] or "[]")
+            definitions = list(filter(None, (
+                translation_source_text(value)
+                for value in json.loads(row["definitions_json"] or "[]")
+            )))
+            sense_examples = list(filter(None, (
+                translation_source_text(value)
+                for value in json.loads(row["examples_json"] or "[]")
+            )))
             members = json.loads(row["members_json"] or "[]")
             synonyms.extend(member for member in members if member.casefold() != normalized)
             examples.extend(sense_examples)
