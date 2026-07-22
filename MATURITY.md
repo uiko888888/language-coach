@@ -92,6 +92,8 @@ Current strengths are source traceability, one-material-many-uses, evidence repl
 
 `alpha.25.15` closes every first-batch revision: 18 tasks gain genuinely constraining contexts and 10 are rejected because their distinctions belong in concept comparison, not correction. Published correction coverage reaches 40 while the original 44% first-pass result remains visible. Scores stay at 8.5/10 for confusion teaching and 6.6/10 for contextual output: editorial reliability and breadth improve, but no learner outcome evidence has yet changed.
 
+`alpha.25.16` repeats the stratified audit on another 50 candidates and reaches 100 reviewed tasks overall: 68 published after review or repair, 32 rejected and 57 still isolated. The second sample confirms that many fluent-looking substitutions are not valid correction questions. Confusion teaching remains 8.5/10 and contextual output 6.6/10; coverage and confidence in the editorial gate improve, but the product still lacks seven-day outcome evidence and broad phrase production.
+
 Interest and exam modes now use different home workflows: immersion and expression collection versus target, weakness and question-type prescription. They still share one profile so interest activity can later contribute domain evidence without masquerading as exam-score gains.
 
 ## Universal Product Requirements

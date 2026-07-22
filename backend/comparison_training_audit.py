@@ -58,6 +58,60 @@ INITIAL_CORRECTION_AUDIT_REVIEWS: tuple[dict, ...] = (
 )
 
 
+INITIAL_CORRECTION_AUDIT_REVIEWS += (
+    {"batch": 2, "task_id": "acquire-obtain-gain:correction:gain", "decision": "revise", "reason": "Acquire practical experience is also natural, so the context needs a fixed gain collocation."},
+    {"batch": 2, "task_id": "borrow-lend:correction:borrow", "decision": "approved", "reason": "The speaker receives the charger temporarily, which requires borrow rather than lend."},
+    {"batch": 2, "task_id": "bring-take-fetch:correction:take", "decision": "revise", "reason": "Fetch to the office can be interpreted as retrieving and delivering, so the direction needs a stricter frame."},
+    {"batch": 2, "task_id": "common-ordinary-normal-usual:correction:normal", "decision": "approved", "reason": "Return to normal is the established frame for restored expected operation."},
+    {"batch": 2, "task_id": "cordial-keen-zeal:correction:cordial", "decision": "approved", "reason": "Cordial welcome expresses formal warmth; keen does not modify welcome naturally here."},
+    {"batch": 2, "task_id": "economic-economical:correction:economic", "decision": "approved", "reason": "Economic growth concerns the economy; economical means avoiding waste."},
+    {"batch": 2, "task_id": "effective-efficient:correction:efficient", "decision": "revise", "reason": "Faster and effective can coexist, so the prompt needs an explicit resource-efficiency collocation."},
+    {"batch": 2, "task_id": "job-work-career:correction:career", "decision": "approved", "reason": "Build a career is the established long-term professional-development frame."},
+    {"batch": 2, "task_id": "look-see-watch:correction:look", "decision": "approved", "reason": "The imperative directing attention to an object requires look at."},
+    {"batch": 2, "task_id": "method-approach-way:correction:method", "decision": "approved", "reason": "Mixed-method is the established research-design compound."},
+    {"batch": 2, "task_id": "problem-issue-question:correction:problem", "decision": "rejected", "reason": "A serious issue and a serious problem are both natural descriptions of missing data."},
+    {"batch": 2, "task_id": "purpose-goal-objective-aim:correction:goal", "decision": "rejected", "reason": "Long-term goal and long-term objective are both valid."},
+    {"batch": 2, "task_id": "remember-remind:correction:remember", "decision": "approved", "reason": "Remember directly licenses the to-infinitive when the subject must retain the task."},
+    {"batch": 2, "task_id": "say-tell-speak-talk:correction:speak", "decision": "revise", "reason": "Talk at a conference is possible, so the prompt needs a language-ability frame."},
+    {"batch": 2, "task_id": "cite-site-sight:correction:sight", "decision": "approved", "reason": "A viewed scene is a sight; cite is a verb or reference."},
+    {"batch": 2, "task_id": "compliment-complement:correction:complement", "decision": "approved", "reason": "The examples complete the explanation, requiring complement."},
+    {"batch": 2, "task_id": "later-latter:correction:later", "decision": "approved", "reason": "A subsequent version is later; latter selects the second of two named items."},
+    {"batch": 2, "task_id": "loose-lose:correction:lose", "decision": "approved", "reason": "May requires the base verb lose; loose is an adjective or different verb."},
+    {"batch": 2, "task_id": "personal-personnel:correction:personnel", "decision": "approved", "reason": "Authorized staff as a group are personnel, not personal."},
+    {"batch": 2, "task_id": "principal-principle:correction:principle", "decision": "approved", "reason": "A guiding rule is a principle; principal does not name the rule."},
+    {"batch": 2, "task_id": "stationary-stationery:correction:stationary", "decision": "approved", "reason": "A vehicle not moving is stationary; stationery means writing materials."},
+    {"batch": 2, "task_id": "ielts-amount-number-quantity:correction:number", "decision": "revise", "reason": "Quantity of visitors is possible in technical prose, so the prompt needs the clearly invalid amount of people."},
+    {"batch": 2, "task_id": "ielts-approximately-roughly-about:correction:approximately", "decision": "rejected", "reason": "Roughly and approximately are both valid before the percentage."},
+    {"batch": 2, "task_id": "ielts-average-mean-median:correction:median", "decision": "approved", "reason": "The contrast with arithmetic mean identifies the median as the distinct distribution midpoint."},
+    {"batch": 2, "task_id": "ielts-difference-gap-disparity:correction:gap", "decision": "rejected", "reason": "Employment gap and employment disparity can both describe the group difference."},
+    {"batch": 2, "task_id": "ielts-minimum-lowest-nadir:correction:minimum", "decision": "revise", "reason": "Lowest charge is possible, so the rule-based lower bound needs a statutory-minimum frame."},
+    {"batch": 2, "task_id": "ielts-peak-maximum-high:correction:high", "decision": "approved", "reason": "Remain high is grammatical; peak requires a different frame such as at its peak."},
+    {"batch": 2, "task_id": "ielts-proportion-percentage-rate-ratio:correction:proportion", "decision": "rejected", "reason": "Proportion and percentage are both valid when the share is expressed as 32 percent."},
+    {"batch": 2, "task_id": "ielts-proportion-percentage-rate-ratio:correction:ratio", "decision": "approved", "reason": "A three-to-two comparison between two quantities is a ratio."},
+    {"batch": 2, "task_id": "ielts-sharp-steep-dramatic:correction:sharp", "decision": "rejected", "reason": "Sharp decline and steep decline are both natural without a defined visual slope."},
+    {"batch": 2, "task_id": "ielts-slight-marginal-modest:correction:marginal", "decision": "rejected", "reason": "Marginal and modest both plausibly characterize a small improvement."},
+    {"batch": 2, "task_id": "ielts-stable-steady-constant:correction:constant", "decision": "rejected", "reason": "Stable at 18 percent and constant at 18 percent are both valid summaries."},
+    {"batch": 2, "task_id": "ielts-total-sum-aggregate:correction:sum", "decision": "rejected", "reason": "Sum and aggregate can both name the combined value of categories."},
+    {"batch": 2, "task_id": "ielts-trend-pattern-tendency:correction:tendency", "decision": "rejected", "reason": "Trend to invest and tendency to invest are both possible in this context."},
+    {"batch": 2, "task_id": "ielts-advantage-benefit-merit:correction:benefit", "decision": "approved", "reason": "Benefit directly takes the people receiving an improvement; merit does not fit this beneficiary frame."},
+    {"batch": 2, "task_id": "ielts-also-moreover-furthermore:correction:furthermore", "decision": "rejected", "reason": "Also and furthermore both validly add the supporting sentence, differing mainly in register."},
+    {"batch": 2, "task_id": "ielts-although-despite-in-spite-of:correction:although", "decision": "approved", "reason": "The full finite clause requires although; despite takes a noun phrase or gerund."},
+    {"batch": 2, "task_id": "ielts-because-because-of-due-to:correction:due to", "decision": "rejected", "reason": "Due to and because of both correctly introduce the noun-phrase cause."},
+    {"batch": 2, "task_id": "ielts-believe-think-consider:correction:think", "decision": "rejected", "reason": "Consider that is valid, especially in formal British English."},
+    {"batch": 2, "task_id": "ielts-choice-option-alternative:correction:option", "decision": "rejected", "reason": "Practical option and practical alternative are both natural here."},
+    {"batch": 2, "task_id": "ielts-claim-argue-assert-maintain:correction:maintain", "decision": "rejected", "reason": "Claim and maintain can both introduce the authors' position without explicit challenge history."},
+    {"batch": 2, "task_id": "ielts-disadvantage-drawback-limitation:correction:limitation", "decision": "rejected", "reason": "Small sample size can be both a survey limitation and a disadvantage."},
+    {"batch": 2, "task_id": "ielts-false-incorrect-invalid:correction:incorrect", "decision": "rejected", "reason": "Incorrect total and invalid total can both describe an unacceptable calculated value."},
+    {"batch": 2, "task_id": "ielts-freedom-liberty-independence:correction:independence", "decision": "rejected", "reason": "Transport can increase both freedom and independence for older people."},
+    {"batch": 2, "task_id": "ielts-however-nevertheless-nonetheless:correction:nevertheless", "decision": "rejected", "reason": "Nonetheless and nevertheless are interchangeable in this concessive sentence."},
+    {"batch": 2, "task_id": "ielts-oppose-object-resist:correction:resist", "decision": "rejected", "reason": "Firms may naturally oppose or resist adopting costly equipment."},
+    {"batch": 2, "task_id": "ielts-responsibility-duty-obligation:correction:responsibility", "decision": "approved", "reason": "Take responsibility for is the fixed accountability frame."},
+    {"batch": 2, "task_id": "ielts-solution-measure-remedy:correction:solution", "decision": "approved", "reason": "Solution to is the required frame; measure does not take to a problem in this construction."},
+    {"batch": 2, "task_id": "ielts-true-correct-valid:correction:correct", "decision": "rejected", "reason": "A calculation can be both correct and valid while its source data are outdated."},
+    {"batch": 2, "task_id": "ielts-while-whereas:correction:whereas", "decision": "rejected", "reason": "While and whereas both contrast the two transport preferences."},
+)
+
+
 CORRECTION_TASK_REVISIONS: dict[str, dict] = {
     "affect-effect-influence:correction:effect": {
         "decision": "approved", "prompt": "The new regulations took influence immediately.",
@@ -179,15 +233,45 @@ CORRECTION_TASK_REVISIONS: dict[str, dict] = {
         "corrected_text": "While the survey was running, interviewers logged each refusal.",
         "reason": "Only while expresses the simultaneous time relationship intended here.",
     },
+    "acquire-obtain-gain:correction:gain": {
+        "decision": "approved", "prompt": "The new diet caused several participants to obtain weight.",
+        "corrected_text": "The new diet caused several participants to gain weight.",
+        "reason": "Gain weight is the established collocation for an increase in body mass.",
+    },
+    "bring-take-fetch:correction:take": {
+        "decision": "approved", "prompt": "Please fetch these files with you when you leave for the office.",
+        "corrected_text": "Please take these files with you when you leave for the office.",
+        "reason": "Take with you expresses movement away with the person; fetch implies retrieval and return.",
+    },
+    "effective-efficient:correction:efficient": {
+        "decision": "approved", "prompt": "The laboratory installed an energy-effective cooling system.",
+        "corrected_text": "The laboratory installed an energy-efficient cooling system.",
+        "reason": "Energy-efficient is the established resource-use compound.",
+    },
+    "say-tell-speak-talk:correction:speak": {
+        "decision": "approved", "prompt": "She can talk three languages fluently.",
+        "corrected_text": "She can speak three languages fluently.",
+        "reason": "Speak is the verb used for ability in a language.",
+    },
+    "ielts-amount-number-quantity:correction:number": {
+        "decision": "approved", "prompt": "The amount of international visitors exceeded two million.",
+        "corrected_text": "The number of international visitors exceeded two million.",
+        "reason": "Countable visitors require number rather than amount.",
+    },
+    "ielts-minimum-lowest-nadir:correction:minimum": {
+        "decision": "approved", "prompt": "The regulation establishes a statutory lowest of twelve dollars.",
+        "corrected_text": "The regulation establishes a statutory minimum of twelve dollars.",
+        "reason": "Statutory minimum is the legal lower-bound frame; lowest cannot fill the noun slot here.",
+    },
 }
 
 
 def _current_review(review: dict) -> dict:
     revision = CORRECTION_TASK_REVISIONS.get(review["task_id"])
     if not revision:
-        return dict(review)
+        return {"batch": review.get("batch", 1), **review}
     return {
-        **review,
+        "batch": review.get("batch", 1), **review,
         "initial_decision": review["decision"],
         "decision": revision["decision"],
         "reason": revision["reason"],

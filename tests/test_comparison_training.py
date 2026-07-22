@@ -40,18 +40,20 @@ class ComparisonTrainingTests(unittest.TestCase):
         candidate_corrections = [task for task in candidates if task["task_type"] == "correction"]
         self.assertEqual(len(candidates), 393)
         self.assertEqual(len(candidate_corrections), 157)
-        self.assertEqual(len(tasks), 276)
+        self.assertEqual(len(tasks), 304)
         self.assertEqual(len(choices), 236)
-        self.assertEqual(len(corrections), 40)
+        self.assertEqual(len(corrections), 68)
         self.assertEqual(len({task["task_id"] for task in tasks}), len(tasks))
         self.assertTrue(all(task["answer"] in task["options"] for task in tasks))
         self.assertTrue(all(task["corrected_text"] for task in corrections))
         self.assertTrue(all(task["audit_status"] == "approved" for task in corrections))
 
-    def test_audit_reviews_fifty_stratified_tasks_and_quarantines_revisions(self):
+    def test_audit_reviews_two_stratified_batches_and_quarantines_rejections(self):
         summary = correction_audit_summary()
         rejected_task = next(task_id for task_id, review in CORRECTION_AUDIT_BY_TASK.items() if review["decision"] == "rejected")
-        self.assertEqual(summary, {"reviewed": 50, "approved": 40, "revise": 0, "rejected": 10, "rewritten": 18})
+        self.assertEqual(summary, {"reviewed": 100, "approved": 68, "revise": 0, "rejected": 32, "rewritten": 24})
+        self.assertEqual(sum(review["batch"] == 1 for review in CORRECTION_AUDIT_BY_TASK.values()), 50)
+        self.assertEqual(sum(review["batch"] == 2 for review in CORRECTION_AUDIT_BY_TASK.values()), 50)
         self.assertNotIn(rejected_task, {task["task_id"] for task in comparison_training_catalog()})
         with server.db() as conn, self.assertRaisesRegex(ValueError, "not found"):
             submit_comparison_training_answer(conn, rejected_task, "about")
@@ -62,7 +64,7 @@ class ComparisonTrainingTests(unittest.TestCase):
             task_id: revision for task_id, revision in CORRECTION_TASK_REVISIONS.items()
             if revision["decision"] == "approved"
         }
-        self.assertEqual(len(approved_revisions), 18)
+        self.assertEqual(len(approved_revisions), 24)
         for task_id, revision in approved_revisions.items():
             task = tasks[task_id]
             self.assertIn(task["answer"].casefold(), revision["corrected_text"].casefold())
@@ -116,8 +118,8 @@ class ComparisonTrainingTests(unittest.TestCase):
                 comparison_training_queue(conn, topic="unknown")
         self.assertEqual(queue["items"][0]["task_id"], tasks[1]["task_id"])
         self.assertEqual(queue["summary"]["wrong"], 1)
-        self.assertEqual(queue["quality"]["reviewed"], 50)
-        self.assertEqual(queue["quality"]["published"], 40)
+        self.assertEqual(queue["quality"]["reviewed"], 100)
+        self.assertEqual(queue["quality"]["published"], 68)
 
 
 if __name__ == "__main__":

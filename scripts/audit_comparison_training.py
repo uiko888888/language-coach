@@ -31,6 +31,7 @@ def main() -> int:
         (candidate_map[task_id]["topic"], candidate_map[task_id]["confusion_type"])
         for task_id in reviewed_ids if task_id in candidate_map
     )
+    batches = Counter(review.get("batch", 1) for review in CORRECTION_AUDIT_REVIEWS)
     revision_errors = []
     for task_id, revision in CORRECTION_TASK_REVISIONS.items():
         task = candidate_map.get(task_id)
@@ -56,6 +57,7 @@ def main() -> int:
         "approval_rate": round(len(approved_ids) / len(reviewed_ids), 3) if reviewed_ids else 0,
         "revision_records": len({task_id for task_id in reviewed_ids if task_id in CORRECTION_TASK_REVISIONS}),
         "strata": {f"{topic}:{kind}": count for (topic, kind), count in sorted(strata.items())},
+        "batches": {str(batch): count for batch, count in sorted(batches.items())},
         "missing_review_tasks": missing,
         "duplicate_reviews": duplicate_reviews,
         "invalid_decisions": invalid_decisions,
@@ -63,7 +65,8 @@ def main() -> int:
         "publication_matches_approval": published_ids == approved_ids,
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
-    return 0 if not missing and not duplicate_reviews and not invalid_decisions and not revision_errors and published_ids == approved_ids else 1
+    valid_batches = batches == Counter({1: 50, 2: 50})
+    return 0 if not missing and not duplicate_reviews and not invalid_decisions and not revision_errors and valid_batches and published_ids == approved_ids else 1
 
 
 if __name__ == "__main__":

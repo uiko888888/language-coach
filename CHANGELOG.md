@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.16] - 2026-07-22
+
+### Changed
+
+- Completed a second stratified audit batch of 50 correction candidates: 14 general semantic, 7 lookalike, 13 IELTS chart and 16 IELTS argument tasks.
+- Approved 22 original tasks, rewrote and approved 6 tasks, and rejected 22 natural alternatives that cannot support a unique correction answer.
+- Cumulative correction status is now 100 reviewed, 68 published, 32 rejected and 57 unavailable pending review.
+
+### Reliability
+
+- Audit records carry explicit batch identifiers, and the executable quality gate requires exactly 50 records in each of the first two batches.
+- Six new rewrites use fixed collocations or grammatical frames and pass the existing target, distractor and sentence-change checks.
+- Published correction tasks remain an exact set match with all current approved decisions.
+
+### Verification
+
+- All 248 automated tests pass with 2 optional-dependency tests skipped; audit, compilation, JavaScript and isolated desktop Playwright checks pass on schema 23.
+
+### Scope Boundary
+
+- The 68% cumulative approval rate includes post-review rewrites and must not be presented as first-pass generation accuracy.
+- Fifty-seven candidates remain isolated, and no correction result changes whole-profile ability without longitudinal evidence.
+
 ## [0.8.0-alpha.25.15] - 2026-07-22
 
 ### Changed
