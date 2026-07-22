@@ -206,11 +206,13 @@ class LexicalSearchTests(unittest.TestCase):
 
     def test_curated_catalog_exposes_every_group_without_editorial_body_duplication(self):
         catalog = curated_comparison_catalog()
-        self.assertEqual(len(catalog), 45)
+        self.assertEqual(len(catalog), 105)
         self.assertEqual(catalog[0]["query"], "cordial, keen, zeal")
         composition = next(item for item in catalog if item["slug"] == "compose-comprise-constitute-consist-of")
         self.assertEqual(composition["terms"], ["compose", "comprise", "constitute", "consist of"])
         self.assertNotIn("items", composition)
+        self.assertEqual(sum(group["reviewed"] for group in catalog), 45)
+        self.assertEqual(sum(group["catalog_status"] == "candidate" for group in catalog), 60)
 
     def test_lookalike_groups_expose_spelling_grammar_and_category(self):
         payload = server.lexical_comparison("complement, compliment")
@@ -224,9 +226,17 @@ class LexicalSearchTests(unittest.TestCase):
     def test_lookalike_catalog_has_high_frequency_homophone_and_direction_groups(self):
         catalog = curated_comparison_catalog()
         lookalikes = [group for group in catalog if group["confusion_type"] == "lookalike"]
-        self.assertEqual(len(lookalikes), 14)
+        self.assertEqual(len(lookalikes), 44)
         self.assertTrue(any(group["slug"] == "cite-site-sight" for group in lookalikes))
         self.assertTrue(any(group["slug"] == "emigrate-immigrate" for group in lookalikes))
+
+    def test_candidate_group_exposes_evidence_without_claiming_review(self):
+        payload = server.lexical_comparison("accurate, precise, exact")
+        self.assertFalse(payload["reviewed"])
+        self.assertEqual(payload["mode"], "candidate")
+        self.assertEqual(payload["catalog_status"], "candidate")
+        self.assertIn("等待", payload["summary"])
+        self.assertTrue(all(not item["patterns"] for item in payload["items"]))
 
     def test_frontend_comparison_catalog_can_filter_lookalikes(self):
         source = (Path(__file__).parents[1] / "frontend" / "app.js").read_text(encoding="utf-8")

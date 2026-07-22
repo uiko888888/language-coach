@@ -35,7 +35,7 @@ try:
     from .complete_word_review import complete_word_catalog, submit_complete_word_review
     from .dictionary_quality import audit_dictionary_data
     from .lexical_data import lookup_lexical_layers, search_open_entries
-    from .lexical_compare import curated_comparison, curated_comparison_catalog, curated_term_profile, parse_comparison_terms
+    from .lexical_compare import comparison_candidate, curated_comparison, curated_comparison_catalog, curated_term_profile, parse_comparison_terms
     from .migrations import run_migrations
     from .output_training import (
         create_output_task_set, latest_output_task_set, output_attempt_payload,
@@ -65,7 +65,7 @@ except ImportError:
     from complete_word_review import complete_word_catalog, submit_complete_word_review
     from dictionary_quality import audit_dictionary_data
     from lexical_data import lookup_lexical_layers, search_open_entries
-    from lexical_compare import curated_comparison, curated_comparison_catalog, curated_term_profile, parse_comparison_terms
+    from lexical_compare import comparison_candidate, curated_comparison, curated_comparison_catalog, curated_term_profile, parse_comparison_terms
     from migrations import run_migrations
     from output_training import (
         create_output_task_set, latest_output_task_set, output_attempt_payload,
@@ -5115,11 +5115,14 @@ def lexical_comparison(query: str) -> dict:
             "source_note": "语义边界来自本地人工整理基础组；义项核对证据来自本机开放与私人词典层，不代表这些词典提供了本页辨析结论。",
             **{key: value for key, value in curated.items() if key != "items"}, "items": items,
         }
+    candidate = comparison_candidate(terms)
     return {
-        "query": query, "terms": terms, "mode": "evidence", "reviewed": False,
+        "query": query, "terms": terms, "mode": "candidate" if candidate else "evidence", "reviewed": False,
         "title": " / ".join(terms),
-        "shared_translation": "这些词尚未进入人工审核辨析组。",
-        "summary": "当前只并排展示词性、开放释义、搭配、例句和常用度，不根据相同中文翻译强行判断它们可以互换。",
+        "confusion_type": (candidate or {}).get("confusion_type"),
+        "catalog_status": (candidate or {}).get("catalog_status", "unreviewed"),
+        "shared_translation": (candidate or {}).get("shared_translation", "这些词尚未进入人工审核辨析组。"),
+        "summary": "该组已列入候选，正在等待人工审核。当前只并排展示开放证据，不发布未经核对的语义边界。" if candidate else "当前只并排展示词性、开放释义、搭配、例句和常用度，不根据相同中文翻译强行判断它们可以互换。",
         "memory_rule": "先比较词性和句型，再比较搭配与具体语境。",
         "dimensions": [],
         "source_note": "自动汇总本机开放词典证据，不作强行结论；不是出版词典的编辑性辨析。",

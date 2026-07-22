@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.8] - 2026-07-22
+
+### Added
+
+- Expanded the discoverable confusion catalog from 45 to 105 groups: 45 fully reviewed teaching groups and 60 explicitly pending candidates.
+- Added 30 semantic-overlap candidates and 30 spelling/form candidates selected from common general, academic and Chinese-learner confusion patterns.
+- Candidate queries open attributable dictionary evidence but cannot present collocations, memory rules or editorial boundaries as reviewed conclusions.
+- Added catalog status labels for `已审核` and `待核对`, plus a candidate-specific detail badge and explanation.
+
+### Reliability
+
+- Candidate validation rejects duplicate groups, duplicate slugs, malformed group sizes and unknown categories.
+- API and UI contracts preserve the distinction between reviewed content, registered candidates and arbitrary evidence comparisons.
+
+### Scope Boundary
+
+- The product now exceeds 100 discoverable groups, but only 45 are complete teaching content. The remaining 60 require corpus, syntax, collocation and bilingual-example review before promotion.
+- Candidate presence does not affect ability scores, FSRS or recommendation evidence.
+
+### Verification
+
+- All 227 automated tests pass with 2 optional-dependency tests skipped; desktop Playwright passes 105-group discovery, 44-group spelling filtering, candidate status and reviewed-group regressions on schema 21.
+
 ## [0.8.0-alpha.25.7] - 2026-07-22
 
 ### Added

@@ -1,0 +1,92 @@
+from __future__ import annotations
+
+
+def candidate(slug, terms, confusion_type, reason):
+    return {
+        "slug": slug,
+        "terms": terms,
+        "title": " / ".join(terms),
+        "query": ", ".join(terms),
+        "confusion_type": confusion_type,
+        "catalog_status": "candidate",
+        "reviewed": False,
+        "shared_translation": reason,
+        "memory_rule": "待完成语料、句法、搭配和双语例句核对后发布。",
+    }
+
+
+SEMANTIC_CANDIDATES = (
+    ("make-do-create-produce", ("make", "do", "create", "produce"), "都可涉及‘做、创造’，但动作对象和结果类型不同。"),
+    ("show-indicate-demonstrate-reveal", ("show", "indicate", "demonstrate", "reveal"), "都可译为‘显示、表明’，但证据力度和信息是否原本隐藏不同。"),
+    ("change-alter-modify-vary", ("change", "alter", "modify", "vary"), "都涉及变化，但范围、主动性和变化幅度不同。"),
+    ("improve-enhance-promote", ("improve", "enhance", "promote"), "都可能译为‘提高、促进’，但宾语和作用方式不同。"),
+    ("important-significant-crucial-essential", ("important", "significant", "crucial", "essential"), "都表示重要，但必要性、影响程度和语域不同。"),
+    ("accurate-precise-exact", ("accurate", "precise", "exact"), "都与准确有关，但正确性、精细度和完全一致的焦点不同。"),
+    ("damage-harm-hurt", ("damage", "harm", "hurt"), "都可译为‘伤害’，但对象、词性和损害类型不同。"),
+    ("limit-restrict-constrain", ("limit", "restrict", "constrain"), "都表示限制，但边界、规则和外部约束不同。"),
+    ("ask-request-inquire", ("ask", "request", "inquire"), "都与询问或请求有关，但句法和正式程度不同。"),
+    ("find-discover-detect-identify", ("find", "discover", "detect", "identify"), "都可能译为‘发现’，但新颖性、检测和确认身份不同。"),
+    ("big-large-great-major", ("big", "large", "great", "major"), "都可表示‘大、重要’，但可修饰对象和评价色彩不同。"),
+    ("ability-capacity-capability", ("ability", "capacity", "capability"), "都可译为‘能力’，但个人技能、容量和系统潜力不同。"),
+    ("attitude-opinion-view-perspective", ("attitude", "opinion", "view", "perspective"), "都与看法有关，但情感倾向、判断内容和观察角度不同。"),
+    ("reason-cause-factor", ("reason", "cause", "factor"), "都用于解释，但理由、直接成因和影响因素不同。"),
+    ("avoid-prevent-prohibit", ("avoid", "prevent", "prohibit"), "都涉及不让事情发生，但主体、句法和规则强度不同。"),
+    ("chance-opportunity-occasion", ("chance", "opportunity", "occasion"), "都可能译为‘机会’，但可能性、有利时机和场合不同。"),
+    ("house-home-family", ("house", "home", "family"), "中文都可能关联‘家’，但建筑、归属地点和家庭成员不同。"),
+    ("travel-journey-trip-voyage", ("travel", "journey", "trip", "voyage"), "都与旅行有关，但可数性、往返结构和交通场景不同。"),
+    ("price-cost-value", ("price", "cost", "value"), "都与价格有关，但标价、付出成本和价值判断不同。"),
+    ("custom-habit-tradition", ("custom", "habit", "tradition"), "都可译为‘习惯、传统’，但群体规范、个人重复行为和代际传承不同。"),
+    ("historic-historical", ("historic", "historical"), "都与历史有关，但具有历史意义和一般历史相关不同。"),
+    ("classic-classical", ("classic", "classical"), "都可译为‘经典的’，但典范作品和古典传统不同。"),
+    ("respectful-respectable-respective", ("respectful", "respectable", "respective"), "拼写相近且都常见于正式写作，但分别表示尊敬、体面和各自。"),
+    ("continual-continuous", ("continual", "continuous"), "都表示持续，但反复发生和不中断不同。"),
+    ("sensible-sensitive", ("sensible", "sensitive"), "都可与人的反应相关，但明智和敏感不同。"),
+    ("famous-notorious", ("famous", "notorious"), "都表示知名，但褒贬色彩相反。"),
+    ("alone-lonely", ("alone", "lonely"), "都可能译为‘独自’，但客观状态和主观感受不同。"),
+    ("especially-specially", ("especially", "specially"), "都可译为‘特别’，但突出程度和专门目的不同。"),
+    ("hard-hardly", ("hard", "hardly"), "字形相近，但分别表示努力/困难和几乎不。"),
+    ("near-nearly", ("near", "nearly"), "字形相近，但分别表示距离接近和程度上几乎。"),
+)
+
+
+LOOKALIKE_CANDIDATES = (
+    ("accept-except", ("accept", "except"), "只差首字母附近拼写，分别表示接受和排除。"),
+    ("access-excess", ("access", "excess"), "拼写和读音接近，分别表示访问权和过量。"),
+    ("allude-elude", ("allude", "elude"), "拼写接近，分别表示暗指和逃避/难倒。"),
+    ("altar-alter", ("altar", "alter"), "同音近形，分别表示祭坛和改变。"),
+    ("angel-angle", ("angel", "angle"), "字母次序接近，分别表示天使和角度。"),
+    ("beside-besides", ("beside", "besides"), "只差词尾 s，分别表示在旁边和此外。"),
+    ("breath-breathe", ("breath", "breathe"), "意义相关但词性、词尾和发音不同。"),
+    ("canvas-canvass", ("canvas", "canvass"), "近音近形，分别表示帆布和游说/征询。"),
+    ("capital-capitol", ("capital", "capitol"), "同音近形，分别表示首都/资本和议会大厦。"),
+    ("coarse-course", ("coarse", "course"), "同音，分别表示粗糙和课程/路线。"),
+    ("dairy-diary", ("dairy", "diary"), "字母次序接近，分别表示乳品和日记。"),
+    ("decent-descent-dissent", ("decent", "descent", "dissent"), "读音和拼写接近，分别表示体面、下降/血统和异议。"),
+    ("elicit-illicit", ("elicit", "illicit"), "近音近形，分别表示引出和非法的。"),
+    ("farther-further", ("farther", "further"), "形近且部分语境重叠，但物理距离和引申推进偏好不同。"),
+    ("formally-formerly", ("formally", "formerly"), "只差元音位置，分别表示正式地和以前。"),
+    ("human-humane", ("human", "humane"), "词根相同，分别表示人类的和仁慈的。"),
+    ("lead-led", ("lead", "led"), "现在式、金属义和过去式发音拼写容易交叉混淆。"),
+    ("moral-morale", ("moral", "morale"), "近音近形，分别表示道德和士气。"),
+    ("passed-past", ("passed", "past"), "同音，分别是 pass 的过去式和过去/经过。"),
+    ("peace-piece", ("peace", "piece"), "同音，分别表示和平和一片/一件。"),
+    ("plain-plane", ("plain", "plane"), "同音，分别表示朴素/平原和飞机/平面。"),
+    ("practice-practise", ("practice", "practise"), "英式英语中名词和动词拼写不同，美式用法又有所合并。"),
+    ("pray-prey", ("pray", "prey"), "同音，分别表示祈祷和猎物。"),
+    ("prescribe-proscribe", ("prescribe", "proscribe"), "只差前缀，分别表示开具/规定和禁止。"),
+    ("role-roll", ("role", "roll"), "同音，分别表示角色和滚动/卷。"),
+    ("than-then", ("than", "then"), "弱读时易混，分别用于比较和时间/结果顺序。"),
+    ("weather-whether", ("weather", "whether"), "同音，分别表示天气和是否。"),
+    ("whose-whos", ("whose", "who's"), "同音，分别表示所属和 who is/who has 的缩写。"),
+    ("your-youre", ("your", "you're"), "同音，分别是所有格和 you are 的缩写。"),
+    ("there-their-theyre", ("there", "their", "they're"), "同音，分别表示地点、所属和 they are 的缩写。"),
+)
+
+
+COMPARISON_CANDIDATES = tuple(
+    candidate(slug, terms, "semantic", reason)
+    for slug, terms, reason in SEMANTIC_CANDIDATES
+) + tuple(
+    candidate(slug, terms, "lookalike", reason)
+    for slug, terms, reason in LOOKALIKE_CANDIDATES
+)

@@ -3,10 +3,12 @@ from __future__ import annotations
 import re
 
 try:
+    from .lexical_compare_candidates import COMPARISON_CANDIDATES
     from .lexical_compare_data import COMMON_CURATED_COMPARISONS
     from .lexical_compare_data_extended import EXTENDED_CURATED_COMPARISONS
     from .lexical_compare_data_lookalike import LOOKALIKE_CURATED_COMPARISONS
 except ImportError:
+    from lexical_compare_candidates import COMPARISON_CANDIDATES
     from lexical_compare_data import COMMON_CURATED_COMPARISONS
     from lexical_compare_data_extended import EXTENDED_CURATED_COMPARISONS
     from lexical_compare_data_lookalike import LOOKALIKE_CURATED_COMPARISONS
@@ -71,6 +73,26 @@ CURATED_COMPARISONS += (
 )
 
 
+def validate_comparison_candidates() -> None:
+    reviewed_sets = {frozenset(group["terms"]) for group in CURATED_COMPARISONS}
+    seen_slugs: set[str] = set()
+    seen_sets: set[frozenset[str]] = set()
+    for item in COMPARISON_CANDIDATES:
+        terms = tuple(item["terms"])
+        term_set = frozenset(terms)
+        if item["slug"] in seen_slugs or term_set in seen_sets or term_set in reviewed_sets:
+            raise ValueError(f"Duplicate comparison candidate: {item['slug']}")
+        if not 2 <= len(terms) <= 5 or len(term_set) != len(terms):
+            raise ValueError(f"Invalid comparison candidate: {item['slug']}")
+        if item["confusion_type"] not in {"semantic", "lookalike"}:
+            raise ValueError(f"Invalid candidate type: {item['slug']}")
+        seen_slugs.add(item["slug"])
+        seen_sets.add(term_set)
+
+
+validate_comparison_candidates()
+
+
 def validate_curated_comparisons() -> None:
     seen_terms: set[str] = set()
     required_item_fields = {
@@ -99,7 +121,7 @@ validate_curated_comparisons()
 
 
 def curated_comparison_catalog() -> list[dict]:
-    return [
+    reviewed = [
         {
             "slug": comparison["slug"],
             "title": comparison["title"],
@@ -108,9 +130,20 @@ def curated_comparison_catalog() -> list[dict]:
             "shared_translation": comparison["shared_translation"],
             "memory_rule": comparison["memory_rule"],
             "confusion_type": comparison.get("confusion_type", "semantic"),
+            "catalog_status": "reviewed",
+            "reviewed": True,
         }
         for comparison in CURATED_COMPARISONS
     ]
+    return reviewed + [dict(item) for item in COMPARISON_CANDIDATES]
+
+
+def comparison_candidate(terms: list[str]) -> dict | None:
+    normalized = {term.casefold() for term in terms}
+    for item in COMPARISON_CANDIDATES:
+        if normalized == {term.casefold() for term in item["terms"]} and len(terms) == len(item["terms"]):
+            return dict(item)
+    return None
 
 
 def parse_comparison_terms(query: str, minimum: int = 2, maximum: int = 5) -> list[str]:

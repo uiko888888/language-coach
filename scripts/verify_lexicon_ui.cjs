@@ -37,7 +37,7 @@ async function run() {
     } catch (error) {
       throw new Error(`${error.message}${serverError ? `\nBackend stderr:\n${serverError}` : ""}`);
     }
-    if (version.app_version !== "0.8.0-alpha.25.7" || version.database_schema_version !== 21) {
+    if (version.app_version !== "0.8.0-alpha.25.8" || version.database_schema_version !== 21) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const lexicalPayload = await fetch(`${baseUrl}/api/lexicon/search?q=cast`).then(response => response.json());
@@ -76,17 +76,20 @@ async function run() {
     if (await page.locator(".sense-examples .example-zh").count() < 1) failures.push("Chinese example translation is missing");
     await page.screenshot({ path: path.join(root, "artifacts", "lexicon-cast-desktop.png"), fullPage: true });
     await page.locator(".lexical-comparison-library summary").click();
-    if (await page.locator("#lexicalComparisonCatalog > button").count() !== 45) failures.push("comparison catalog does not expose all 45 groups");
+    if (await page.locator("#lexicalComparisonCatalog > button").count() !== 105) failures.push("comparison catalog does not expose all 105 groups");
     const catalogOverflow = await page.locator("#lexicalComparisonCatalog").evaluate(element => element.scrollHeight > element.clientHeight);
     if (!catalogOverflow) failures.push("comparison catalog is not scroll bounded");
     await page.click('[data-comparison-filter="lookalike"]');
-    if (await page.locator("#lexicalComparisonCatalog > button").count() !== 14) failures.push("lookalike filter does not expose 14 groups");
+    if (await page.locator("#lexicalComparisonCatalog > button").count() !== 44) failures.push("lookalike filter does not expose 44 groups");
     await page.click('[data-search-query="compliment, complement"]');
     await page.waitForSelector(".comparison-grid");
     if (await page.locator(".comparison-term-card").count() !== 2) failures.push("lookalike comparison does not show two term cards");
     if (!await page.locator(".comparison-header").getByText("拼写形近", { exact: true }).count()) failures.push("lookalike comparison label is missing");
     await page.screenshot({ path: path.join(root, "artifacts", "lexicon-compliment-complement-desktop.png"), fullPage: true });
     await page.click('[data-comparison-filter="all"]');
+    await page.click('[data-search-query="accurate, precise, exact"]');
+    await page.waitForFunction(() => document.querySelector(".comparison-header h2")?.textContent.includes("accurate / precise"));
+    if (!await page.locator(".comparison-header").getByText("候选组 · 待核对", { exact: true }).count()) failures.push("candidate review status is missing");
     await page.click('[data-search-query="compose, comprise, constitute, consist of"]');
     await page.waitForFunction(() => document.querySelector(".comparison-header h2")?.textContent.includes("compose / comprise"));
     if (await page.locator(".comparison-term-card").count() !== 4) failures.push("composition comparison does not show four term cards");
