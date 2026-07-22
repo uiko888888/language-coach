@@ -70,6 +70,15 @@ class LexicalSearchTests(unittest.TestCase):
         self.assertEqual(results[0]["translation_zh"], "查看有无损坏")
         self.assertTrue(any(item.get("headword") == "inspect" for item in results))
 
+    def test_reviewed_academic_phrase_is_the_exact_rich_search_result(self):
+        item = server.lexical_search("provide evidence for")["results"][0]
+        self.assertEqual(item["type"], "academic_phrase")
+        self.assertEqual(item["meaning_zh"], "为……提供证据")
+        self.assertEqual(item["category"], "evidence")
+        self.assertIn("provide evidence for + noun", item["grammar_frame"])
+        self.assertTrue(item["example_zh"])
+        self.assertEqual(item["score"], 115)
+
     def test_unknown_term_keeps_translation_learning_state_and_context(self):
         term = "meaningful control"
         now = server.utc_now()

@@ -1,5 +1,13 @@
 # Language Coach Architecture
 
+## Academic phrase catalog boundary
+
+- `backend/academic_phrases.py` owns the versioned 100-entry reviewed catalog, source disclosure and structural validation; it does not read mutable learner data.
+- `backend/server.py` exposes filtered catalog and exact-search responses, then reuses the existing card API rather than creating a separate phrase-review store.
+- Phrase cards persist stable sense and learning metadata in the existing payload boundary, so schema 23 and FSRS ownership remain unchanged.
+- Catalog examples are project-original. Commercial/private dictionary data remains local evidence and is not copied into the distributable catalog.
+- Reference lookup and spaced review are complete; active production tasks and measured learning outcomes remain separate future work.
+
 ## Schema 22 lexical comparison editorial boundary
 
 - `backend/lexical_compare*.py` owns the versioned reviewed foundation and the discoverable candidate registry.

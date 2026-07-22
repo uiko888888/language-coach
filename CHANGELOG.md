@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.17] - 2026-07-23
+
+### Added
+
+- Added 100 reviewed high-frequency academic phrases across evidence, cause, comparison, data, stance, limitations, method, structure, policy and learning.
+- Added phrase browsing and IELTS, TOEFL, postgraduate and Kaoyan filters to the dictionary sidebar while preserving the desktop master-detail layout.
+- Exact phrase lookup now returns simplified-Chinese meaning, English concept, grammar frame, usage boundary, register and an original bilingual example.
+
+### Learning Loop
+
+- Academic phrases can be saved with a stable sense key and rich lexical metadata, then reviewed through the existing phrase-card and FSRS workflow.
+- A dedicated API and executable audit validate category balance, required fields, uniqueness, simplified Chinese and source boundaries.
+
+### Verification
+
+- All 253 automated tests pass with 2 optional-dependency tests skipped; compilation, JavaScript syntax, content audit and isolated schema 23 desktop Playwright checks pass.
+
+### Scope Boundary
+
+- Common phrases are locally curated and examples are project-original; no commercial dictionary entry or example is copied.
+- This release establishes reference and spaced-review coverage. Active phrase completion, translation production and measured seven-day learning gains remain unimplemented.
+
 ## [0.8.0-alpha.25.16] - 2026-07-22
 
 ### Changed

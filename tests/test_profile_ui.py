@@ -136,6 +136,18 @@ class ProfileUiContractTests(unittest.TestCase):
         for field in ("sense_key", "meaning_zh", "concept_en", "grammar_frame", "confusion_note"):
             self.assertIn(field, self.js)
 
+    def test_reviewed_academic_phrases_render_and_save_rich_phrase_cards(self):
+        for element_id in ("academicPhraseCategory", "academicPhraseExam", "academicPhraseCatalog", "academicPhraseCount"):
+            self.assertIn(f'id="{element_id}"', self.html)
+        for contract in (
+            'item.type === "academic_phrase"', "academic-phrase-summary", "审核学术词组",
+            "item.grammar_frame", "item.usage_note_zh", "item.source_attribution",
+            'matchingItem?.type === "academic_phrase" ? matchingItem.example',
+            "async function loadAcademicPhrases()", 'api(`/api/lexicon/academic-phrases?',
+        ):
+            self.assertIn(contract, self.js)
+        self.assertIn(".academic-phrase-catalog", self.css)
+
     def test_dictionary_query_workflow_has_correction_history_and_reference_actions(self):
         for element_id in ("lexiconGuidance", "lexiconHistory", "clearLexiconHistoryBtn"):
             self.assertIn(element_id, self.html + self.js)
@@ -191,7 +203,7 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.25.16";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.25.17";', self.js)
         self.assertIn('const SUPPORTED_SCHEMA_VERSION = "23";', self.js)
         self.assertIn('const schemaCompatible =', self.js)
         self.assertIn('api("/api/backups"', self.js)

@@ -130,6 +130,15 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(blocked.exception.code, 422)
         blocked.exception.close()
 
+    def test_academic_phrase_catalog_is_filterable_and_searchable(self):
+        catalog, _ = self.request("/api/lexicon/academic-phrases?category=evidence&exam=IELTS")
+        search, _ = self.request("/api/lexicon/search?q=provide%20evidence%20for")
+        self.assertEqual(catalog["count"], 10)
+        self.assertEqual(len(catalog["categories"]), 10)
+        self.assertEqual(catalog["items"][0]["category"], "evidence")
+        self.assertEqual(search["results"][0]["type"], "academic_phrase")
+        self.assertEqual(search["results"][0]["term"], "provide evidence for")
+
     def test_comparison_training_api_saves_wrong_boundary_to_review_and_undoes_rating(self):
         training, _ = self.request("/api/lexicon/comparison-training?topic=charts&task_type=choice&limit=20")
         self.assertGreater(training["summary"]["total"], 20)

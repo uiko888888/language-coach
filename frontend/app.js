@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.25.16";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.25.17";
 const SUPPORTED_API_VERSION = "1";
 const SUPPORTED_SCHEMA_VERSION = "23";
 
@@ -86,6 +86,9 @@ const state = {
   lexiconResults: [],
   lexicalComparison: null,
   lexicalComparisonCatalog: [],
+  academicPhrases: { items: [], categories: [], count: 0 },
+  academicPhraseCategory: "",
+  academicPhraseExam: "",
   lexicalComparisonFilter: "all",
   comparisonReviews: { items: [], counts: {}, total: 0 },
   lexiconMeta: { resolution: null, suggestions: [] },
@@ -1783,7 +1786,7 @@ async function renderLookup(word) {
 }
 
 function lexicalLabel(item) {
-  return ["entry", "wordnet", "open"].includes(item.type) ? item.headword : item.type === "query" ? item.term : item.form;
+  return ["entry", "wordnet", "open"].includes(item.type) ? item.headword : ["query", "academic_phrase"].includes(item.type) ? item.term : item.form;
 }
 
 function lexicalSubtitle(item) {
@@ -1792,13 +1795,14 @@ function lexicalSubtitle(item) {
   if (item.type === "wordnet") return `${item.pos} · ${item.meaning_zh || item.core_meaning}`;
   if (item.type === "open") return `${item.pos} · ${item.meaning_zh || item.core_meaning}`;
   if (item.type === "private") return `${item.source_kind === "encyclopedia" ? "百科补充" : "私人双语词典"} · 仅本机`;
+  if (item.type === "academic_phrase") return `${item.category_label} · ${item.meaning_zh}`;
   if (item.type === "query") return `${item.kind === "phrase" ? "短语" : "单词"} · ${item.translation_zh || (item.saved ? "已在生词本" : "待补充释义")}`;
   return `${item.kind} · ${item.meaning_zh}`;
 }
 
 function matchesLexiconFilter(item) {
   if (state.lexiconFilter === "all") return true;
-  if (state.lexiconFilter === "family") return ["entry", "wordnet", "open", "private"].includes(item.type);
+  if (state.lexiconFilter === "family") return ["entry", "wordnet", "open", "private", "academic_phrase"].includes(item.type);
   if (state.lexiconFilter === "morpheme") return item.type === "morpheme";
   return item.type === "morpheme" && item.kind === state.lexiconFilter;
 }
@@ -2088,6 +2092,27 @@ function renderLexicalDetail(item) {
     finalizeLexicalDetail(item);
     return;
   }
+  if (item.type === "academic_phrase") {
+    detail.innerHTML = `
+      <div class="dictionary-hero">
+        <div><div class="badge-row">${badge("审核学术词组", "teal")}${badge(item.category_label)}${(item.exam_tags || []).map(value => badge(value, "amber")).join("")}</div><h2>${escapeHtml(item.term)}</h2><p class="core-definition">${escapeHtml(item.meaning_zh)}</p></div>
+        <div class="toolbar"><button class="primary" data-save-lookup="${escapeHtml(item.term)}">${item.saved ? "更新词组卡" : "加入词组本"}</button><button data-speak="${escapeHtml(item.term)}" data-voice="en-GB" title="英式发音">▶ UK</button><button data-speak="${escapeHtml(item.term)}" data-voice="en-US" title="美式发音">▶ US</button></div>
+      </div>
+      <section class="lexical-learning-summary academic-phrase-summary">
+        <p class="learning-concept-en">${escapeHtml(item.concept_en)}</p>
+        <div class="learning-summary-grid">
+          <section><strong>语法框架</strong><p>${escapeHtml(item.grammar_frame)}</p></section>
+          <section><strong>使用边界</strong><p>${escapeHtml(item.usage_note_zh)}</p></section>
+          <section><strong>语域</strong><p>${escapeHtml(item.register)}</p></section>
+        </div>
+        <blockquote><p>${searchableEnglish(item.example, false)}</p><small>${escapeHtml(item.example_zh)}</small></blockquote>
+      </section>
+      ${item.contexts?.length ? `<section class="dictionary-section"><h3>你的真实语境</h3>${contextExamples(item.contexts)}</section>` : ""}
+      <details class="lexical-source-disclosure"><summary>编辑来源与版权边界</summary><p><strong>${escapeHtml(item.source_name)} · ${escapeHtml(item.source_version)}</strong></p><p>${escapeHtml(item.source_attribution)}</p><small>${escapeHtml(item.copyright_status)}</small></details>
+    `;
+    finalizeLexicalDetail(item);
+    return;
+  }
   if (item.type === "query") {
     const translated = state.lookupTranslations[item.term.toLowerCase()] || item.translation_zh || "";
     detail.innerHTML = `
@@ -2296,6 +2321,30 @@ function renderLexicon() {
   renderLexiconGuidance();
   renderLexiconHistory();
   renderLexicalDetail(state.selectedLexicalItem);
+}
+
+function renderAcademicPhrases() {
+  const data = state.academicPhrases || { items: [], categories: [], count: 0 };
+  const categorySelect = $("#academicPhraseCategory");
+  if (categorySelect && categorySelect.options.length <= 1) {
+    categorySelect.innerHTML = `<option value="">全部类别</option>${(data.categories || []).map(item => `<option value="${escapeHtml(item.key)}">${escapeHtml(item.label)}</option>`).join("")}`;
+  }
+  if (categorySelect) categorySelect.value = state.academicPhraseCategory;
+  $("#academicPhraseExam").value = state.academicPhraseExam;
+  $("#academicPhraseCount").textContent = data.count || 0;
+  $("#academicPhraseCatalog").innerHTML = (data.items || []).map(item => `
+    <button data-search-query="${escapeHtml(item.term)}"><strong>${escapeHtml(item.term)}</strong><span>${escapeHtml(item.meaning_zh)}</span><small>${escapeHtml(item.category_label)}</small></button>
+  `).join("") || `<div class="empty-state">当前筛选下没有词组。</div>`;
+}
+
+async function loadAcademicPhrases() {
+  const params = new URLSearchParams({
+    category: state.academicPhraseCategory,
+    exam: state.academicPhraseExam,
+    limit: "100",
+  });
+  state.academicPhrases = await api(`/api/lexicon/academic-phrases?${params.toString()}`);
+  renderAcademicPhrases();
 }
 
 async function loadDictionaryStatus() {
@@ -4314,7 +4363,18 @@ async function saveArticle() {
 }
 
 function lexicalCardMetadata(item, sense = null) {
-  if (!item || !["wordnet", "open", "entry"].includes(item.type)) return {};
+  if (!item || !["wordnet", "open", "entry", "academic_phrase"].includes(item.type)) return {};
+  if (item.type === "academic_phrase") {
+    return {
+      sense_key: item.sense_key,
+      part_of_speech: "phrase",
+      meaning_zh: item.meaning_zh,
+      concept_en: item.concept_en,
+      grammar_frame: item.grammar_frame,
+      confusion_note: item.usage_note_zh,
+      lexical_source: `${item.source_name} · ${item.source_version}`,
+    };
+  }
   const profile = !sense ? item.learning_profile : null;
   const meanings = sense?.definition_translations?.filter(Boolean)
     || profile?.meaning_zh && [profile.meaning_zh]
@@ -4368,7 +4428,9 @@ async function saveLexicalCard(term, senseIndex = null) {
   const matchingItem = item && lexicalLabel(item).toLowerCase() === String(term).toLowerCase() ? item : null;
   const sense = senseIndex === null ? null : matchingItem?.senses?.[senseIndex] || null;
   const articleBody = state.selectedArticle?.body || "";
-  const context = articleBody.toLowerCase().includes(String(term).toLowerCase()) ? sentenceFor(articleBody, term) : "";
+  const context = articleBody.toLowerCase().includes(String(term).toLowerCase())
+    ? sentenceFor(articleBody, term)
+    : matchingItem?.type === "academic_phrase" ? matchingItem.example : "";
   await saveCard(term, context, lexicalCardMetadata(matchingItem, sense));
 }
 
@@ -5154,6 +5216,14 @@ $("#privateDictionaryList").addEventListener("change", async event => {
 
 $("#comparisonReviewStatusFilter").addEventListener("change", () => loadComparisonReviews().catch(error => toast(error.message)));
 $("#comparisonReviewExamFilter").addEventListener("change", () => loadComparisonReviews().catch(error => toast(error.message)));
+$("#academicPhraseCategory").addEventListener("change", async event => {
+  state.academicPhraseCategory = event.target.value;
+  await loadAcademicPhrases();
+});
+$("#academicPhraseExam").addEventListener("change", async event => {
+  state.academicPhraseExam = event.target.value;
+  await loadAcademicPhrases();
+});
 $("#comparisonTrainingTopic").addEventListener("change", async event => {
   state.comparisonTrainingTopic = event.target.value;
   state.selectedComparisonTaskId = null;
@@ -5187,7 +5257,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 async function boot() {
   await loadHealth();
   await loadActivePracticeData();
-  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadCompleteWordReviews(), loadComparisonTraining(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexicalComparisonCatalog(), loadComparisonReviews(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), loadOutputHistory(), loadOutputSupport(), loadSpeakingHistory(), loadSpeakingSupport(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadCompleteWordReviews(), loadComparisonTraining(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexicalComparisonCatalog(), loadAcademicPhrases(), loadComparisonReviews(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), loadOutputHistory(), loadOutputSupport(), loadSpeakingHistory(), loadSpeakingSupport(), searchLexicon("", { open: false, history: false })]);
   const restoredServerRun = await restoreServerPracticeRun();
   if (!restoredServerRun && !state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);

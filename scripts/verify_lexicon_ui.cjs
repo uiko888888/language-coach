@@ -37,7 +37,7 @@ async function run() {
     } catch (error) {
       throw new Error(`${error.message}${serverError ? `\nBackend stderr:\n${serverError}` : ""}`);
     }
-    if (version.app_version !== "0.8.0-alpha.25.16" || version.database_schema_version !== 23) {
+    if (version.app_version !== "0.8.0-alpha.25.17" || version.database_schema_version !== 23) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const lexicalPayload = await fetch(`${baseUrl}/api/lexicon/search?q=cast`).then(response => response.json());
@@ -100,6 +100,22 @@ async function run() {
     if (await page.locator(".comparison-patterns button").count() < 8) failures.push("curated syntax and collocations are incomplete");
     if (!await page.locator(".comparison-memory-rule").getByText(/整体 comprises/).count()) failures.push("whole-part memory rule is missing");
     await page.screenshot({ path: path.join(root, "artifacts", "lexicon-compose-comprise-desktop.png"), fullPage: true });
+    const phraseCatalog = await fetch(`${baseUrl}/api/lexicon/academic-phrases?category=evidence&exam=IELTS`).then(response => response.json());
+    if (phraseCatalog.count !== 10 || phraseCatalog.categories?.length !== 10) failures.push("academic phrase catalog filters are incomplete");
+    await page.goto(`${baseUrl}/?view=lexicon&q=provide%20evidence%20for`, { waitUntil: "networkidle" });
+    await page.waitForSelector(".academic-phrase-summary");
+    if (!await page.locator("#lexiconDetail").getByText("为……提供证据", { exact: true }).count()) failures.push("academic phrase Chinese meaning is missing");
+    if (!await page.locator("#lexiconDetail").getByText("provide evidence for + noun", { exact: true }).count()) failures.push("academic phrase grammar frame is missing");
+    await Promise.all([
+      page.waitForResponse(response => response.url().endsWith("/api/cards") && response.request().method() === "POST"),
+      page.click('[data-save-lookup="provide evidence for"]'),
+    ]);
+    const savedPhraseCards = await fetch(`${baseUrl}/api/cards`).then(response => response.json());
+    const savedAcademicPhrase = savedPhraseCards.cards?.find(card => card.term === "provide evidence for");
+    if (!savedAcademicPhrase || savedAcademicPhrase.kind !== "phrase" || !savedAcademicPhrase.meaning_zh || !savedAcademicPhrase.concept_en || !savedAcademicPhrase.grammar_frame) failures.push("academic phrase did not save rich card metadata");
+    const phraseReviews = await fetch(`${baseUrl}/api/reviews?kind=phrase&limit=100`).then(response => response.json());
+    if (!phraseReviews.items?.some(item => item.item_id === savedAcademicPhrase?.id)) failures.push("academic phrase did not enter the phrase review queue");
+    await page.screenshot({ path: path.join(root, "artifacts", "academic-phrase-desktop.png"), fullPage: true });
     const training = await fetch(`${baseUrl}/api/lexicon/comparison-training?topic=charts&task_type=choice&limit=100`).then(response => response.json());
     const correctionTraining = await fetch(`${baseUrl}/api/lexicon/comparison-training?task_type=correction&limit=100`).then(response => response.json());
     if (correctionTraining.quality?.reviewed !== 100 || correctionTraining.quality?.published !== 68 || correctionTraining.quality?.rejected !== 32) failures.push("comparison correction quality gate is not active");

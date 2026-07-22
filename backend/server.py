@@ -27,6 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 try:
+    from .academic_phrases import CATEGORY_META as ACADEMIC_PHRASE_CATEGORIES, SOURCE as ACADEMIC_PHRASE_SOURCE, search_academic_phrases
     from .chinese_text import simplify_chinese_payload
     from .collocations import corpus_collocations
     from .ai_feedback import feedback_provider_status, request_semantic_feedback
@@ -59,6 +60,7 @@ try:
     from .versioning import SCHEMA_VERSION, app_version, version_payload
     from .usage_contrasts import contrast_by_slug, contrast_catalog
 except ImportError:
+    from academic_phrases import CATEGORY_META as ACADEMIC_PHRASE_CATEGORIES, SOURCE as ACADEMIC_PHRASE_SOURCE, search_academic_phrases
     from chinese_text import simplify_chinese_payload
     from collocations import corpus_collocations
     from ai_feedback import feedback_provider_status, request_semantic_feedback
@@ -4955,6 +4957,19 @@ def lexical_search(query: str, limit: int = 30, track: bool = False) -> dict:
 
     results: list[dict] = []
     exact_lexical_match = False
+    academic_results = search_academic_phrases(raw, limit=20) if raw else []
+    for item in academic_results:
+        exact = needle == item["term"].casefold()
+        learning = lexical_query_context(item["term"]) if exact else {}
+        results.append({
+            **item,
+            "score": 115 if exact else 82 if needle in item["term"].casefold() else 74,
+            "matched_by": "审核学术词组" if exact else "学术词组匹配",
+            "saved": learning.get("saved", False),
+            "card_status": learning.get("card_status", ""),
+            "contexts": learning.get("contexts", []),
+        })
+        exact_lexical_match = exact_lexical_match or exact
     for entry in entries:
         headword = entry["headword"].lower()
         forms = [value.lower() for value in entry["forms"]]
@@ -6556,6 +6571,23 @@ class App(BaseHTTPRequestHandler):
             if path == "/api/lexicon/search":
                 tracked = query.get("track", ["0"])[0].lower() in {"1", "true", "yes"}
                 return json_response(self, lexical_search(query.get("q", [""])[0], track=tracked))
+            if path == "/api/lexicon/academic-phrases":
+                try:
+                    items = search_academic_phrases(
+                        query.get("q", [""])[0], query.get("category", [""])[0],
+                        query.get("exam", [""])[0], int(query.get("limit", [100])[0]),
+                    )
+                except (TypeError, ValueError) as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, {
+                    "items": items,
+                    "count": len(items),
+                    "categories": [
+                        {"key": key, "label": value[0], "count": 10}
+                        for key, value in ACADEMIC_PHRASE_CATEGORIES.items()
+                    ],
+                    "source": ACADEMIC_PHRASE_SOURCE,
+                })
             if path == "/api/lexicon/compare":
                 try:
                     return json_response(self, lexical_comparison(query.get("q", [""])[0]))
