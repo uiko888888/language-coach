@@ -405,8 +405,19 @@ label {
 .extraction-label-footer { padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); }
 .user-center-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.85fr); gap: 14px; align-items: start; }
 .user-profile-main { grid-column: 1; grid-row: 1; }
-.private-dictionary-manager { grid-column: 1; grid-row: 2; }
-.user-center-side { grid-column: 2; grid-row: 1 / span 2; display: grid; gap: 14px; }
+.comparison-review-manager { grid-column: 1; grid-row: 2; }
+.private-dictionary-manager { grid-column: 1; grid-row: 3; }
+.user-center-side { grid-column: 2; grid-row: 1 / span 3; display: grid; gap: 14px; }
+.comparison-review-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-block: 1px solid var(--line); }
+.comparison-review-summary > div { display: grid; gap: 3px; padding: 9px; }
+.comparison-review-summary span, .comparison-review-row small, .comparison-review-row footer span { color: var(--muted); font-size: 11px; }
+.comparison-review-filters, .comparison-review-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.comparison-review-filters label, .comparison-review-controls label { display: grid; gap: 4px; font-size: 11px; color: var(--muted); }
+.comparison-review-list { display: grid; gap: 8px; max-height: 620px; margin-top: 10px; overflow-y: auto; }
+.comparison-review-row { display: grid; gap: 7px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; }
+.comparison-review-row header, .comparison-review-row footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.comparison-review-row header > div { display: grid; gap: 3px; min-width: 0; }
+.comparison-review-row textarea { min-height: 46px; resize: vertical; }
 .user-domain-list { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 14px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .user-domain-list > div { display: grid; gap: 3px; min-width: 0; padding: 11px 10px; }
 .user-domain-list > div + div { border-left: 1px solid var(--line); }
@@ -1610,7 +1621,7 @@ label {
 
   .user-center-layout,
   .user-domain-list { grid-template-columns: 1fr; }
-  .user-profile-main, .private-dictionary-manager, .user-center-side { grid-column: 1; grid-row: auto; }
+  .user-profile-main, .comparison-review-manager, .private-dictionary-manager, .user-center-side { grid-column: 1; grid-row: auto; }
 
   .user-domain-list > div + div { border-left: 0; border-top: 1px solid var(--line); }
 

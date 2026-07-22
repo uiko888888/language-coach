@@ -33,6 +33,7 @@ try:
     from .backups import create_backup, list_backups, restore_backup
     from .content_extraction import BLOCK_LABELS, adapter_catalog, adapter_for_source, extract_source_content, suggest_annotation_blocks
     from .complete_word_review import complete_word_catalog, submit_complete_word_review
+    from .comparison_review import catalog_with_review_status, comparison_review_queue, published_editorial, sync_comparison_registry, update_comparison_review
     from .dictionary_quality import audit_dictionary_data
     from .lexical_data import lookup_lexical_layers, search_open_entries
     from .lexical_compare import comparison_candidate, curated_comparison, curated_comparison_catalog, curated_term_profile, parse_comparison_terms
@@ -63,6 +64,7 @@ except ImportError:
     from backups import create_backup, list_backups, restore_backup
     from content_extraction import BLOCK_LABELS, adapter_catalog, adapter_for_source, extract_source_content, suggest_annotation_blocks
     from complete_word_review import complete_word_catalog, submit_complete_word_review
+    from comparison_review import catalog_with_review_status, comparison_review_queue, published_editorial, sync_comparison_registry, update_comparison_review
     from dictionary_quality import audit_dictionary_data
     from lexical_data import lookup_lexical_layers, search_open_entries
     from lexical_compare import comparison_candidate, curated_comparison, curated_comparison_catalog, curated_term_profile, parse_comparison_terms
@@ -1334,6 +1336,7 @@ def init_db() -> None:
         )
         ensure_wordnet_schema(conn)
         run_migrations(conn)
+        sync_comparison_registry(conn, curated_comparison_catalog())
         conn.execute("UPDATE articles SET translation_zh = ? WHERE source = 'seed'", (SAMPLE_TRANSLATION,))
         conn.execute("UPDATE articles SET content_status = 'full' WHERE source IN ('seed', 'manual')")
         for source, (_, content_type) in SOURCE_CLASSIFICATION.items():
@@ -5143,6 +5146,27 @@ def lexical_comparison(query: str) -> dict:
             **{key: value for key, value in curated.items() if key != "items"}, "items": items,
         }
     candidate = comparison_candidate(terms)
+    if candidate:
+        with db() as conn:
+            editorial = published_editorial(conn, candidate["slug"])
+        if editorial:
+            editorial_items = {item["term"].casefold(): item for item in editorial["items"]}
+            return {
+                "query": query, "terms": terms, "mode": "reviewed_editorial", "reviewed": True,
+                "slug": candidate["slug"], "confusion_type": candidate["confusion_type"],
+                "source_note": "辨析边界来自本机审核工作流；例句与搭配来源单独标记，不代表商业词典提供本页结论。",
+                **{key: value for key, value in editorial.items() if key != "items"},
+                "items": [
+                    {
+                        **editorial_items[term.casefold()],
+                        "dictionary": evidence[term.casefold()],
+                        "frequency": evidence[term.casefold()]["frequency"],
+                        "sources": ["本机审核发布组"],
+                        "evidence_sources": evidence[term.casefold()]["sources"],
+                    }
+                    for term in terms
+                ],
+            }
     return {
         "query": query, "terms": terms, "mode": "candidate" if candidate else "evidence", "reviewed": False,
         "title": " / ".join(terms),
@@ -6536,7 +6560,19 @@ class App(BaseHTTPRequestHandler):
                 except ValueError as exc:
                     return json_response(self, {"error": str(exc)}, 400)
             if path == "/api/lexicon/comparisons":
-                return json_response(self, {"groups": curated_comparison_catalog()})
+                with db() as conn:
+                    groups = catalog_with_review_status(conn, curated_comparison_catalog())
+                return json_response(self, {"groups": groups})
+            if path == "/api/lexicon/comparison-reviews":
+                try:
+                    with db() as conn:
+                        result = comparison_review_queue(
+                            conn, query.get("status", [""])[0], query.get("exam", [""])[0],
+                            int(query.get("limit", [200])[0]),
+                        )
+                except (TypeError, ValueError) as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, result)
             if path == "/api/lexicon/history":
                 return json_response(self, lexical_query_history(query.get("limit", [30])[0]))
             if path == "/api/dictionary/status":
@@ -6783,6 +6819,14 @@ class App(BaseHTTPRequestHandler):
                 except ValueError as exc:
                     return json_response(self, {"error": str(exc)}, 422)
                 return json_response(self, batch, 201)
+            match = re.fullmatch(r"/api/lexicon/comparison-reviews/([a-z0-9-]+)", path)
+            if match:
+                try:
+                    with db() as conn:
+                        review = update_comparison_review(conn, match.group(1), payload)
+                except (TypeError, ValueError) as exc:
+                    return json_response(self, {"error": str(exc)}, 422)
+                return json_response(self, {"review": review})
             match = re.fullmatch(r"/api/articles/(\d+)/output-tasks", path)
             if match:
                 with db() as conn:

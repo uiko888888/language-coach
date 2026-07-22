@@ -4,6 +4,31 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.10] - 2026-07-22
+
+### Added
+
+- Added schema 22 review records and fail-closed `candidate`, `evidence_ready`, `reviewing`, `published`, and `rejected` states for all 200 groups.
+- Added priority, evidence counts, editorial payload, notes, rejection reason, timestamps, IELTS/topic metadata and queue indexes.
+- Added a user-center review manager with status/exam filters, bounded queue, priority editing and persistent notes.
+- Added support for one term to belong to multiple reviewed groups.
+
+### Reliability
+
+- Registry sync is idempotent and never resets manual workflow progress.
+- Evidence-ready requires one bilingual example and two verified patterns per term.
+- Publication requires complete group dimensions and per-term concepts, patterns, register, warnings and sourced bilingual examples; incomplete content returns HTTP 422.
+- Published database editorial content enters the normal comparison response and catalog.
+
+### Migration And Verification
+
+- A real database copy migrated from schema 21 to 22 with integrity `ok`; 225 articles, 3 cards and 49 attempts were unchanged, with 45 published and 155 candidate groups.
+- All 236 automated tests pass with 2 optional-dependency tests skipped; desktop Playwright passes queue saving, split layout and overflow checks on schema 22.
+
+### Scope Boundary
+
+- This release provides the editorial system but promotes no candidate. Reviewed completion remains 45/200.
+
 ## [0.8.0-alpha.25.9] - 2026-07-22
 
 ### Added

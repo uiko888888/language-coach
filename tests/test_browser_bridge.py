@@ -114,6 +114,22 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(sum(group["reviewed"] for group in catalog["groups"]), 45)
         self.assertEqual(sum("IELTS" in group.get("exam_tags", []) for group in catalog["groups"]), 95)
 
+    def test_comparison_review_api_persists_progress_and_blocks_false_publication(self):
+        queue, _ = self.request("/api/lexicon/comparison-reviews?exam=IELTS&limit=200")
+        self.assertEqual(queue["total"], 200)
+        self.assertEqual(len(queue["items"]), 95)
+        saved, _ = self.request("/api/lexicon/comparison-reviews/ielts-increase-grow-expand", "POST", {
+            "workflow_status": "reviewing", "priority": 100, "editor_notes": "优先审核图表趋势词",
+        })
+        self.assertEqual(saved["review"]["workflow_status"], "reviewing")
+        self.assertEqual(saved["review"]["priority"], 100)
+        with self.assertRaises(urllib.error.HTTPError) as blocked:
+            self.request("/api/lexicon/comparison-reviews/ielts-increase-grow-expand", "POST", {
+                "workflow_status": "published",
+            })
+        self.assertEqual(blocked.exception.code, 422)
+        blocked.exception.close()
+
     def test_review_api_rates_and_undoes_with_daily_progress(self):
         created, _ = self.request("/api/cards", "POST", {
             "term": "review contract phrase", "kind": "phrase", "context": "A review contract should be reversible.",

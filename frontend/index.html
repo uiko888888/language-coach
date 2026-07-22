@@ -338,6 +338,16 @@
           <div class="calibration-summary" id="userCalibrationSummary"></div>
         </section>
 
+        <section class="band comparison-review-manager">
+          <div class="band-head"><div><span class="eyebrow">Editorial workflow</span><h2>易混词审核</h2></div><button id="refreshComparisonReviewsBtn">刷新</button></div>
+          <div class="comparison-review-summary" id="comparisonReviewSummary"></div>
+          <div class="comparison-review-filters">
+            <label><span>状态</span><select id="comparisonReviewStatusFilter"><option value="">全部状态</option><option value="candidate">候选</option><option value="evidence_ready">证据齐备</option><option value="reviewing">审核中</option><option value="published">已发布</option><option value="rejected">已拒绝</option></select></label>
+            <label><span>考试</span><select id="comparisonReviewExamFilter"><option value="">全部范围</option><option value="IELTS">IELTS</option></select></label>
+          </div>
+          <div class="comparison-review-list" id="comparisonReviewList"></div>
+        </section>
+
         <section class="band private-dictionary-manager">
           <div class="band-head"><div><span class="eyebrow">Private dictionaries</span><h2>本机私人词典</h2></div></div>
           <div class="private-dictionary-list" id="privateDictionaryList"></div>

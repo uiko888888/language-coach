@@ -94,7 +94,6 @@ validate_comparison_candidates()
 
 
 def validate_curated_comparisons() -> None:
-    seen_terms: set[str] = set()
     required_item_fields = {
         "pos", "meaning_zh", "focus_en", "focus", "patterns",
         "register", "avoid", "example", "example_zh",
@@ -107,10 +106,6 @@ def validate_curated_comparisons() -> None:
             raise ValueError(f"Invalid curated comparison terms: {comparison['slug']}")
         if set(comparison["items"]) != set(terms):
             raise ValueError(f"Curated comparison items do not match terms: {comparison['slug']}")
-        overlap = seen_terms.intersection(terms)
-        if overlap:
-            raise ValueError(f"Curated terms belong to multiple groups: {sorted(overlap)}")
-        seen_terms.update(terms)
         for term in terms:
             item = comparison["items"][term]
             if not required_item_fields.issubset(item) or len(item["patterns"]) < 2:
@@ -188,11 +183,12 @@ def curated_comparison(terms: list[str]) -> dict | None:
 
 def curated_term_profile(term: str) -> dict | None:
     normalized = re.sub(r"\s+", " ", str(term or "")).strip().casefold()
+    matches = []
     for comparison in CURATED_COMPARISONS:
         item = comparison["items"].get(normalized)
         if not item:
             continue
-        return {
+        matches.append({
             "term": normalized,
             **item,
             "comparison_slug": comparison["slug"],
@@ -200,5 +196,18 @@ def curated_term_profile(term: str) -> dict | None:
             "related_terms": [value for value in comparison["terms"] if value != normalized],
             "editorial_status": "manually_curated_base",
             "confusion_type": comparison.get("confusion_type", "semantic"),
+        })
+    if not matches:
+        return None
+    primary = dict(matches[0])
+    primary["comparison_groups"] = [
+        {
+            "slug": item["comparison_slug"], "title": item["comparison_title"],
+            "related_terms": item["related_terms"], "confusion_type": item["confusion_type"],
         }
-    return None
+        for item in matches
+    ]
+    primary["related_terms"] = list(dict.fromkeys(
+        related for item in matches for related in item["related_terms"]
+    ))
+    return primary

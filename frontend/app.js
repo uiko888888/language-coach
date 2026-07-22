@@ -8,9 +8,9 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.25.9";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.25.10";
 const SUPPORTED_API_VERSION = "1";
-const SUPPORTED_SCHEMA_VERSION = "21";
+const SUPPORTED_SCHEMA_VERSION = "22";
 
 const state = {
   articles: [],
@@ -78,6 +78,7 @@ const state = {
   lexicalComparison: null,
   lexicalComparisonCatalog: [],
   lexicalComparisonFilter: "all",
+  comparisonReviews: { items: [], counts: {}, total: 0 },
   lexiconMeta: { resolution: null, suggestions: [] },
   lexiconHistory: { recent: [], frequent: [] },
   lexicalDataStatus: { layers: [], sources: [], counts: {} },
@@ -2299,6 +2300,52 @@ async function loadLexicalComparisonCatalog() {
   renderLexicalComparisonCatalog();
 }
 
+async function loadComparisonReviews() {
+  const status = $("#comparisonReviewStatusFilter")?.value || "";
+  const exam = $("#comparisonReviewExamFilter")?.value || "";
+  state.comparisonReviews = await api(`/api/lexicon/comparison-reviews?status=${encodeURIComponent(status)}&exam=${encodeURIComponent(exam)}&limit=200`);
+  renderComparisonReviews();
+}
+
+function renderComparisonReviews() {
+  const panel = $("#comparisonReviewList");
+  if (!panel) return;
+  const data = state.comparisonReviews || { items: [], counts: {}, total: 0 };
+  const counts = data.counts || {};
+  $("#comparisonReviewSummary").innerHTML = `
+    <div><span>总组数</span><strong>${data.total || 0}</strong></div>
+    <div><span>已发布</span><strong>${counts.published || 0}</strong></div>
+    <div><span>待审核</span><strong>${(counts.candidate || 0) + (counts.evidence_ready || 0) + (counts.reviewing || 0)}</strong></div>
+    <div><span>已拒绝</span><strong>${counts.rejected || 0}</strong></div>`;
+  const labels = { candidate: "候选", evidence_ready: "证据齐备", reviewing: "审核中", published: "已发布", rejected: "已拒绝" };
+  panel.innerHTML = (data.items || []).slice(0, 40).map(item => `
+    <article class="comparison-review-row" data-comparison-review-row="${escapeHtml(item.slug)}">
+      <header><div><strong>${escapeHtml(item.terms.join(" / "))}</strong><small>${escapeHtml(item.topic)}${item.exam_tags.length ? ` · ${escapeHtml(item.exam_tags.join(" / "))}` : ""}</small></div>${badge(labels[item.workflow_status] || item.workflow_status, item.workflow_status === "published" ? "teal" : "amber")}</header>
+      <div class="comparison-review-controls">
+        <label><span>状态</span><select data-review-workflow-status>${Object.entries(labels).map(([value, label]) => `<option value="${value}" ${value === item.workflow_status ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+        <label><span>优先级</span><input data-review-priority type="number" min="0" max="100" value="${item.priority}" /></label>
+      </div>
+      <textarea data-review-notes rows="2" placeholder="审核备注">${escapeHtml(item.editor_notes || "")}</textarea>
+      <textarea data-review-reason rows="2" placeholder="拒绝时必须填写原因">${escapeHtml(item.decision_reason || "")}</textarea>
+      <footer><span>双语例句 ${item.quality.bilingual_examples} · 已核搭配 ${item.quality.verified_patterns}</span><button data-save-comparison-review="${escapeHtml(item.slug)}">保存审核状态</button></footer>
+    </article>`).join("") || `<div class="empty-state">当前筛选下没有审核组。</div>`;
+}
+
+async function saveComparisonReview(slug, button) {
+  const row = button.closest("[data-comparison-review-row]");
+  const data = await api(`/api/lexicon/comparison-reviews/${encodeURIComponent(slug)}`, {
+    method: "POST",
+    body: JSON.stringify({
+      workflow_status: row.querySelector("[data-review-workflow-status]").value,
+      priority: Number(row.querySelector("[data-review-priority]").value),
+      editor_notes: row.querySelector("[data-review-notes]").value.trim(),
+      decision_reason: row.querySelector("[data-review-reason]").value.trim(),
+    }),
+  });
+  await loadComparisonReviews();
+  toast(`${data.review.terms.join(" / ")} 已保存`);
+}
+
 function renderPrivateDictionaryManager() {
   const panel = $("#privateDictionaryList");
   if (!panel) return;
@@ -2997,6 +3044,7 @@ function renderAll() {
   renderPracticeHistory();
   renderLexicon();
   renderPrivateDictionaryManager();
+  renderComparisonReviews();
 }
 
 function renderExamTypes() {
@@ -4412,6 +4460,8 @@ document.addEventListener("click", async event => {
     if (button.dataset.privateToggle) {
       await updatePrivateDictionary(Number(button.dataset.privateToggle), { enabled: button.dataset.privateEnabled === "1" });
     }
+    if (button.id === "refreshComparisonReviewsBtn") await loadComparisonReviews();
+    if (button.dataset.saveComparisonReview) await saveComparisonReview(button.dataset.saveComparisonReview, button);
     if (button.dataset.privateRemove) {
       await removePrivateDictionary(Number(button.dataset.privateRemove), button.dataset.privateName || "该词典");
     }
@@ -4937,6 +4987,9 @@ $("#privateDictionaryList").addEventListener("change", async event => {
   await updatePrivateDictionary(Number(event.target.dataset.privatePriority), { priority: Number(event.target.value) });
 });
 
+$("#comparisonReviewStatusFilter").addEventListener("change", () => loadComparisonReviews().catch(error => toast(error.message)));
+$("#comparisonReviewExamFilter").addEventListener("change", () => loadComparisonReviews().catch(error => toast(error.message)));
+
 let quickSearchTimer;
 $("#globalLexiconSearch").addEventListener("input", event => {
   clearTimeout(quickSearchTimer);
@@ -4955,7 +5008,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 async function boot() {
   await loadHealth();
   await loadActivePracticeData();
-  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadCompleteWordReviews(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexicalComparisonCatalog(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), loadOutputHistory(), loadOutputSupport(), loadSpeakingHistory(), loadSpeakingSupport(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadCompleteWordReviews(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexicalComparisonCatalog(), loadComparisonReviews(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), loadOutputHistory(), loadOutputSupport(), loadSpeakingHistory(), loadSpeakingSupport(), searchLexicon("", { open: false, history: false })]);
   const restoredServerRun = await restoreServerPracticeRun();
   if (!restoredServerRun && !state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);

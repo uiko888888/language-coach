@@ -80,6 +80,8 @@ Current strengths are source traceability, one-material-many-uses, evidence repl
 
 `alpha.25.9` expands planning coverage to 200 groups and adds a 95-group IELTS-priority view. It also repairs the evidence path so attributed Tatoeba examples survive private-dictionary aggregation. Discoverability rises, but confusion teaching remains 7.6/10 and reviewed completion falls proportionally to 45/200: catalog breadth is not editorial maturity. The useful gain is a lawful, attributable route to examples for 128/150 audited terms. The main gap is now collocation and boundary review, not raw group discovery.
 
+`alpha.25.10` turns the 200-group list into an auditable editorial system. Persistent workflow state, idempotent registry sync, explicit evidence counts and fail-closed publication raise engineering operations from 7.1 to 7.4/10. Confusion teaching remains 7.6/10 because no candidate was promoted. A polished queue organizes quality work but cannot substitute for the remaining 155 reviews or evidence that learners make fewer repeat errors.
+
 Interest and exam modes now use different home workflows: immersion and expression collection versus target, weakness and question-type prescription. They still share one profile so interest activity can later contribute domain evidence without masquerading as exam-score gains.
 
 ## Universal Product Requirements

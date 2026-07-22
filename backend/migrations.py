@@ -745,6 +745,31 @@ def _speaking_output_training(conn: sqlite3.Connection) -> None:
     )
 
 
+def _lexical_comparison_review_workflow(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """CREATE TABLE IF NOT EXISTS lexical_comparison_reviews (
+             slug TEXT PRIMARY KEY,
+             terms_json TEXT NOT NULL DEFAULT '[]',
+             confusion_type TEXT NOT NULL,
+             topic TEXT NOT NULL DEFAULT 'general',
+             exam_tags_json TEXT NOT NULL DEFAULT '[]',
+             workflow_status TEXT NOT NULL DEFAULT 'candidate',
+             priority INTEGER NOT NULL DEFAULT 0,
+             evidence_json TEXT NOT NULL DEFAULT '{}',
+             editorial_json TEXT NOT NULL DEFAULT '{}',
+             editor_notes TEXT NOT NULL DEFAULT '',
+             decision_reason TEXT NOT NULL DEFAULT '',
+             created_at TEXT NOT NULL,
+             updated_at TEXT NOT NULL,
+             reviewed_at TEXT NOT NULL DEFAULT ''
+           );
+           CREATE INDEX IF NOT EXISTS idx_lexical_comparison_review_queue
+           ON lexical_comparison_reviews(workflow_status, priority DESC, updated_at DESC);
+           CREATE INDEX IF NOT EXISTS idx_lexical_comparison_review_topic
+           ON lexical_comparison_reviews(topic, priority DESC);"""
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     (1, "consolidate legacy schema", _legacy_schema),
     (2, "add training loop metrics", _training_loop_metrics),
@@ -767,6 +792,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     (19, "persist paragraph-aligned article translations", _article_paragraph_translations),
     (20, "persist sense-aware vocabulary cards", _sense_aware_cards),
     (21, "add private local dictionary index", _private_dictionary_index),
+    (22, "add lexical comparison review workflow", _lexical_comparison_review_workflow),
 )
 
 

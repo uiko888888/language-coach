@@ -1,5 +1,13 @@
 # Language Coach Architecture
 
+## Schema 22 lexical comparison editorial boundary
+
+- `backend/lexical_compare*.py` owns the versioned reviewed foundation and the discoverable candidate registry.
+- `backend/comparison_review.py` owns mutable local workflow state and applies fail-closed evidence and publication gates.
+- Schema 22 keeps editorial workflow metadata separate from open/private dictionary indexes and learner review data.
+- Dictionary examples and corpus observations are evidence sources; they do not automatically become editorial conclusions.
+- Registry synchronization is idempotent and preserves local priorities, notes, decisions and completed reviews.
+
 ## schema 16 口语边界
 
 - `backend/speaking_training.py` 负责口语任务、尝试、文本规则观察、自评与复习链接，不访问网络或音频设备。

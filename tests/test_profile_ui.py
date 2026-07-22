@@ -191,8 +191,8 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.25.9";', self.js)
-        self.assertIn('const SUPPORTED_SCHEMA_VERSION = "21";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.25.10";', self.js)
+        self.assertIn('const SUPPORTED_SCHEMA_VERSION = "22";', self.js)
         self.assertIn('const schemaCompatible =', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
@@ -209,6 +209,20 @@ class ProfileUiContractTests(unittest.TestCase):
         ):
             self.assertIn(contract, self.js)
         for selector in (".review-workspace", ".review-rating-grid", ".review-kind-filter"):
+            self.assertIn(selector, self.css)
+
+    def test_comparison_review_manager_exposes_fail_closed_workflow(self):
+        for element_id in (
+            "comparisonReviewSummary", "comparisonReviewStatusFilter",
+            "comparisonReviewExamFilter", "comparisonReviewList", "refreshComparisonReviewsBtn",
+        ):
+            self.assertIn(f'id="{element_id}"', self.html)
+        for contract in (
+            'api(`/api/lexicon/comparison-reviews?', "function renderComparisonReviews()",
+            "data-save-comparison-review", "候选组 · 待核对",
+        ):
+            self.assertIn(contract, self.js)
+        for selector in (".comparison-review-manager", ".comparison-review-row", ".comparison-review-summary"):
             self.assertIn(selector, self.css)
 
     def test_complete_word_review_is_a_dedicated_attempt_and_fsrs_loop(self):
