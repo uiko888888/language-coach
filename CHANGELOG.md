@@ -4,6 +4,36 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.13] - 2026-07-22
+
+### Added
+
+- Added 393 deterministic tasks derived from 85 reviewed comparison groups: 236 concept choices and 157 correction tasks with traceable source explanations.
+- Added schema 23 attempt records for answer, correctness, elapsed time, answer changes, hint use, explanation snapshot and linked review card.
+- Added a third review-center mode with topic/type filters, persistent progress, hints, full feedback and fixed desktop master-detail layout.
+
+### Learning Loop
+
+- Wrong answers create one idempotent `comparison-boundary` card and enter the existing FSRS queue immediately when due.
+- The unified review screen now filters boundary cards independently; four ratings and ten-minute undo reuse the same scheduler and audit log.
+- Latest wrong tasks are prioritized before unseen and currently correct tasks without changing profile ability scores.
+
+### Reliability
+
+- Correction tasks are generated only when the reviewed source term can be located exactly in an original example; the intended meaning remains visible to reduce replacement ambiguity.
+- A partial unique card index and `INSERT OR IGNORE` prevent concurrent wrong submissions from creating duplicate review cards.
+- The API distinguishes a card being scheduled from whether it is currently due.
+
+### Migration And Verification
+
+- A real database copy migrated from schema 22 to 23 with integrity `ok`; 272 articles, 3 cards and 49 exam attempts were unchanged.
+- All 246 automated tests pass with 2 optional-dependency tests skipped; desktop Playwright covers wrong answer, FSRS entry, fixed sidebar, split layout and horizontal overflow.
+
+### Scope Boundary
+
+- Generated correction tasks still require representative human ambiguity sampling; they are not a substitute for free sentence production.
+- No seven-day outcome evidence yet proves that the loop reduces repeated boundary errors.
+
 ## [0.8.0-alpha.25.12] - 2026-07-22
 
 ### Added

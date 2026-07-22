@@ -205,6 +205,8 @@ def _kind_clause(kind: str) -> tuple[str, tuple]:
         return "ri.item_type = 'mistake'", ()
     if kind == "complete-word":
         return "ri.item_type = 'card' AND c.kind = 'complete-word'", ()
+    if kind == "comparison":
+        return "ri.item_type = 'card' AND c.kind = 'comparison-boundary'", ()
     return "(ri.item_type != 'card' OR c.kind != 'complete-word')", ()
 
 

@@ -628,6 +628,7 @@
         <div class="review-mode-switch" role="tablist" aria-label="复习方式">
           <button class="active" role="tab" aria-selected="true" data-review-mode="memory">记忆复习</button>
           <button role="tab" aria-selected="false" data-review-mode="complete-words">完成单词</button>
+          <button role="tab" aria-selected="false" data-review-mode="comparison">词义辨析</button>
         </div>
       </section>
       <div id="memoryReviewPane">
@@ -639,6 +640,7 @@
             <button data-review-kind="word">单词</button>
             <button data-review-kind="phrase">短语</button>
             <button data-review-kind="mistake">错题</button>
+            <button data-review-kind="comparison">辨析</button>
           </div><button id="undoReviewBtn" disabled>撤销上次评分</button></div>
         </div>
         <div class="review-summary" id="reviewSummary"></div>
@@ -698,6 +700,26 @@
             <div class="master-list" id="completeWordQueue"></div>
           </aside>
           <section class="band master-content-panel complete-word-detail" id="completeWordDetail"></section>
+        </div>
+      </div>
+      <div id="comparisonTrainingPane" hidden>
+        <section class="band comparison-training-overview">
+          <div class="band-head">
+            <div><span class="eyebrow">Boundary practice</span><h2>词义边界训练</h2></div>
+            <button id="refreshComparisonTrainingBtn">换一组</button>
+          </div>
+          <div class="comparison-training-filters">
+            <label><span>主题</span><select id="comparisonTrainingTopic"><option value="">全部主题</option><option value="charts">IELTS 图表</option><option value="argument">IELTS 论证</option><option value="general">通用辨析</option></select></label>
+            <label><span>题型</span><select id="comparisonTrainingType"><option value="choice">概念选择</option><option value="correction">语境改错</option></select></label>
+          </div>
+          <div class="review-summary" id="comparisonTrainingSummary"></div>
+        </section>
+        <div class="master-detail comparison-training-workspace">
+          <aside class="band master-list-panel">
+            <div class="band-head"><h2>训练任务</h2><span class="result-count" id="comparisonTrainingCount">0</span></div>
+            <div class="master-list" id="comparisonTrainingQueue"></div>
+          </aside>
+          <section class="band master-content-panel" id="comparisonTrainingDetail"></section>
         </div>
       </div>
     </section>

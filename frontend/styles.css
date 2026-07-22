@@ -1332,7 +1332,7 @@ label {
 .review-mode-switch { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); }
 .review-mode-switch button { min-width: 118px; min-height: 34px; border-color: transparent; background: transparent; color: var(--muted); }
 .review-mode-switch button.active { border-color: var(--line); background: var(--surface); color: var(--teal-dark); font-weight: 700; }
-#memoryReviewPane[hidden], #completeWordReviewPane[hidden] { display: none; }
+#memoryReviewPane[hidden], #completeWordReviewPane[hidden], #comparisonTrainingPane[hidden] { display: none; }
 .review-kind-filter { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); }
 .review-kind-filter button { min-height: 30px; padding: 4px 10px; border-color: transparent; background: transparent; color: var(--muted); }
 .review-kind-filter button.active { border-color: var(--line); background: var(--surface); color: var(--teal-dark); font-weight: 700; }
@@ -1395,6 +1395,33 @@ label {
 .complete-word-error { color: var(--red); font-weight: 700; }
 .complete-word-schedule-note { margin: 14px 0 0; padding: 10px 12px; border-left: 3px solid var(--amber); background: #fffaf2; color: var(--muted); }
 .complete-word-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.comparison-training-overview { margin-bottom: 14px; }
+.comparison-training-filters { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }
+.comparison-training-filters label { display: grid; gap: 5px; margin: 0; }
+.comparison-training-filters span { color: var(--muted); font-size: 12px; }
+.comparison-training-workspace { margin-bottom: 14px; }
+.comparison-training-workspace .master-list { max-height: 660px; }
+.comparison-training-workspace .master-content-panel { min-height: 560px; }
+.comparison-training-question { display: grid; min-height: 190px; place-content: center; gap: 12px; padding: 26px 16px; text-align: center; }
+.comparison-training-question > span { color: var(--muted); font-size: 12px; }
+.comparison-training-question > p { max-width: 820px; margin: 0 auto; font-family: Georgia, "Times New Roman", serif; font-size: 23px; line-height: 1.7; }
+.comparison-training-question > small { max-width: 760px; color: var(--teal-dark); line-height: 1.6; }
+.comparison-training-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; min-height: 92px; align-content: start; padding: 14px 0; border-block: 1px solid var(--line); }
+.comparison-training-options button { min-height: 52px; font-size: 15px; }
+.comparison-training-options button.selected { border-color: var(--teal); background: #eef7f4; color: var(--teal-dark); font-weight: 700; }
+.comparison-training-hint { display: grid; gap: 6px; margin-top: 14px; padding: 12px 14px; border-left: 3px solid var(--amber); background: #fffaf2; }
+.comparison-training-hint span { color: var(--muted); line-height: 1.6; }
+.comparison-training-actions { justify-content: flex-end; min-height: 48px; margin-top: 12px; }
+.comparison-training-result { display: grid; gap: 10px; min-height: 310px; margin-top: 18px; padding: 18px; border-left: 4px solid var(--line); background: var(--surface-2); }
+.comparison-training-result.correct { border-left-color: var(--green); }
+.comparison-training-result.wrong { border-left-color: var(--red); }
+.comparison-training-result h3 { margin: 2px 0; color: var(--teal-dark); font-family: Georgia, "Times New Roman", serif; font-size: 30px; }
+.comparison-result-focus { font-family: Georgia, "Times New Roman", serif; font-size: 18px; }
+.comparison-result-patterns { display: flex; flex-wrap: wrap; gap: 6px; }
+.comparison-result-patterns span { padding: 5px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); font-size: 12px; }
+.comparison-training-result blockquote { display: grid; gap: 7px; margin: 4px 0; padding: 11px 13px; border-left: 3px solid var(--teal); background: var(--surface); line-height: 1.65; }
+.comparison-training-result blockquote small, .comparison-training-result > small { color: var(--muted); }
+.comparison-memory { padding-top: 10px; border-top: 1px solid var(--line); }
 
 .daily-metric-progress {
   display: grid;
@@ -1649,6 +1676,7 @@ label {
   .daily-metric-progress { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .review-rating-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .complete-word-search { grid-template-columns: 1fr; }
+  .comparison-training-filters { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 720px) {

@@ -37,6 +37,7 @@ try:
     from .dictionary_quality import audit_dictionary_data
     from .lexical_data import lookup_lexical_layers, search_open_entries
     from .lexical_compare import comparison_candidate, curated_comparison, curated_comparison_catalog, curated_term_profile, parse_comparison_terms
+    from .comparison_training import comparison_training_queue, submit_comparison_training_answer
     from .migrations import run_migrations
     from .output_training import (
         create_output_task_set, latest_output_task_set, output_attempt_payload,
@@ -68,6 +69,7 @@ except ImportError:
     from dictionary_quality import audit_dictionary_data
     from lexical_data import lookup_lexical_layers, search_open_entries
     from lexical_compare import comparison_candidate, curated_comparison, curated_comparison_catalog, curated_term_profile, parse_comparison_terms
+    from comparison_training import comparison_training_queue, submit_comparison_training_answer
     from migrations import run_migrations
     from output_training import (
         create_output_task_set, latest_output_task_set, output_attempt_payload,
@@ -6573,6 +6575,16 @@ class App(BaseHTTPRequestHandler):
                 except (TypeError, ValueError) as exc:
                     return json_response(self, {"error": str(exc)}, 400)
                 return json_response(self, result)
+            if path == "/api/lexicon/comparison-training":
+                try:
+                    with db() as conn:
+                        result = comparison_training_queue(
+                            conn, query.get("topic", [""])[0], query.get("task_type", ["choice"])[0],
+                            int(query.get("limit", [80])[0]),
+                        )
+                except (TypeError, ValueError) as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                return json_response(self, result)
             if path == "/api/lexicon/history":
                 return json_response(self, lexical_query_history(query.get("limit", [30])[0]))
             if path == "/api/dictionary/status":
@@ -6827,6 +6839,18 @@ class App(BaseHTTPRequestHandler):
                 except (TypeError, ValueError) as exc:
                     return json_response(self, {"error": str(exc)}, 422)
                 return json_response(self, {"review": review})
+            if path == "/api/lexicon/comparison-training/answer":
+                try:
+                    with db() as conn:
+                        result = submit_comparison_training_answer(
+                            conn, str(payload.get("task_id") or ""), str(payload.get("answer") or ""),
+                            elapsed_seconds=payload.get("elapsed_seconds") or 0,
+                            answer_changes=payload.get("answer_changes") or 0,
+                            hint_used=bool(payload.get("hint_used")),
+                        )
+                except (TypeError, ValueError) as exc:
+                    return json_response(self, {"error": str(exc)}, 422)
+                return json_response(self, result, 201)
             match = re.fullmatch(r"/api/articles/(\d+)/output-tasks", path)
             if match:
                 with db() as conn:

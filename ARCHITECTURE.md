@@ -9,6 +9,7 @@
 - Schema 22 keeps editorial workflow metadata separate from open/private dictionary indexes and learner review data.
 - Dictionary examples and corpus observations are evidence sources; they do not automatically become editorial conclusions.
 - Registry synchronization is idempotent and preserves local priorities, notes, decisions and completed reviews.
+- `backend/comparison_training.py` derives versioned tasks from reviewed comparison content, while schema 23 stores attempts and links only wrong boundaries to ordinary review cards; FSRS remains owned by `review_scheduler.py`.
 
 ## schema 16 口语边界
 

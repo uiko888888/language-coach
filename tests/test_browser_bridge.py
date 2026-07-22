@@ -130,6 +130,28 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(blocked.exception.code, 422)
         blocked.exception.close()
 
+    def test_comparison_training_api_saves_wrong_boundary_to_review_and_undoes_rating(self):
+        training, _ = self.request("/api/lexicon/comparison-training?topic=charts&task_type=choice&limit=20")
+        self.assertGreater(training["summary"]["total"], 20)
+        task = next(item for item in training["items"] if item["task_id"].endswith(":choice:amount"))
+        self.assertNotIn("answer", task)
+        wrong = "number"
+        result, _ = self.request("/api/lexicon/comparison-training/answer", "POST", {
+            "task_id": task["task_id"], "answer": wrong,
+            "elapsed_seconds": 12, "answer_changes": 1, "hint_used": True,
+        })
+        self.assertFalse(result["correct"])
+        self.assertTrue(result["review"]["due"])
+        queue, _ = self.request("/api/reviews?kind=comparison&limit=20")
+        review_item = next(item for item in queue["items"] if item["id"] == result["review"]["review_item_id"])
+        self.assertEqual(review_item["kind"], "comparison-boundary")
+        rated, _ = self.request(f"/api/reviews/{review_item['id']}/rate", "POST", {
+            "rating": "good", "kind": "comparison",
+        })
+        self.assertTrue(rated["interval"])
+        undone, _ = self.request("/api/reviews/undo", "POST", {"kind": "comparison"})
+        self.assertEqual(undone["review_item_id"], review_item["id"])
+
     def test_review_api_rates_and_undoes_with_daily_progress(self):
         created, _ = self.request("/api/cards", "POST", {
             "term": "review contract phrase", "kind": "phrase", "context": "A review contract should be reversible.",

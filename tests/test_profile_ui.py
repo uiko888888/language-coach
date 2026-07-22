@@ -191,8 +191,8 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.25.12";', self.js)
-        self.assertIn('const SUPPORTED_SCHEMA_VERSION = "22";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.25.13";', self.js)
+        self.assertIn('const SUPPORTED_SCHEMA_VERSION = "23";', self.js)
         self.assertIn('const schemaCompatible =', self.js)
         self.assertIn('api("/api/backups"', self.js)
         self.assertIn(".compatibility-banner", self.css)
@@ -238,6 +238,24 @@ class ProfileUiContractTests(unittest.TestCase):
         ):
             self.assertIn(contract, self.html + self.js)
         for selector in (".complete-word-workspace", ".complete-word-card", ".complete-word-result"):
+            self.assertIn(selector, self.css)
+
+    def test_comparison_training_is_a_split_attempt_feedback_fsrs_loop(self):
+        for element_id in (
+            "comparisonTrainingPane", "comparisonTrainingTopic", "comparisonTrainingType",
+            "comparisonTrainingSummary", "comparisonTrainingQueue", "comparisonTrainingDetail",
+        ):
+            self.assertIn(f'id="{element_id}"', self.html)
+        for contract in (
+            'data-review-mode="comparison"', 'api(`/api/lexicon/comparison-training?',
+            'api("/api/lexicon/comparison-training/answer"', "submitComparisonTraining",
+            'state.reviewKind = "comparison"', "comparisonTrainingHintUsed",
+        ):
+            self.assertIn(contract, self.html + self.js)
+        for selector in (
+            ".comparison-training-workspace", ".comparison-training-options",
+            ".comparison-training-result", ".comparison-training-hint",
+        ):
             self.assertIn(selector, self.css)
 
     def test_output_workspace_is_a_split_source_attempt_review_loop(self):

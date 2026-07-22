@@ -770,6 +770,36 @@ def _lexical_comparison_review_workflow(conn: sqlite3.Connection) -> None:
     )
 
 
+def _comparison_boundary_training(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """CREATE TABLE IF NOT EXISTS comparison_training_attempts (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             task_id TEXT NOT NULL,
+             slug TEXT NOT NULL,
+             term TEXT NOT NULL,
+             task_type TEXT NOT NULL CHECK(task_type IN ('choice', 'correction')),
+             prompt TEXT NOT NULL,
+             options_json TEXT NOT NULL DEFAULT '[]',
+             correct_answer TEXT NOT NULL,
+             user_answer TEXT NOT NULL,
+             correct INTEGER NOT NULL DEFAULT 0,
+             explanation_json TEXT NOT NULL DEFAULT '{}',
+             elapsed_seconds INTEGER NOT NULL DEFAULT 0,
+             answer_changes INTEGER NOT NULL DEFAULT 0,
+             hint_used INTEGER NOT NULL DEFAULT 0,
+             review_card_id INTEGER,
+             created_at TEXT NOT NULL,
+             FOREIGN KEY(review_card_id) REFERENCES cards(id)
+           );
+           CREATE INDEX IF NOT EXISTS idx_comparison_training_task
+           ON comparison_training_attempts(task_id, id DESC);
+           CREATE INDEX IF NOT EXISTS idx_comparison_training_slug
+           ON comparison_training_attempts(slug, created_at DESC);
+           CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_comparison_boundary_unique
+           ON cards(sense_key) WHERE kind = 'comparison-boundary' AND sense_key != '';"""
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     (1, "consolidate legacy schema", _legacy_schema),
     (2, "add training loop metrics", _training_loop_metrics),
@@ -793,6 +823,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     (20, "persist sense-aware vocabulary cards", _sense_aware_cards),
     (21, "add private local dictionary index", _private_dictionary_index),
     (22, "add lexical comparison review workflow", _lexical_comparison_review_workflow),
+    (23, "add comparison boundary training", _comparison_boundary_training),
 )
 
 

@@ -37,7 +37,7 @@ async function run() {
     } catch (error) {
       throw new Error(`${error.message}${serverError ? `\nBackend stderr:\n${serverError}` : ""}`);
     }
-    if (version.app_version !== "0.8.0-alpha.25.12" || version.database_schema_version !== 22) {
+    if (version.app_version !== "0.8.0-alpha.25.13" || version.database_schema_version !== 23) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const lexicalPayload = await fetch(`${baseUrl}/api/lexicon/search?q=cast`).then(response => response.json());
@@ -100,6 +100,29 @@ async function run() {
     if (await page.locator(".comparison-patterns button").count() < 8) failures.push("curated syntax and collocations are incomplete");
     if (!await page.locator(".comparison-memory-rule").getByText(/整体 comprises/).count()) failures.push("whole-part memory rule is missing");
     await page.screenshot({ path: path.join(root, "artifacts", "lexicon-compose-comprise-desktop.png"), fullPage: true });
+    const training = await fetch(`${baseUrl}/api/lexicon/comparison-training?topic=charts&task_type=choice&limit=100`).then(response => response.json());
+    const firstTask = training.items.find(item => item.task_id.endsWith(":choice:amount"));
+    if ("answer" in firstTask) failures.push("comparison training queue leaks the correct answer");
+    const wrongOption = "number";
+    await page.click('[data-view="cards"]');
+    await page.waitForSelector("#view-cards.active");
+    await page.click('[data-review-mode="comparison"]');
+    await page.waitForSelector("#comparisonTrainingPane:not([hidden])");
+    await Promise.all([
+      page.waitForResponse(response => response.url().includes("/api/lexicon/comparison-training?topic=charts")),
+      page.locator("#comparisonTrainingTopic").selectOption("charts"),
+    ]);
+    await page.locator(`[data-select-comparison-task="${firstTask.task_id}"]`).click();
+    if (await page.locator("#comparisonTrainingSummary strong").count() !== 4) failures.push("comparison training summary is incomplete");
+    const trainingColumns = await page.locator(".comparison-training-workspace").evaluate(element => getComputedStyle(element).gridTemplateColumns);
+    if (trainingColumns.split(" ").length < 2) failures.push(`comparison training layout is not split: ${trainingColumns}`);
+    await page.locator("[data-comparison-option]").evaluateAll((buttons, answer) => buttons.find(button => button.dataset.comparisonOption === answer)?.click(), wrongOption);
+    await page.click("#submitComparisonTrainingBtn");
+    await page.waitForSelector(".comparison-training-result.wrong");
+    if (!await page.locator(".comparison-training-result").getByText("已加入 FSRS", { exact: true }).count()) failures.push("wrong boundary did not enter FSRS");
+    const trainingOverflow = await page.locator(".comparison-training-workspace").evaluate(element => element.scrollWidth > element.clientWidth + 1);
+    if (trainingOverflow) failures.push("comparison training workspace overflows horizontally");
+    await page.screenshot({ path: path.join(root, "artifacts", "comparison-training-desktop.png"), fullPage: true });
     await page.click('[data-view="profile"]');
     await page.waitForSelector("#view-profile.active");
     const profileColumns = await page.locator(".user-center-layout").evaluate(element => getComputedStyle(element).gridTemplateColumns);
@@ -123,7 +146,7 @@ async function run() {
     server.kill();
   }
   if (failures.length) throw new Error(failures.join("\n"));
-  process.stdout.write("Lexicon private/open bilingual desktop workflow passed on schema 22.\n");
+  process.stdout.write("Lexicon private/open bilingual desktop workflow passed on schema 23.\n");
 }
 
 run().catch(error => {

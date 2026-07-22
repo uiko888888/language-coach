@@ -8,9 +8,9 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.25.12";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.25.13";
 const SUPPORTED_API_VERSION = "1";
-const SUPPORTED_SCHEMA_VERSION = "22";
+const SUPPORTED_SCHEMA_VERSION = "23";
 
 const state = {
   articles: [],
@@ -31,6 +31,15 @@ const state = {
   completeWordRevealed: false,
   canUndoCompleteWord: false,
   completeWordStartedAt: Date.now(),
+  comparisonTraining: { items: [], summary: {} },
+  comparisonTrainingTopic: "",
+  comparisonTrainingType: "choice",
+  selectedComparisonTaskId: null,
+  comparisonTrainingResults: {},
+  comparisonTrainingAnswer: "",
+  comparisonTrainingAnswerChanges: 0,
+  comparisonTrainingHintUsed: false,
+  comparisonTrainingStartedAt: Date.now(),
   quizzes: [],
   mistakes: [],
   feeds: [],
@@ -2762,15 +2771,15 @@ function renderQuizzes() {
 function renderCards() {
   $("#cardList").innerHTML = state.cards.map(card => `
     <div class="item">
-      <div class="badge-row">${badge(card.kind === "phrase" ? "短语" : "单词", card.kind === "phrase" ? "amber" : "teal")}${card.part_of_speech ? badge(abbreviatedPartOfSpeech(card.part_of_speech)) : ""}${card.sense_key ? badge("具体义项", "teal") : ""}${badge(reviewStateLabel(card.review_state || card.status || "new"))}</div>
-      <h3><button class="card-term-link" data-search-query="${escapeHtml(card.term)}">${escapeHtml(card.term)}</button></h3>
+      <div class="badge-row">${badge(card.kind === "comparison-boundary" ? "辨析" : card.kind === "phrase" ? "短语" : "单词", card.kind === "comparison-boundary" || card.kind === "phrase" ? "amber" : "teal")}${card.part_of_speech ? badge(abbreviatedPartOfSpeech(card.part_of_speech)) : ""}${card.sense_key ? badge("具体义项", "teal") : ""}${badge(reviewStateLabel(card.review_state || card.status || "new"))}</div>
+      <h3>${card.kind === "comparison-boundary" ? escapeHtml(card.term) : `<button class="card-term-link" data-search-query="${escapeHtml(card.term)}">${escapeHtml(card.term)}</button>`}</h3>
       ${card.meaning_zh ? `<p class="card-sense-meaning">${escapeHtml(card.meaning_zh)}</p>` : ""}
       ${card.concept_en ? `<p class="card-sense-concept">${escapeHtml(card.concept_en)}</p>` : ""}
       ${card.grammar_frame ? `<p><strong>语法与搭配：</strong>${escapeHtml(card.grammar_frame)}</p>` : ""}
       ${card.confusion_note ? `<p class="card-confusion"><strong>易混边界：</strong>${escapeHtml(card.confusion_note)}</p>` : ""}
       <p>${card.context ? searchableEnglish(card.context) : "尚未保存语境"}</p>
       ${card.note ? `<p>${escapeHtml(card.note)}</p>` : ""}
-      <div class="toolbar"><button data-search-query="${escapeHtml(card.term)}" data-open-lexicon="true">查看查询</button>${card.source_article_id ? `<button data-open-article="${card.source_article_id}">回到原文</button>` : ""}<a class="button-link" href="https://dict.eudic.net/dicts/en/${encodeURIComponent(card.term)}" target="_blank" rel="noreferrer">欧路</a></div>
+      <div class="toolbar">${card.kind === "comparison-boundary" ? "" : `<button data-search-query="${escapeHtml(card.term)}" data-open-lexicon="true">查看查询</button><a class="button-link" href="https://dict.eudic.net/dicts/en/${encodeURIComponent(card.term)}" target="_blank" rel="noreferrer">欧路</a>`}${card.source_article_id ? `<button data-open-article="${card.source_article_id}">回到原文</button>` : ""}</div>
     </div>
   `).join("") || `<div class="item muted">暂无生词</div>`;
 }
@@ -2801,7 +2810,7 @@ function renderReviews() {
   $("#reviewQueue").innerHTML = items.map((item, index) => `
     <button class="master-list-item ${item.id === state.selectedReviewId ? "active" : ""}" data-select-review="${item.id}">
       <span class="master-number">${String(index + 1).padStart(2, "0")}</span>
-      <span class="master-copy"><strong>${escapeHtml(excerpt(item.front, 58))}</strong><small>${escapeHtml(item.kind === "mistake" ? "已掌握错题" : item.kind === "phrase" ? "短语" : "单词")} · ${escapeHtml(reviewStateLabel(item.state))}</small><em>${item.lapses ? `遗忘 ${item.lapses} 次` : item.repetitions ? `已复习 ${item.repetitions} 次` : "首次复习"}</em></span>
+      <span class="master-copy"><strong>${escapeHtml(excerpt(item.front, 58))}</strong><small>${escapeHtml(item.kind === "mistake" ? "已掌握错题" : item.kind === "comparison-boundary" ? "辨析边界" : item.kind === "phrase" ? "短语" : "单词")} · ${escapeHtml(reviewStateLabel(item.state))}</small><em>${item.lapses ? `遗忘 ${item.lapses} 次` : item.repetitions ? `已复习 ${item.repetitions} 次` : "首次复习"}</em></span>
     </button>`).join("") || `<div class="empty-state">当前没有到期项目</div>`;
   const detail = $("#reviewDetail");
   if (!selected) {
@@ -2809,12 +2818,12 @@ function renderReviews() {
     return;
   }
   detail.innerHTML = `
-    <div class="review-card-head"><div><div class="badge-row">${badge(selected.kind === "mistake" ? "错题" : selected.kind === "phrase" ? "短语" : "单词", selected.kind === "phrase" ? "amber" : "teal")}${badge(reviewStateLabel(selected.state))}</div><h2>${escapeHtml(selected.front)}</h2></div><span class="review-position">${items.findIndex(item => item.id === selected.id) + 1} / ${items.length}</span></div>
+    <div class="review-card-head"><div><div class="badge-row">${badge(selected.kind === "mistake" ? "错题" : selected.kind === "comparison-boundary" ? "辨析" : selected.kind === "phrase" ? "短语" : "单词", selected.kind === "comparison-boundary" || selected.kind === "phrase" ? "amber" : "teal")}${badge(reviewStateLabel(selected.state))}</div><h2>${escapeHtml(selected.front)}</h2></div><span class="review-position">${items.findIndex(item => item.id === selected.id) + 1} / ${items.length}</span></div>
     ${state.reviewAnswerRevealed ? `
       <section class="review-answer"><span>${selected.sense_key ? "具体义项与语境" : "答案与语境"}</span><p>${searchableEnglish(selected.answer, false)}</p>${selected.confusion_note ? `<p class="card-confusion"><strong>易混边界：</strong>${escapeHtml(selected.confusion_note)}</p>` : ""}${selected.context && selected.context !== selected.answer ? `<blockquote>${searchableEnglish(selected.context, false)}</blockquote>` : ""}${selected.note ? `<small>${escapeHtml(selected.note)}</small>` : ""}</section>
       <div class="review-rating-grid">${(selected.choices || []).map(choice => `<button class="review-rating ${choice.rating}" data-rate-review="${choice.rating}" data-review-id="${selected.id}"><strong>${escapeHtml(choice.label)}</strong><small>${escapeHtml(choice.interval)}</small></button>`).join("")}</div>
-      <div class="toolbar review-source-actions">${selected.kind === "mistake" ? "" : `<button data-search-query="${escapeHtml(selected.front)}" data-open-lexicon="true">查词</button>`}${selected.source_article_id ? `<button data-open-article="${selected.source_article_id}">回到原文</button>` : ""}</div>`
-      : `<div class="review-recall"><p>${selected.kind === "mistake" ? "先重新作答并回想原文证据。" : "回想含义、搭配和原句，再查看答案。"}</p><button class="primary" id="revealReviewAnswerBtn">显示答案</button></div>`}
+      <div class="toolbar review-source-actions">${selected.kind === "mistake" || selected.kind === "comparison-boundary" ? "" : `<button data-search-query="${escapeHtml(selected.front)}" data-open-lexicon="true">查词</button>`}${selected.source_article_id ? `<button data-open-article="${selected.source_article_id}">回到原文</button>` : ""}</div>`
+      : `<div class="review-recall"><p>${selected.kind === "mistake" ? "先重新作答并回想原文证据。" : selected.kind === "comparison-boundary" ? "先根据概念和语境回想正确表达，再查看边界解释。" : "回想含义、搭配和原句，再查看答案。"}</p><button class="primary" id="revealReviewAnswerBtn">显示答案</button></div>`}
   `;
 }
 
@@ -2824,8 +2833,10 @@ function selectedCompleteWord() {
 
 function renderCompleteWordReviews() {
   const completeMode = state.reviewMode === "complete-words";
-  $("#memoryReviewPane").hidden = completeMode;
+  const comparisonMode = state.reviewMode === "comparison";
+  $("#memoryReviewPane").hidden = completeMode || comparisonMode;
   $("#completeWordReviewPane").hidden = !completeMode;
+  $("#comparisonTrainingPane").hidden = !comparisonMode;
   document.querySelectorAll("[data-review-mode]").forEach(button => {
     const active = button.dataset.reviewMode === state.reviewMode;
     button.classList.toggle("active", active);
@@ -2889,6 +2900,74 @@ function renderCompleteWordReviews() {
     </div>
     <footer class="complete-word-meta"><span>${escapeHtml(selected.article_title || "本地文章")}</span><span>${escapeHtml(selected.article_source || selected.generation_source)}</span><span>${selected.official_equivalence ? "官方等价" : "规则模拟题"}</span></footer>`;
   if (!revealed) requestAnimationFrame(() => $("#completeWordAnswer")?.focus());
+}
+
+function selectedComparisonTrainingTask() {
+  return (state.comparisonTraining.items || []).find(item => item.task_id === state.selectedComparisonTaskId);
+}
+
+function resetComparisonTrainingDraft() {
+  state.comparisonTrainingAnswer = "";
+  state.comparisonTrainingAnswerChanges = 0;
+  state.comparisonTrainingHintUsed = false;
+  state.comparisonTrainingStartedAt = Date.now();
+}
+
+function renderComparisonTraining() {
+  if (state.reviewMode !== "comparison") return;
+  const data = state.comparisonTraining || { items: [], summary: {} };
+  const items = data.items || [];
+  const summary = data.summary || {};
+  $("#comparisonTrainingTopic").value = state.comparisonTrainingTopic;
+  $("#comparisonTrainingType").value = state.comparisonTrainingType;
+  $("#comparisonTrainingCount").textContent = items.length;
+  $("#comparisonTrainingSummary").innerHTML = `
+    <div><span>当前题库</span><strong>${summary.total || 0}</strong></div>
+    <div><span>已经作答</span><strong>${summary.attempted || 0}</strong></div>
+    <div><span>当前错题</span><strong>${summary.wrong || 0}</strong></div>
+    <div><span>到期复习</span><strong>${summary.due_reviews || 0}</strong></div>`;
+  if (!items.some(item => item.task_id === state.selectedComparisonTaskId)) {
+    state.selectedComparisonTaskId = items[0]?.task_id || null;
+    resetComparisonTrainingDraft();
+  }
+  const selected = selectedComparisonTrainingTask();
+  $("#comparisonTrainingQueue").innerHTML = items.map((item, index) => `
+    <button class="master-list-item ${item.task_id === state.selectedComparisonTaskId ? "active" : ""}" data-select-comparison-task="${escapeHtml(item.task_id)}">
+      <span class="master-number">${String(index + 1).padStart(2, "0")}</span>
+      <span class="master-copy"><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.task_type === "correction" ? "语境改错" : "概念选择")} · ${escapeHtml(item.topic === "charts" ? "IELTS 图表" : item.topic === "argument" ? "IELTS 论证" : "通用")}</small><em>${item.last_correct ? "上次正确" : item.attempted ? "需要重练" : "尚未作答"}</em></span>
+    </button>`).join("") || `<div class="empty-state">当前筛选下没有可用任务。</div>`;
+  const detail = $("#comparisonTrainingDetail");
+  if (!selected) {
+    detail.innerHTML = `<div class="review-complete"><span class="eyebrow">No tasks</span><h2>当前没有训练任务</h2><p>切换主题或题型后重新载入。</p></div>`;
+    return;
+  }
+  const result = state.comparisonTrainingResults[selected.task_id];
+  const position = items.findIndex(item => item.task_id === selected.task_id) + 1;
+  detail.innerHTML = `
+    <div class="review-card-head"><div><div class="badge-row">${badge(selected.task_type === "correction" ? "语境改错" : "概念选择", "teal")}${badge(selected.topic === "charts" ? "IELTS 图表" : selected.topic === "argument" ? "IELTS 论证" : "通用")}${selected.attempted ? badge(selected.last_correct ? "上次正确" : "需要重练", selected.last_correct ? "teal" : "red") : ""}</div><h2>${escapeHtml(selected.title)}</h2></div><span class="review-position">${position} / ${items.length}</span></div>
+    <section class="comparison-training-question">
+      <span>${escapeHtml(selected.instruction)}</span>
+      <p>${searchableEnglish(selected.prompt, false)}</p>
+      ${selected.task_type === "correction" ? `<small>${escapeHtml(selected.support)}</small>` : ""}
+    </section>
+    ${result ? `
+      <section class="comparison-training-result ${result.correct ? "correct" : "wrong"}">
+        <div class="badge-row">${badge(result.correct ? "回答正确" : "边界错误", result.correct ? "teal" : "red")}${!result.correct ? badge("已加入 FSRS", "amber") : ""}</div>
+        <h3>${escapeHtml(result.answer)}</h3>
+        <p class="comparison-result-focus">${escapeHtml(result.explanation.focus_en)}</p>
+        <p>${escapeHtml(result.explanation.focus)}</p>
+        <div class="comparison-result-patterns">${result.explanation.patterns.map(pattern => `<span>${escapeHtml(pattern)}</span>`).join("")}</div>
+        <p class="card-confusion"><strong>易混边界：</strong>${escapeHtml(result.explanation.avoid)}</p>
+        ${result.explanation.corrected_text ? `<blockquote>${searchableEnglish(result.explanation.corrected_text, false)}<small>${escapeHtml(result.explanation.example_zh)}</small></blockquote>` : ""}
+        <p class="comparison-memory"><strong>记忆规则：</strong>${escapeHtml(result.explanation.memory_rule)}</p>
+        <small>${escapeHtml(result.explanation.example_source)}</small>
+      </section>
+      <div class="toolbar review-source-actions"><button class="primary" data-next-comparison-task>下一题</button>${!result.correct ? `<button data-open-comparison-review>复习这道错题</button>` : ""}<button data-search-query="${escapeHtml(result.answer)}" data-open-lexicon="true">查看词典</button></div>
+    ` : `
+      <div class="comparison-training-options">${selected.options.map(option => `<button class="${state.comparisonTrainingAnswer === option ? "selected" : ""}" data-comparison-option="${escapeHtml(option)}">${escapeHtml(option)}</button>`).join("")}</div>
+      ${state.comparisonTrainingHintUsed ? `<div class="comparison-training-hint"><strong>句法与搭配</strong><span>${escapeHtml(selected.patterns.join(" · "))}</span></div>` : ""}
+      <div class="toolbar comparison-training-actions"><button id="comparisonTrainingHintBtn">${state.comparisonTrainingHintUsed ? "已显示提示" : "查看提示"}</button><button class="primary" id="submitComparisonTrainingBtn" ${state.comparisonTrainingAnswer ? "" : "disabled"}>提交答案</button></div>
+    `}`;
 }
 
 function remedialQuizHtml(quiz, index) {
@@ -3040,6 +3119,7 @@ function renderAll() {
   renderCards();
   renderReviews();
   renderCompleteWordReviews();
+  renderComparisonTraining();
   renderMistakes();
   renderPracticeHistory();
   renderLexicon();
@@ -3434,6 +3514,49 @@ async function loadCompleteWordReviews() {
     state.completeWordRevealed = false;
     state.completeWordStartedAt = Date.now();
   }
+}
+
+async function loadComparisonTraining() {
+  const previous = state.selectedComparisonTaskId;
+  const params = new URLSearchParams({
+    topic: state.comparisonTrainingTopic,
+    task_type: state.comparisonTrainingType,
+    limit: "100",
+  });
+  state.comparisonTraining = await api(`/api/lexicon/comparison-training?${params.toString()}`);
+  if (!state.comparisonTraining.items.some(item => item.task_id === previous)) {
+    state.selectedComparisonTaskId = state.comparisonTraining.items[0]?.task_id || null;
+    resetComparisonTrainingDraft();
+  }
+}
+
+async function submitComparisonTraining() {
+  const task = selectedComparisonTrainingTask();
+  if (!task || !state.comparisonTrainingAnswer) return toast("先选择一个答案");
+  const result = await api("/api/lexicon/comparison-training/answer", {
+    method: "POST",
+    body: JSON.stringify({
+      task_id: task.task_id,
+      answer: state.comparisonTrainingAnswer,
+      elapsed_seconds: Math.max(0, Math.round((Date.now() - state.comparisonTrainingStartedAt) / 1000)),
+      answer_changes: state.comparisonTrainingAnswerChanges,
+      hint_used: state.comparisonTrainingHintUsed,
+    }),
+  });
+  state.comparisonTrainingResults[task.task_id] = result;
+  await Promise.all([loadComparisonTraining(), loadReviews(), loadCards()]);
+  renderAll();
+}
+
+function moveComparisonTraining(step = 1) {
+  const items = state.comparisonTraining.items || [];
+  if (!items.length) return;
+  const current = Math.max(0, items.findIndex(item => item.task_id === state.selectedComparisonTaskId));
+  const next = (current + step + items.length) % items.length;
+  state.selectedComparisonTaskId = items[next].task_id;
+  delete state.comparisonTrainingResults[state.selectedComparisonTaskId];
+  resetComparisonTrainingDraft();
+  renderComparisonTraining();
 }
 
 function moveCompleteWord(step) {
@@ -4655,7 +4778,45 @@ document.addEventListener("click", async event => {
       state.reviewMode = button.dataset.reviewMode;
       localStorage.setItem("lc-v2-review-mode", state.reviewMode);
       if (state.reviewMode === "complete-words") await loadCompleteWordReviews();
+      if (state.reviewMode === "comparison") await loadComparisonTraining();
       renderCompleteWordReviews();
+      renderComparisonTraining();
+    }
+    if (button.id === "refreshComparisonTrainingBtn") {
+      state.selectedComparisonTaskId = null;
+      state.comparisonTrainingResults = {};
+      await loadComparisonTraining();
+      renderComparisonTraining();
+    }
+    if (button.dataset.selectComparisonTask) {
+      state.selectedComparisonTaskId = button.dataset.selectComparisonTask;
+      delete state.comparisonTrainingResults[state.selectedComparisonTaskId];
+      resetComparisonTrainingDraft();
+      renderComparisonTraining();
+    }
+    if (button.dataset.comparisonOption !== undefined) {
+      if (state.comparisonTrainingAnswer && state.comparisonTrainingAnswer !== button.dataset.comparisonOption) {
+        state.comparisonTrainingAnswerChanges += 1;
+      }
+      state.comparisonTrainingAnswer = button.dataset.comparisonOption;
+      renderComparisonTraining();
+    }
+    if (button.id === "comparisonTrainingHintBtn") {
+      state.comparisonTrainingHintUsed = true;
+      renderComparisonTraining();
+    }
+    if (button.id === "submitComparisonTrainingBtn") await submitComparisonTraining();
+    if (button.dataset.nextComparisonTask !== undefined) {
+      moveComparisonTraining(1);
+    }
+    if (button.dataset.openComparisonReview !== undefined) {
+      state.reviewMode = "memory";
+      state.reviewKind = "comparison";
+      localStorage.setItem("lc-v2-review-mode", state.reviewMode);
+      state.selectedReviewId = null;
+      state.reviewAnswerRevealed = false;
+      await loadReviews();
+      renderAll();
     }
     if (button.dataset.completeWordScope) {
       state.completeWordScope = button.dataset.completeWordScope;
@@ -4989,6 +5150,20 @@ $("#privateDictionaryList").addEventListener("change", async event => {
 
 $("#comparisonReviewStatusFilter").addEventListener("change", () => loadComparisonReviews().catch(error => toast(error.message)));
 $("#comparisonReviewExamFilter").addEventListener("change", () => loadComparisonReviews().catch(error => toast(error.message)));
+$("#comparisonTrainingTopic").addEventListener("change", async event => {
+  state.comparisonTrainingTopic = event.target.value;
+  state.selectedComparisonTaskId = null;
+  state.comparisonTrainingResults = {};
+  await loadComparisonTraining();
+  renderComparisonTraining();
+});
+$("#comparisonTrainingType").addEventListener("change", async event => {
+  state.comparisonTrainingType = event.target.value;
+  state.selectedComparisonTaskId = null;
+  state.comparisonTrainingResults = {};
+  await loadComparisonTraining();
+  renderComparisonTraining();
+});
 
 let quickSearchTimer;
 $("#globalLexiconSearch").addEventListener("input", event => {
@@ -5008,7 +5183,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 async function boot() {
   await loadHealth();
   await loadActivePracticeData();
-  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadCompleteWordReviews(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexicalComparisonCatalog(), loadComparisonReviews(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), loadOutputHistory(), loadOutputSupport(), loadSpeakingHistory(), loadSpeakingSupport(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadCompleteWordReviews(), loadComparisonTraining(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexicalComparisonCatalog(), loadComparisonReviews(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), loadOutputHistory(), loadOutputSupport(), loadSpeakingHistory(), loadSpeakingSupport(), searchLexicon("", { open: false, history: false })]);
   const restoredServerRun = await restoreServerPracticeRun();
   if (!restoredServerRun && !state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);
