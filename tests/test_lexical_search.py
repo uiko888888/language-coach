@@ -172,6 +172,35 @@ class LexicalSearchTests(unittest.TestCase):
         self.assertEqual(payload["items"][0]["patterns"][0], "a cordial welcome")
         self.assertIn("待人 cordial", payload["memory_rule"])
 
+    def test_common_curated_groups_are_complete_and_queryable_in_any_order(self):
+        from backend.lexical_compare import CURATED_COMPARISONS
+
+        self.assertEqual(len(CURATED_COMPARISONS), 11)
+        self.assertEqual(sum(len(group["terms"]) for group in CURATED_COMPARISONS), 29)
+        for group in CURATED_COMPARISONS:
+            query = ", ".join(reversed(group["terms"]))
+            payload = server.lexical_comparison(query)
+            self.assertTrue(payload["reviewed"], group["slug"])
+            self.assertEqual(
+                [item["term"] for item in payload["items"]],
+                list(reversed(group["terms"])),
+            )
+            self.assertTrue(payload["memory_rule"])
+            self.assertGreaterEqual(len(payload["dimensions"]), 3)
+            for item in payload["items"]:
+                self.assertTrue(item["focus_en"])
+                self.assertGreaterEqual(len(item["patterns"]), 2)
+                self.assertTrue(item["avoid"])
+                self.assertTrue(item["example_zh"])
+                self.assertEqual(item["sources"], ["本地人工整理基础组"])
+                self.assertIn("evidence_sources", item)
+
+    def test_single_word_search_links_to_its_common_confusion_group(self):
+        profile = server.lexical_search("efficient")["results"][0]["learning_profile"]
+        self.assertEqual(profile["meaning_zh"], "高效的；效率高的")
+        self.assertEqual(profile["related_terms"], ["effective"])
+        self.assertIn("little wasted time", profile["focus_en"])
+
     def test_single_word_search_promotes_the_curated_learning_sense_without_deleting_polysemy(self):
         item = server.lexical_search("cordial")["results"][0]
         profile = item["learning_profile"]

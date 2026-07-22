@@ -5103,10 +5103,16 @@ def lexical_comparison(query: str) -> dict:
         items = []
         for item in curated["items"]:
             dictionary = evidence[item["term"].casefold()]
-            items.append({**item, "dictionary": dictionary, "frequency": dictionary["frequency"], "sources": dictionary["sources"]})
+            items.append({
+                **item,
+                "dictionary": dictionary,
+                "frequency": dictionary["frequency"],
+                "sources": ["本地人工整理基础组"],
+                "evidence_sources": dictionary["sources"],
+            })
         return {
             "query": query, "terms": terms, "mode": "curated", "reviewed": True,
-            "source_note": "语义边界来自人工整理基础组；词典证据来自本机开放数据层。",
+            "source_note": "语义边界来自本地人工整理基础组；义项核对证据来自本机开放与私人词典层，不代表这些词典提供了本页辨析结论。",
             **{key: value for key, value in curated.items() if key != "items"}, "items": items,
         }
     return {

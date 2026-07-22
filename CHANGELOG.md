@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.5] - 2026-07-22
+
+### Added
+
+- Expanded manually curated Chinese-learner synonym boundaries from 1 group/3 terms to 11 groups/29 terms.
+- Added `say/tell/speak/talk`, `look/see/watch`, `learn/study`, `borrow/lend`, `bring/take/fetch`, `job/work/career`, `affect/effect/influence`, `effective/efficient`, `economic/economical` and `remember/remind`.
+- Every group includes overlapping Chinese meaning, English semantic focus, syntax, collocations, register, non-interchangeable boundaries, bilingual examples and a compact memory rule.
+- Single-word lookups link back to the complete confusion group, while the dictionary sidebar exposes two additional common comparison examples.
+
+### Reliability
+
+- Import-time validation rejects duplicate group membership, term/item mismatches, incomplete editorial fields and underspecified collocation evidence.
+- Batch tests query every group in reverse order to prove set matching does not discard the user's requested display order.
+
+### Scope Boundary
+
+- These are explicitly marked manually curated learning groups, not licensed Oxford/Cambridge editorial content.
+- Unreviewed word combinations continue to show open evidence without claiming authoritative interchangeability conclusions.
+
+### Verification
+
+- All 221 automated tests pass with 2 optional-dependency tests skipped; every curated group is queried in a noncanonical order and all editorial fields are checked.
+
 ## [0.8.0-alpha.25.4] - 2026-07-21
 
 ### Added

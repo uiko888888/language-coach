@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import re
 
+try:
+    from .lexical_compare_data import COMMON_CURATED_COMPARISONS
+except ImportError:
+    from lexical_compare_data import COMMON_CURATED_COMPARISONS
+
 
 CURATED_COMPARISONS = (
     {
@@ -54,6 +59,33 @@ CURATED_COMPARISONS = (
         },
     },
 )
+
+CURATED_COMPARISONS += COMMON_CURATED_COMPARISONS
+
+
+def validate_curated_comparisons() -> None:
+    seen_terms: set[str] = set()
+    required_item_fields = {
+        "pos", "meaning_zh", "focus_en", "focus", "patterns",
+        "register", "avoid", "example", "example_zh",
+    }
+    for comparison in CURATED_COMPARISONS:
+        terms = tuple(comparison["terms"])
+        if not 2 <= len(terms) <= 5 or len(set(terms)) != len(terms):
+            raise ValueError(f"Invalid curated comparison terms: {comparison['slug']}")
+        if set(comparison["items"]) != set(terms):
+            raise ValueError(f"Curated comparison items do not match terms: {comparison['slug']}")
+        overlap = seen_terms.intersection(terms)
+        if overlap:
+            raise ValueError(f"Curated terms belong to multiple groups: {sorted(overlap)}")
+        seen_terms.update(terms)
+        for term in terms:
+            item = comparison["items"][term]
+            if not required_item_fields.issubset(item) or len(item["patterns"]) < 2:
+                raise ValueError(f"Incomplete curated item: {comparison['slug']} / {term}")
+
+
+validate_curated_comparisons()
 
 
 def parse_comparison_terms(query: str, minimum: int = 2, maximum: int = 5) -> list[str]:
