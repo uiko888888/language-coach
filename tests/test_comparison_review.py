@@ -25,8 +25,8 @@ class ComparisonReviewTests(unittest.TestCase):
     def test_registry_sync_preserves_reviewed_and_candidate_boundaries(self):
         queue = comparison_review_queue(self.conn)
         self.assertEqual(queue["total"], 200)
-        self.assertEqual(queue["counts"]["published"], 65)
-        self.assertEqual(queue["counts"]["candidate"], 135)
+        self.assertEqual(queue["counts"]["published"], 85)
+        self.assertEqual(queue["counts"]["candidate"], 115)
         self.assertEqual(len(comparison_review_queue(self.conn, exam="IELTS")["items"]), 95)
 
     def test_versioned_chart_review_promotes_existing_candidate_without_erasing_notes(self):

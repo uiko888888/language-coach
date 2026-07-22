@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.12] - 2026-07-22
+
+### Added
+
+- Promoted all 20 IELTS argument-link and stance groups from candidates to complete reviewed comparisons, covering 60 terms and phrases.
+- Added clause/phrase grammar for cause, concession, contrast and addition; stance strength for reporting verbs; and legal/logical boundaries for rights, duties, truth and validity.
+- Added sourced original bilingual examples, Simplified-Chinese meanings, English concepts, patterns, register and misuse boundaries for every item.
+
+### Reliability
+
+- The catalog remains exactly 200 groups: 85 reviewed and 115 candidates; all 95 IELTS groups remain discoverable.
+- IELTS chart and argument subsets are now each 20/20 reviewed.
+- Regression tests protect `because` clause structure, `object to + -ing`, `solution to`, and the distinction between factual truth and logical validity.
+
+### Verification
+
+- A real database copy retained 225 articles, 3 cards and 49 attempts, passed SQLite integrity validation and promoted exactly 20 argument groups.
+- All 240 automated tests pass with 2 optional-dependency tests skipped; desktop Playwright passes on schema 22.
+
+### Scope Boundary
+
+- Reviewed comparison coverage is 85/200. The remaining 115 groups are still evidence-only candidates.
+- Reference content does not yet test active usage or schedule boundary errors through FSRS; that is the next iteration.
+
 ## [0.8.0-alpha.25.11] - 2026-07-22
 
 ### Added

@@ -180,8 +180,8 @@ class LexicalSearchTests(unittest.TestCase):
     def test_common_curated_groups_are_complete_and_queryable_in_any_order(self):
         from backend.lexical_compare import CURATED_COMPARISONS
 
-        self.assertEqual(len(CURATED_COMPARISONS), 65)
-        self.assertEqual(sum(len(group["terms"]) for group in CURATED_COMPARISONS), 176)
+        self.assertEqual(len(CURATED_COMPARISONS), 85)
+        self.assertEqual(sum(len(group["terms"]) for group in CURATED_COMPARISONS), 236)
         for group in CURATED_COMPARISONS:
             query = ", ".join(reversed(group["terms"]))
             payload = server.lexical_comparison(query)
@@ -216,8 +216,8 @@ class LexicalSearchTests(unittest.TestCase):
         composition = next(item for item in catalog if item["slug"] == "compose-comprise-constitute-consist-of")
         self.assertEqual(composition["terms"], ["compose", "comprise", "constitute", "consist of"])
         self.assertNotIn("items", composition)
-        self.assertEqual(sum(group["reviewed"] for group in catalog), 65)
-        self.assertEqual(sum(group["catalog_status"] == "candidate" for group in catalog), 135)
+        self.assertEqual(sum(group["reviewed"] for group in catalog), 85)
+        self.assertEqual(sum(group["catalog_status"] == "candidate" for group in catalog), 115)
         self.assertEqual(sum("IELTS" in group.get("exam_tags", []) for group in catalog), 95)
 
     def test_ielts_chart_groups_are_complete_sourced_and_statistically_safe(self):
@@ -242,6 +242,31 @@ class LexicalSearchTests(unittest.TestCase):
         self.assertIn("排序", next(item for item in average["items"] if item["term"] == "median")["focus"])
         doubling = server.lexical_comparison("double, multiply, increase twofold")
         self.assertIn("triple", next(item for item in doubling["items"] if item["term"] == "double")["avoid"])
+
+    def test_ielts_argument_groups_are_complete_sourced_and_grammar_safe(self):
+        from backend.lexical_compare_data_ielts_argument import IELTS_ARGUMENT_CURATED_COMPARISONS, SOURCE
+
+        self.assertEqual(len(IELTS_ARGUMENT_CURATED_COMPARISONS), 20)
+        self.assertEqual(sum(len(group["terms"]) for group in IELTS_ARGUMENT_CURATED_COMPARISONS), 60)
+        for group in IELTS_ARGUMENT_CURATED_COMPARISONS:
+            self.assertEqual(group["exam_tags"], ["IELTS"])
+            self.assertEqual(group["topic"], "argument")
+            self.assertGreaterEqual(len(group["dimensions"]), 3)
+            self.assertEqual(set(group["items"]), set(group["terms"]))
+            for term, lexical_item in group["items"].items():
+                self.assertTrue(lexical_item["meaning_zh"], term)
+                self.assertTrue(lexical_item["focus_en"], term)
+                self.assertGreaterEqual(len(lexical_item["patterns"]), 2, term)
+                self.assertEqual(lexical_item["example_source"], SOURCE)
+                self.assertTrue(lexical_item["example_zh"], term)
+        cause = server.lexical_comparison("because, because of, due to")
+        self.assertIn("主语和谓语", next(item for item in cause["items"] if item["term"] == "because")["focus"])
+        opposition = server.lexical_comparison("oppose, object, resist")
+        self.assertIn("-ing", next(item for item in opposition["items"] if item["term"] == "object")["avoid"])
+        solution = server.lexical_comparison("solution, measure, remedy")
+        self.assertIn("solution to", next(item for item in solution["items"] if item["term"] == "solution")["avoid"])
+        truth = server.lexical_comparison("true, correct, valid")
+        self.assertIn("不保证前提真实", next(item for item in truth["items"] if item["term"] == "valid")["avoid"])
 
     def test_lookalike_groups_expose_spelling_grammar_and_category(self):
         payload = server.lexical_comparison("complement, compliment")

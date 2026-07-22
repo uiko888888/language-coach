@@ -6,12 +6,14 @@ try:
     from .lexical_compare_candidates import COMPARISON_CANDIDATES
     from .lexical_compare_data import COMMON_CURATED_COMPARISONS
     from .lexical_compare_data_extended import EXTENDED_CURATED_COMPARISONS
+    from .lexical_compare_data_ielts_argument import IELTS_ARGUMENT_CURATED_COMPARISONS
     from .lexical_compare_data_ielts_charts import IELTS_CHART_CURATED_COMPARISONS
     from .lexical_compare_data_lookalike import LOOKALIKE_CURATED_COMPARISONS
 except ImportError:
     from lexical_compare_candidates import COMPARISON_CANDIDATES
     from lexical_compare_data import COMMON_CURATED_COMPARISONS
     from lexical_compare_data_extended import EXTENDED_CURATED_COMPARISONS
+    from lexical_compare_data_ielts_argument import IELTS_ARGUMENT_CURATED_COMPARISONS
     from lexical_compare_data_ielts_charts import IELTS_CHART_CURATED_COMPARISONS
     from lexical_compare_data_lookalike import LOOKALIKE_CURATED_COMPARISONS
 
@@ -73,6 +75,7 @@ CURATED_COMPARISONS += (
     + EXTENDED_CURATED_COMPARISONS
     + LOOKALIKE_CURATED_COMPARISONS
     + IELTS_CHART_CURATED_COMPARISONS
+    + IELTS_ARGUMENT_CURATED_COMPARISONS
 )
 
 
