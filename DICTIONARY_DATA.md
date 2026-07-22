@@ -28,6 +28,32 @@ python .\scripts\register_private_pdf.py `
 
 Registration does not copy the PDF or create entries. A scan remains `ocr_required` until representative pages pass headword, reading-order and bilingual-alignment checks.
 
+Prepare the fixed 20-page local OCR sample with Poppler:
+
+```powershell
+python .\scripts\prepare_private_pdf_ocr_sample.py `
+  --pdf "C:\path\to\dictionary.pdf" `
+  --pdftoppm "C:\path\to\pdftoppm.exe"
+```
+
+Install Paddle only in the ignored optional environment, then run PP-Structure:
+
+```powershell
+.\scripts\prepare_private_ocr_env.ps1
+& .\artifacts\private-ocr\python\Scripts\python.exe .\scripts\run_private_pdf_paddleocr.py
+```
+
+After manually marking all 20 local gold pages as `reviewed`, evaluate the sample:
+
+```powershell
+python .\scripts\evaluate_private_pdf_ocr.py `
+  --gold .\artifacts\private-ocr\dk-oxford-20-pages-v1\gold-annotations.json `
+  --prediction .\artifacts\private-ocr\dk-oxford-20-pages-v1\paddle-predictions.json `
+  --report .\artifacts\private-ocr\dk-oxford-20-pages-v1\quality-report.json
+```
+
+Exit code `2` means the sample is incomplete or failed. It must never be treated as permission to import the full scan.
+
 ## StarDict
 
 Import a complete private StarDict source set by passing its `.ifo` file. Companion files are discovered beside it:

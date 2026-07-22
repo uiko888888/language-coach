@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "sample_id": "dk-oxford-20-pages-v1",
+  "source_label": "DK Oxford bilingual illustrated dictionary",
+  "source_page_count": 1263,
+  "render_dpi": 300,
+  "thresholds": {
+    "headword_accuracy": 0.98,
+    "reading_order_accuracy": 0.99,
+    "chinese_alignment_error_rate": 0.01
+  },
+  "pages": [
+    {"page": 75, "layout": "standard_three_column"},
+    {"page": 225, "layout": "standard_three_column"},
+    {"page": 725, "layout": "standard_three_column"},
+    {"page": 625, "layout": "standard_three_column"},
+    {"page": 825, "layout": "standard_three_column"},
+    {"page": 1125, "layout": "standard_three_column"},
+    {"page": 25, "layout": "illustration_wrap"},
+    {"page": 125, "layout": "illustration_wrap"},
+    {"page": 475, "layout": "illustration_wrap"},
+    {"page": 525, "layout": "illustration_wrap"},
+    {"page": 775, "layout": "illustration_wrap"},
+    {"page": 1025, "layout": "illustration_wrap"},
+    {"page": 175, "layout": "cross_column_panel"},
+    {"page": 325, "layout": "cross_column_panel"},
+    {"page": 675, "layout": "cross_column_panel"},
+    {"page": 875, "layout": "cross_column_panel"},
+    {"page": 275, "layout": "usage_and_reference_box"},
+    {"page": 375, "layout": "usage_and_reference_box"},
+    {"page": 575, "layout": "usage_and_reference_box"},
+    {"page": 1075, "layout": "usage_and_reference_box"}
+  ]
+}

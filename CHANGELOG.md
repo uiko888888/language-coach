@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.4] - 2026-07-21
+
+### Added
+
+- Added a fixed 20-page DK Oxford OCR sample covering standard three-column pages, illustration wrapping, cross-column panels and usage/reference boxes.
+- Added reproducible 300 DPI Poppler rendering, source fingerprinting, pending manual-gold generation and stale-sample cleanup under the ignored private artifact directory.
+- Added an optional PaddleOCR 3 `PPStructureV3` runner that preserves raw page output, recognition boxes, confidence, inferred columns and candidate reading order.
+- Added strict evaluation for headword accuracy, reading-order accuracy and Chinese-meaning alignment, with promotion disabled unless all 20 pages have manual gold evidence.
+- Added an isolated Python 3.12 OCR environment setup and explicit PaddlePaddle/PaddleOCR pins; the main application environment remains unchanged.
+- The environment setup now checks every external process exit code and cannot report readiness after a failed `pip` install.
+
+### Quality Boundary
+
+- The 20 pages are rendered and visually verified, but all gold annotations remain pending. No OCR entries have been promoted.
+- PyPI and Paddle model access are blocked in the current execution environment. The pinned Paddle stack has therefore not yet been installed or run, and no 98%/99% claim is made.
+- Full-book processing remains prohibited until headword accuracy is at least 98%, reading-order accuracy is at least 99%, and Chinese-alignment errors remain below 1% on reviewed gold data.
+
+### Verification
+
+- All 219 automated tests pass with 2 optional-dependency tests skipped. The render contains exactly 20 current manifest pages and 20 pending gold records.
+
 ## [0.8.0-alpha.25.3] - 2026-07-21
 
 ### Added

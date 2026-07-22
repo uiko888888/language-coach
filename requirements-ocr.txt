@@ -1,0 +1,4 @@
+# Isolated optional OCR environment. Do not install into the application runtime.
+# These pins require successful Windows/Python 3.12 wheel and model-download verification before promotion.
+paddlepaddle==3.2.2
+paddleocr==3.3.2
