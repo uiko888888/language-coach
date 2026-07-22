@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.25.14";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.25.15";
 const SUPPORTED_API_VERSION = "1";
 const SUPPORTED_SCHEMA_VERSION = "23";
 
@@ -2928,7 +2928,7 @@ function renderComparisonTraining() {
     <div><span>当前错题</span><strong>${summary.wrong || 0}</strong></div>
     <div><span>到期复习</span><strong>${summary.due_reviews || 0}</strong></div>`;
   $("#comparisonTrainingQuality").textContent = state.comparisonTrainingType === "correction"
-    ? `质量门：${quality.candidates || 0} 道候选，已审 ${quality.reviewed || 0} 道，发布 ${quality.published || 0} 道，待修订 ${quality.revise || 0} 道，未审核 ${quality.unreviewed || 0} 道。`
+    ? `质量门：${quality.candidates || 0} 道候选，已审 ${quality.reviewed || 0} 道，发布 ${quality.published || 0} 道，重写通过 ${quality.rewritten || 0} 道，拒绝 ${quality.rejected || 0} 道，未审核 ${quality.unreviewed || 0} 道。`
     : "概念选择来自已完成结构化审核的词义辨析组。";
   if (!items.some(item => item.task_id === state.selectedComparisonTaskId)) {
     state.selectedComparisonTaskId = items[0]?.task_id || null;

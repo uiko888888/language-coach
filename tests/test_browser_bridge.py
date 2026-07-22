@@ -133,7 +133,7 @@ class BrowserBridgeTests(unittest.TestCase):
     def test_comparison_training_api_saves_wrong_boundary_to_review_and_undoes_rating(self):
         training, _ = self.request("/api/lexicon/comparison-training?topic=charts&task_type=choice&limit=20")
         self.assertGreater(training["summary"]["total"], 20)
-        self.assertEqual(training["quality"]["published"], 22)
+        self.assertEqual(training["quality"]["published"], 40)
         self.assertEqual(training["quality"]["reviewed"], 50)
         task = next(item for item in training["items"] if item["task_id"].endswith(":choice:amount"))
         self.assertNotIn("answer", task)

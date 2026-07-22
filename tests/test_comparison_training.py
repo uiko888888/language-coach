@@ -10,6 +10,7 @@ from backend.comparison_training import (
     submit_comparison_training_answer,
 )
 from backend.comparison_training_audit import CORRECTION_AUDIT_BY_TASK, correction_audit_summary
+from backend.comparison_training_audit import CORRECTION_TASK_REVISIONS
 from backend.review_scheduler import review_queue
 
 
@@ -39,9 +40,9 @@ class ComparisonTrainingTests(unittest.TestCase):
         candidate_corrections = [task for task in candidates if task["task_type"] == "correction"]
         self.assertEqual(len(candidates), 393)
         self.assertEqual(len(candidate_corrections), 157)
-        self.assertEqual(len(tasks), 258)
+        self.assertEqual(len(tasks), 276)
         self.assertEqual(len(choices), 236)
-        self.assertEqual(len(corrections), 22)
+        self.assertEqual(len(corrections), 40)
         self.assertEqual(len({task["task_id"] for task in tasks}), len(tasks))
         self.assertTrue(all(task["answer"] in task["options"] for task in tasks))
         self.assertTrue(all(task["corrected_text"] for task in corrections))
@@ -49,11 +50,24 @@ class ComparisonTrainingTests(unittest.TestCase):
 
     def test_audit_reviews_fifty_stratified_tasks_and_quarantines_revisions(self):
         summary = correction_audit_summary()
-        revised_task = next(task_id for task_id, review in CORRECTION_AUDIT_BY_TASK.items() if review["decision"] == "revise")
-        self.assertEqual(summary, {"reviewed": 50, "approved": 22, "revise": 28})
-        self.assertNotIn(revised_task, {task["task_id"] for task in comparison_training_catalog()})
+        rejected_task = next(task_id for task_id, review in CORRECTION_AUDIT_BY_TASK.items() if review["decision"] == "rejected")
+        self.assertEqual(summary, {"reviewed": 50, "approved": 40, "revise": 0, "rejected": 10, "rewritten": 18})
+        self.assertNotIn(rejected_task, {task["task_id"] for task in comparison_training_catalog()})
         with server.db() as conn, self.assertRaisesRegex(ValueError, "not found"):
-            submit_comparison_training_answer(conn, revised_task, "effect")
+            submit_comparison_training_answer(conn, rejected_task, "about")
+
+    def test_rewritten_corrections_preserve_answer_and_distractor_structure(self):
+        tasks = {task["task_id"]: task for task in comparison_training_candidates()}
+        approved_revisions = {
+            task_id: revision for task_id, revision in CORRECTION_TASK_REVISIONS.items()
+            if revision["decision"] == "approved"
+        }
+        self.assertEqual(len(approved_revisions), 18)
+        for task_id, revision in approved_revisions.items():
+            task = tasks[task_id]
+            self.assertIn(task["answer"].casefold(), revision["corrected_text"].casefold())
+            self.assertTrue(any(option.casefold() in revision["prompt"].casefold() for option in task["options"] if option != task["answer"]))
+            self.assertNotEqual(revision["prompt"].casefold(), revision["corrected_text"].casefold())
 
     def test_wrong_answer_creates_one_due_boundary_card_and_persists_behavior(self):
         task = next(task for task in comparison_training_catalog() if task["task_type"] == "choice")
@@ -103,7 +117,7 @@ class ComparisonTrainingTests(unittest.TestCase):
         self.assertEqual(queue["items"][0]["task_id"], tasks[1]["task_id"])
         self.assertEqual(queue["summary"]["wrong"], 1)
         self.assertEqual(queue["quality"]["reviewed"], 50)
-        self.assertEqual(queue["quality"]["published"], 22)
+        self.assertEqual(queue["quality"]["published"], 40)
 
 
 if __name__ == "__main__":

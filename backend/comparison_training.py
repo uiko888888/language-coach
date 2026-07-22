@@ -6,11 +6,11 @@ import sqlite3
 from datetime import datetime, timezone
 
 try:
-    from .comparison_training_audit import CORRECTION_AUDIT_BY_TASK, correction_audit_summary
+    from .comparison_training_audit import CORRECTION_AUDIT_BY_TASK, CORRECTION_TASK_REVISIONS, correction_audit_summary
     from .lexical_compare import CURATED_COMPARISONS
     from .review_scheduler import ensure_review_item
 except ImportError:
-    from comparison_training_audit import CORRECTION_AUDIT_BY_TASK, correction_audit_summary
+    from comparison_training_audit import CORRECTION_AUDIT_BY_TASK, CORRECTION_TASK_REVISIONS, correction_audit_summary
     from lexical_compare import CURATED_COMPARISONS
     from review_scheduler import ensure_review_item
 
@@ -71,14 +71,18 @@ def comparison_training_candidates() -> list[dict]:
             if incorrect and _normalize(incorrect) != _normalize(lexical_item["example"]):
                 task_id = f"{group['slug']}:correction:{term}"
                 audit = CORRECTION_AUDIT_BY_TASK.get(task_id)
-                tasks.append({
+                task = {
                     **base, "task_id": task_id, "task_type": "correction",
                     "instruction": "根据目标含义，选择能修正句中用词边界的表达。",
                     "prompt": incorrect,
                     "support": f"目标含义：{lexical_item['focus']}",
                     "corrected_text": lexical_item["example"],
                     "audit_status": audit["decision"] if audit else "unreviewed",
-                })
+                }
+                revision = CORRECTION_TASK_REVISIONS.get(task_id)
+                if revision:
+                    task.update({key: revision[key] for key in ("prompt", "corrected_text") if key in revision})
+                tasks.append(task)
     return tasks
 
 

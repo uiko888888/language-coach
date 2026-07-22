@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.15] - 2026-07-22
+
+### Changed
+
+- Completed the second-pass disposition of all 28 ambiguous correction tasks from `alpha.25.14` while retaining their initial decisions and reasons.
+- Rewrote and approved 18 tasks using fixed collocations, part of speech, tense, statistical definitions or institutional names; published correction coverage rises from 22 to 40.
+- Rejected 10 tasks whose distinctions remain valid nuance comparisons rather than uniquely repairable errors; their reviewed concept-choice tasks remain available.
+
+### Reliability
+
+- Revision records preserve the original prompt decision, replacement prompt, corrected sentence and final reason instead of overwriting audit history.
+- The audit now validates that every approved rewrite contains the target answer, contains a distractor in the faulty prompt and materially changes the sentence.
+- Runtime quality metadata distinguishes rewritten approvals, final rejections and unreviewed candidates.
+
+### Verification
+
+- All 248 automated tests pass with 2 optional-dependency tests skipped; audit, compilation, JavaScript and isolated desktop Playwright checks pass on schema 23.
+
+### Scope Boundary
+
+- Forty published corrections are quality-gated coverage, not evidence of reduced learner error recurrence.
+- Another 107 generated corrections remain unavailable until reviewed; phrase expansion remains a separate sourced-content batch.
+
 ## [0.8.0-alpha.25.14] - 2026-07-22
 
 ### Changed

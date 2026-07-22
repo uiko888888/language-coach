@@ -4,7 +4,7 @@ from __future__ import annotations
 # A correction task is publishable only when replacing the distractor with the
 # reviewed answer repairs a genuine lexical, grammatical, or collocational error.
 # Natural alternatives that merely express a different nuance remain candidates.
-CORRECTION_AUDIT_REVIEWS: tuple[dict, ...] = (
+INITIAL_CORRECTION_AUDIT_REVIEWS: tuple[dict, ...] = (
     {"task_id": "acquire-obtain-gain:correction:acquire", "decision": "approved", "reason": "Acquire is the established verb for vocabulary developing through exposure."},
     {"task_id": "affect-effect-influence:correction:effect", "decision": "revise", "reason": "Influence and effect are both natural nouns in this sentence."},
     {"task_id": "bring-take-fetch:correction:fetch", "decision": "revise", "reason": "Bring can be correct when the destination is the speaker's location."},
@@ -58,6 +58,143 @@ CORRECTION_AUDIT_REVIEWS: tuple[dict, ...] = (
 )
 
 
+CORRECTION_TASK_REVISIONS: dict[str, dict] = {
+    "affect-effect-influence:correction:effect": {
+        "decision": "approved", "prompt": "The new regulations took influence immediately.",
+        "corrected_text": "The new regulations took effect immediately.",
+        "reason": "The fixed phrase take effect makes effect the only valid option.",
+    },
+    "bring-take-fetch:correction:fetch": {
+        "decision": "approved", "prompt": "Could you take the parcel from reception and return here with it?",
+        "corrected_text": "Could you fetch the parcel from reception?",
+        "reason": "Fetch uniquely packages going to collect something and bringing it back.",
+    },
+    "common-ordinary-normal-usual:correction:ordinary": {
+        "decision": "approved", "prompt": "The scan found nothing out of the normal.",
+        "corrected_text": "The scan found nothing out of the ordinary.",
+        "reason": "Out of the ordinary is the established phrase for something unusual.",
+    },
+    "problem-issue-question:correction:issue": {
+        "decision": "approved", "prompt": "Several residents took question with the revised boundary.",
+        "corrected_text": "Several residents took issue with the revised boundary.",
+        "reason": "Take issue with is the fixed frame for expressing disagreement.",
+    },
+    "purpose-goal-objective-aim:correction:objective": {
+        "decision": "approved", "prompt": "The trial used an aim measure of sleep quality.",
+        "corrected_text": "The trial used an objective measure of sleep quality.",
+        "reason": "Only objective functions as the adjective meaning independently measurable.",
+    },
+    "ielts-approximately-roughly-about:correction:about": {
+        "decision": "rejected", "reason": "No faithful numerical context makes about uniquely correct over approximately or roughly.",
+    },
+    "ielts-average-mean-median:correction:mean": {
+        "decision": "approved", "prompt": "The researchers added all scores, divided by the number of participants, and reported the median.",
+        "corrected_text": "The researchers added all scores, divided by the number of participants, and reported the mean.",
+        "reason": "The calculation explicitly defines the arithmetic mean, not the median.",
+    },
+    "ielts-difference-gap-disparity:correction:disparity": {
+        "decision": "rejected", "reason": "Difference, gap and disparity require evaluative context rather than a uniquely repairable sentence.",
+    },
+    "ielts-minimum-lowest-nadir:correction:nadir": {
+        "decision": "rejected", "reason": "Minimum and nadir can both denote the same low point in a natural sentence.",
+    },
+    "ielts-overall-generally-on-the-whole:correction:overall": {
+        "decision": "approved", "prompt": "The generally trend was upward despite two brief declines.",
+        "corrected_text": "The overall trend was upward despite two brief declines.",
+        "reason": "Overall is the only option that can directly modify the noun trend.",
+    },
+    "ielts-proportion-percentage-rate-ratio:correction:percentage": {
+        "decision": "approved", "prompt": "The employment rate rose by five rate points.",
+        "corrected_text": "The employment rate rose by five percentage points.",
+        "reason": "Percentage point is the required unit for an absolute difference between percentages.",
+    },
+    "ielts-reach-hit-attain:correction:hit": {
+        "decision": "approved", "prompt": "Monthly sales reach a record high last December.",
+        "corrected_text": "Monthly sales hit a record high last December.",
+        "reason": "Hit supplies the required past form without inflection and preserves the record-high collocation.",
+    },
+    "ielts-sharp-steep-dramatic:correction:dramatic": {
+        "decision": "rejected", "reason": "Sharp and dramatic can both naturally characterize a major shift without an external magnitude rule.",
+    },
+    "ielts-slight-marginal-modest:correction:modest": {
+        "decision": "rejected", "reason": "Slight, marginal and modest depend on a domain-specific comparison baseline.",
+    },
+    "ielts-stable-steady-constant:correction:stable": {
+        "decision": "rejected", "reason": "Stable and steady overlap too strongly in chart descriptions for a strict correction item.",
+    },
+    "ielts-trend-pattern-tendency:correction:trend": {
+        "decision": "rejected", "reason": "A downward trend and downward pattern can both be valid summaries of time-series data.",
+    },
+    "ielts-advantage-benefit-merit:correction:advantage": {
+        "decision": "approved", "prompt": "Rail has a benefit over air travel in city-centre access.",
+        "corrected_text": "Rail has an advantage over air travel in city-centre access.",
+        "reason": "Have an advantage over is the comparative frame required by the second option.",
+    },
+    "ielts-also-moreover-furthermore:correction:also": {
+        "decision": "approved", "prompt": "The policy not only cuts emissions but moreover lowers household bills.",
+        "corrected_text": "The policy not only cuts emissions but also lowers household bills.",
+        "reason": "The correlative construction requires not only ... but also.",
+    },
+    "ielts-although-despite-in-spite-of:correction:despite": {
+        "decision": "rejected", "reason": "Despite and in spite of share the same complement and cannot be separated by correction alone.",
+    },
+    "ielts-because-because-of-due-to:correction:because of": {
+        "decision": "rejected", "reason": "Because of and due to are both accepted before the relevant noun phrase.",
+    },
+    "ielts-choice-option-alternative:correction:choice": {
+        "decision": "approved", "prompt": "After reviewing both offers, she made an option.",
+        "corrected_text": "After reviewing both offers, she made a choice.",
+        "reason": "Make a choice is the established decision frame; make an option is not idiomatic.",
+    },
+    "ielts-example-instance-illustration:correction:example": {
+        "decision": "approved", "prompt": "Senior staff should set an instance for new employees.",
+        "corrected_text": "Senior staff should set an example for new employees.",
+        "reason": "Set an example is the fixed expression for providing a model to follow.",
+    },
+    "ielts-false-incorrect-invalid:correction:false": {
+        "decision": "approved", "prompt": "Smoke from the kitchen triggered an incorrect alarm.",
+        "corrected_text": "Smoke from the kitchen triggered a false alarm.",
+        "reason": "False alarm is the fixed collocation for a warning without the expected danger.",
+    },
+    "ielts-freedom-liberty-independence:correction:freedom": {
+        "decision": "approved", "prompt": "The journalist filed a Liberty of Information request.",
+        "corrected_text": "The journalist filed a Freedom of Information request.",
+        "reason": "Freedom of Information is the established institutional name.",
+    },
+    "ielts-however-nevertheless-nonetheless:correction:nonetheless": {
+        "decision": "rejected", "reason": "Nonetheless and nevertheless remain interchangeable in the intended concessive function.",
+    },
+    "ielts-solution-measure-remedy:correction:remedy": {
+        "decision": "approved", "prompt": "The claimant had no adequate solution at law.",
+        "corrected_text": "The claimant had no adequate remedy at law.",
+        "reason": "Remedy at law is the established legal frame for available judicial relief.",
+    },
+    "ielts-true-correct-valid:correction:true": {
+        "decision": "approved", "prompt": "Her ambition to study abroad finally came correct.",
+        "corrected_text": "Her ambition to study abroad finally came true.",
+        "reason": "Come true is the fixed frame for a hope or ambition becoming reality.",
+    },
+    "ielts-while-whereas:correction:while": {
+        "decision": "approved", "prompt": "Whereas the survey was running, interviewers logged each refusal.",
+        "corrected_text": "While the survey was running, interviewers logged each refusal.",
+        "reason": "Only while expresses the simultaneous time relationship intended here.",
+    },
+}
+
+
+def _current_review(review: dict) -> dict:
+    revision = CORRECTION_TASK_REVISIONS.get(review["task_id"])
+    if not revision:
+        return dict(review)
+    return {
+        **review,
+        "initial_decision": review["decision"],
+        "decision": revision["decision"],
+        "reason": revision["reason"],
+    }
+
+
+CORRECTION_AUDIT_REVIEWS = tuple(_current_review(review) for review in INITIAL_CORRECTION_AUDIT_REVIEWS)
 CORRECTION_AUDIT_BY_TASK = {review["task_id"]: review for review in CORRECTION_AUDIT_REVIEWS}
 
 
@@ -67,4 +204,9 @@ def correction_audit_summary(candidate_ids: set[str] | None = None) -> dict:
         reviews = tuple(review for review in reviews if review["task_id"] in candidate_ids)
     approved = sum(review["decision"] == "approved" for review in reviews)
     revise = sum(review["decision"] == "revise" for review in reviews)
-    return {"reviewed": len(reviews), "approved": approved, "revise": revise}
+    rejected = sum(review["decision"] == "rejected" for review in reviews)
+    rewritten = sum(review.get("initial_decision") == "revise" and review["decision"] == "approved" for review in reviews)
+    return {
+        "reviewed": len(reviews), "approved": approved, "revise": revise,
+        "rejected": rejected, "rewritten": rewritten,
+    }
