@@ -1,0 +1,50 @@
+from __future__ import annotations
+
+import json
+import sys
+from collections import Counter
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from backend.comparison_training import comparison_training_candidates, comparison_training_catalog
+from backend.comparison_training_audit import CORRECTION_AUDIT_REVIEWS, correction_audit_summary
+
+
+def main() -> int:
+    candidates = [task for task in comparison_training_candidates() if task["task_type"] == "correction"]
+    candidate_map = {task["task_id"]: task for task in candidates}
+    reviewed_ids = [review["task_id"] for review in CORRECTION_AUDIT_REVIEWS]
+    missing = sorted(set(reviewed_ids) - set(candidate_map))
+    duplicate_reviews = len(reviewed_ids) - len(set(reviewed_ids))
+    invalid_decisions = sorted({review["decision"] for review in CORRECTION_AUDIT_REVIEWS} - {"approved", "revise"})
+    published = [task for task in comparison_training_catalog() if task["task_type"] == "correction"]
+    published_ids = {task["task_id"] for task in published}
+    approved_ids = {
+        review["task_id"] for review in CORRECTION_AUDIT_REVIEWS if review["decision"] == "approved"
+    }
+    strata = Counter(
+        (candidate_map[task_id]["topic"], candidate_map[task_id]["confusion_type"])
+        for task_id in reviewed_ids if task_id in candidate_map
+    )
+    summary = {
+        "candidates": len(candidates),
+        **correction_audit_summary(set(candidate_map)),
+        "unreviewed": len(candidates) - len(set(reviewed_ids)),
+        "published": len(published),
+        "approval_rate": round(len(approved_ids) / len(reviewed_ids), 3) if reviewed_ids else 0,
+        "strata": {f"{topic}:{kind}": count for (topic, kind), count in sorted(strata.items())},
+        "missing_review_tasks": missing,
+        "duplicate_reviews": duplicate_reviews,
+        "invalid_decisions": invalid_decisions,
+        "publication_matches_approval": published_ids == approved_ids,
+    }
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    return 0 if not missing and not duplicate_reviews and not invalid_decisions and published_ids == approved_ids else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1399,6 +1399,7 @@ label {
 .comparison-training-filters { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }
 .comparison-training-filters label { display: grid; gap: 5px; margin: 0; }
 .comparison-training-filters span { color: var(--muted); font-size: 12px; }
+.comparison-training-quality { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .comparison-training-workspace { margin-bottom: 14px; }
 .comparison-training-workspace .master-list { max-height: 660px; }
 .comparison-training-workspace .master-content-panel { min-height: 560px; }

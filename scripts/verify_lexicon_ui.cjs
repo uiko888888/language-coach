@@ -37,7 +37,7 @@ async function run() {
     } catch (error) {
       throw new Error(`${error.message}${serverError ? `\nBackend stderr:\n${serverError}` : ""}`);
     }
-    if (version.app_version !== "0.8.0-alpha.25.13" || version.database_schema_version !== 23) {
+    if (version.app_version !== "0.8.0-alpha.25.14" || version.database_schema_version !== 23) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const lexicalPayload = await fetch(`${baseUrl}/api/lexicon/search?q=cast`).then(response => response.json());
@@ -101,6 +101,8 @@ async function run() {
     if (!await page.locator(".comparison-memory-rule").getByText(/整体 comprises/).count()) failures.push("whole-part memory rule is missing");
     await page.screenshot({ path: path.join(root, "artifacts", "lexicon-compose-comprise-desktop.png"), fullPage: true });
     const training = await fetch(`${baseUrl}/api/lexicon/comparison-training?topic=charts&task_type=choice&limit=100`).then(response => response.json());
+    const correctionTraining = await fetch(`${baseUrl}/api/lexicon/comparison-training?task_type=correction&limit=100`).then(response => response.json());
+    if (correctionTraining.quality?.reviewed !== 50 || correctionTraining.quality?.published !== 22) failures.push("comparison correction quality gate is not active");
     const firstTask = training.items.find(item => item.task_id.endsWith(":choice:amount"));
     if ("answer" in firstTask) failures.push("comparison training queue leaks the correct answer");
     const wrongOption = "number";

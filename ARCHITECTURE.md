@@ -10,6 +10,7 @@
 - Dictionary examples and corpus observations are evidence sources; they do not automatically become editorial conclusions.
 - Registry synchronization is idempotent and preserves local priorities, notes, decisions and completed reviews.
 - `backend/comparison_training.py` derives versioned tasks from reviewed comparison content, while schema 23 stores attempts and links only wrong boundaries to ordinary review cards; FSRS remains owned by `review_scheduler.py`.
+- `backend/comparison_training_audit.py` is the versioned correction-task decision ledger. Runtime publication fails closed to explicitly approved corrections, and `scripts/audit_comparison_training.py` verifies that the approved and published sets are identical.
 
 ## schema 16 口语边界
 

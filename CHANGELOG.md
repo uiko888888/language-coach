@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.14] - 2026-07-22
+
+### Changed
+
+- Added a versioned, stratified internal language audit for 50 of 157 generated correction candidates: 14 general semantic, 7 lookalike, 13 IELTS chart and 16 IELTS argument tasks.
+- Only the 22 tasks with a genuine lexical, grammatical or collocational repair are now published; 28 ambiguous tasks require revision and 107 remain unreviewed.
+- The correction workspace reports candidate, reviewed, published, revision and unreviewed counts instead of presenting raw generated volume as approved content.
+
+### Reliability
+
+- Added an executable audit that verifies review IDs, decisions, stratum coverage and exact equality between approved and published task sets.
+- Quarantined tasks cannot be fetched from the training queue or submitted directly through the answer API.
+- The audit found a 44% first-pass approval rate, so generated correction volume is no longer treated as a quality signal.
+
+### Verification
+
+- All 247 automated tests pass with 2 optional-dependency tests skipped; the audit command, Python compilation, JavaScript syntax and desktop Playwright workflow pass.
+
+### Scope Boundary
+
+- The review is an internal structured language audit, not external native-speaker validation or evidence of learning gains.
+- The next content step is to rewrite the 28 ambiguous tasks and audit another 50 before expanding correction coverage.
+
 ## [0.8.0-alpha.25.13] - 2026-07-22
 
 ### Added

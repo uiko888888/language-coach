@@ -191,7 +191,7 @@ class ProfileUiContractTests(unittest.TestCase):
             "createBackupBtn", "backupSelect", "restoreBackupBtn", "backupStatus",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
-        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.25.13";', self.js)
+        self.assertIn('const FRONTEND_APP_VERSION = "0.8.0-alpha.25.14";', self.js)
         self.assertIn('const SUPPORTED_SCHEMA_VERSION = "23";', self.js)
         self.assertIn('const schemaCompatible =', self.js)
         self.assertIn('api("/api/backups"', self.js)
@@ -243,7 +243,7 @@ class ProfileUiContractTests(unittest.TestCase):
     def test_comparison_training_is_a_split_attempt_feedback_fsrs_loop(self):
         for element_id in (
             "comparisonTrainingPane", "comparisonTrainingTopic", "comparisonTrainingType",
-            "comparisonTrainingSummary", "comparisonTrainingQueue", "comparisonTrainingDetail",
+            "comparisonTrainingQuality", "comparisonTrainingSummary", "comparisonTrainingQueue", "comparisonTrainingDetail",
         ):
             self.assertIn(f'id="{element_id}"', self.html)
         for contract in (

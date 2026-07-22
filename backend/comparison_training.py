@@ -6,9 +6,11 @@ import sqlite3
 from datetime import datetime, timezone
 
 try:
+    from .comparison_training_audit import CORRECTION_AUDIT_BY_TASK, correction_audit_summary
     from .lexical_compare import CURATED_COMPARISONS
     from .review_scheduler import ensure_review_item
 except ImportError:
+    from comparison_training_audit import CORRECTION_AUDIT_BY_TASK, correction_audit_summary
     from lexical_compare import CURATED_COMPARISONS
     from review_scheduler import ensure_review_item
 
@@ -34,7 +36,7 @@ def _replace_term(text: str, term: str, replacement: str) -> str | None:
     return pattern.sub(value, text, count=1)
 
 
-def comparison_training_catalog() -> list[dict]:
+def comparison_training_candidates() -> list[dict]:
     tasks: list[dict] = []
     for group in CURATED_COMPARISONS:
         terms = list(group["terms"])
@@ -67,14 +69,24 @@ def comparison_training_catalog() -> list[dict]:
             distractor = terms[(position + 1) % len(terms)]
             incorrect = _replace_term(lexical_item["example"], term, distractor)
             if incorrect and _normalize(incorrect) != _normalize(lexical_item["example"]):
+                task_id = f"{group['slug']}:correction:{term}"
+                audit = CORRECTION_AUDIT_BY_TASK.get(task_id)
                 tasks.append({
-                    **base, "task_id": f"{group['slug']}:correction:{term}", "task_type": "correction",
+                    **base, "task_id": task_id, "task_type": "correction",
                     "instruction": "根据目标含义，选择能修正句中用词边界的表达。",
                     "prompt": incorrect,
                     "support": f"目标含义：{lexical_item['focus']}",
                     "corrected_text": lexical_item["example"],
+                    "audit_status": audit["decision"] if audit else "unreviewed",
                 })
     return tasks
+
+
+def comparison_training_catalog() -> list[dict]:
+    return [
+        task for task in comparison_training_candidates()
+        if task["task_type"] == "choice" or task.get("audit_status") == "approved"
+    ]
 
 
 def _task_map() -> dict[str, dict]:
@@ -131,10 +143,20 @@ def comparison_training_queue(
            WHERE ri.item_type = 'card' AND c.kind = 'comparison-boundary'
              AND ri.state != 'suspended' AND ri.due_at <= ?""", (_now(),)
     ).fetchone()[0]
+    candidate_corrections = {
+        task["task_id"] for task in comparison_training_candidates() if task["task_type"] == "correction"
+    }
+    audit = correction_audit_summary(candidate_corrections)
     return {
         "items": items,
         "summary": {"total": total, "attempted": attempted, "correct": correct, "wrong": wrong, "due_reviews": due_reviews},
         "filters": {"topic": topic, "task_type": task_type},
+        "quality": {
+            **audit,
+            "candidates": len(candidate_corrections),
+            "unreviewed": len(candidate_corrections) - audit["reviewed"],
+            "published": sum(task["task_type"] == "correction" for task in comparison_training_catalog()),
+        },
     }
 
 
