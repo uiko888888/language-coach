@@ -6,6 +6,7 @@
 - The event API accepts only the four explicit funnel stages: impression, click, start and submit.
 - Metrics are descriptive; they do not feed back into ability or recommendation weights until a reviewed experiment exists.
 - Browser event failures are intentionally ignored so analytics cannot interrupt study.
+- `scripts/report_recommendation_metrics.py` reads the local event table through a closed SQLite connection and reports rates only when the sample exists.
 
 ## Academic phrase recommendation boundary
 

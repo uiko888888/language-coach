@@ -19,8 +19,9 @@ The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
 ### Verification
 
-- All 260 automated tests pass with 2 optional-dependency tests skipped; migration, compilation, content audit and schema 25 desktop E2E pass.
+- All 262 automated tests pass with 2 optional-dependency tests skipped; migration, compilation, content audit and schema 25 desktop E2E pass.
 - Event reporting is explicitly non-blocking after an E2E timeout exposed and fixed an awaited analytics request.
+- Added `scripts/report_recommendation_metrics.py` for a reproducible local seven-day funnel report; an empty sample is reported as insufficient rather than scored.
 
 ## [0.8.0-alpha.25.19] - 2026-07-23
 
