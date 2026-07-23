@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [Unreleased] - v0.8.0-beta.1 preparation
+
+### Planned
+
+- Defined Beta.1 as the v0.8 local-version stability closure milestone.
+- Added ordered work for export/restore, migration compatibility, seven core browser E2E flows, error recovery, diagnostics, accessibility and Windows delivery.
+- Froze new exam, media, cloud-account and large-content expansion until the Beta.1 exit criteria are met.
+
+### Scope Boundary
+
+- Seven-day recommendation observation, 20-article annotation and dictionary sampling continue as parallel evidence work.
+- These observations do not count as Beta.1 completion and must not change learner-profile weights before sufficient data exists.
+
 ## [0.8.0-alpha.25.20] - 2026-07-23
 
 ### Added

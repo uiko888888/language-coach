@@ -18,6 +18,19 @@ This is a product benchmark against established interaction patterns, not a live
 | Universal delivery | 3/10 | Hosted PWA products | Current edition is local and single-user | Accounts, cloud database, worker queue and PWA |
 | Engineering operations | 7.4/10 | Production SaaS | Versioned editorial promotion and browser E2E exist, but HTTP/business code remains concentrated and SQLite resource cleanup is incomplete | Continue domain extraction, connection cleanup and observability |
 
+## Beta.1 Maturity Gate
+
+`v0.8.0-beta.1` is a stability milestone, not an automatic score increase. The current maturity scores remain the alpha.25.20 baseline until the following evidence is complete:
+
+- [ ] Exported cards, attempts, mistakes, review logs, profile and history can be read and restored.
+- [ ] The seven core browser workflows pass against a real local database.
+- [ ] Migration, backup/restore and cross-version startup preserve SQLite integrity and record counts.
+- [ ] Backend, translation, AI and media-permission failures recover without losing learner data.
+- [ ] Keyboard, focus, semantic labels, contrast, zoom and fixed-sidebar desktop layout pass audit.
+- [ ] Windows install, upgrade, autostart and restart verification pass.
+
+The seven-day recommendation report, 20-article annotation sample and dictionary sampling remain parallel evidence tasks. They inform later calibration, but insufficient samples must not be presented as improved learning outcomes or used to raise the maturity score.
+
 ## Differentiation
 
 The defensible product is not a larger dictionary or another generic AI question generator. It is the traceable loop:
