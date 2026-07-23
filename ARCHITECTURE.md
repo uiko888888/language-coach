@@ -1,5 +1,12 @@
 # Language Coach Architecture
 
+## Recommendation observation boundary
+
+- Schema 25 stores local recommendation events separately from attempts and profile settings.
+- The event API accepts only the four explicit funnel stages: impression, click, start and submit.
+- Metrics are descriptive; they do not feed back into ability or recommendation weights until a reviewed experiment exists.
+- Browser event failures are intentionally ignored so analytics cannot interrupt study.
+
 ## Academic phrase recommendation boundary
 
 - `backend/academic_phrase_recommendation.py` ranks reviewed phrase tasks using persisted attempts and existing FSRS due state.

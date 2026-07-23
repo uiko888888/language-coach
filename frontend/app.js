@@ -8,9 +8,9 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.25.19";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.25.20";
 const SUPPORTED_API_VERSION = "1";
-const SUPPORTED_SCHEMA_VERSION = "24";
+const SUPPORTED_SCHEMA_VERSION = "25";
 
 const state = {
   articles: [],
@@ -2232,6 +2232,7 @@ function renderAcademicPhrasePractice() {
 async function startAcademicPhraseTraining(term) {
   const data = await api(`/api/academic-phrase-training?q=${encodeURIComponent(term)}&limit=1`);
   state.academicTraining = { items: data.items || [], index: 0, response: "", result: null };
+  if (state.academicTraining.items[0]) recordRecommendationEvent({ event_type: "start", sense_key: state.academicTraining.items[0].sense_key, task_type: state.academicTraining.items[0].task_type });
   renderAcademicPhrasePractice();
 }
 
@@ -2243,6 +2244,7 @@ async function submitAcademicPhraseTraining(taskId) {
     body: JSON.stringify({ task_id: taskId, response, elapsed_seconds: 0, confidence: 2 }),
   });
   state.academicTraining.result = data.result;
+  recordRecommendationEvent({ event_type: "submit", sense_key: data.task.sense_key, task_type: data.task.task_type, correct: data.result.correct });
   await Promise.all([loadCards(), loadReviews(), loadToday()]);
   renderAcademicPhrasePractice();
 }
@@ -2369,8 +2371,16 @@ function renderAcademicPhrases() {
   $("#academicPhraseCount").textContent = data.count || 0;
   const recommendations = state.academicPhraseRecommendations?.items || [];
   $("#academicPhraseRecommendation").innerHTML = recommendations.length
-    ? `<div class="academic-recommendation-head"><strong>今日推荐</strong><span>依据练习记录与到期状态</span></div>${recommendations.slice(0, 5).map(item => `<button data-search-query="${escapeHtml(item.term)}"><strong>${escapeHtml(item.term)}</strong><small>${escapeHtml(item.recommendation_reason)}</small></button>`).join("")}`
+    ? `<div class="academic-recommendation-head"><strong>今日推荐</strong><span>依据练习记录与到期状态</span></div>${recommendations.slice(0, 5).map(item => `<button data-search-query="${escapeHtml(item.term)}" data-recommendation-click data-recommendation-sense="${escapeHtml(item.sense_key)}" data-recommendation-reason="${escapeHtml(item.recommendation_reason)}"><strong>${escapeHtml(item.term)}</strong><small>${escapeHtml(item.recommendation_reason)}</small></button>`).join("")}`
     : `<div class="empty-state">完成一次词组练习后，这里会显示可解释推荐。</div>`;
+  const impressionDay = new Date().toISOString().slice(0, 10);
+  recommendations.slice(0, 5).forEach(item => {
+    const key = `lc-recommendation-impression:${impressionDay}:${item.sense_key}`;
+    if (!sessionStorage.getItem(key)) {
+      sessionStorage.setItem(key, "1");
+      recordRecommendationEvent({ event_type: "impression", sense_key: item.sense_key, recommendation_reason: item.recommendation_reason });
+    }
+  });
   $("#academicPhraseCatalog").innerHTML = (data.items || []).map(item => `
     <button data-search-query="${escapeHtml(item.term)}"><strong>${escapeHtml(item.term)}</strong><span>${escapeHtml(item.meaning_zh)}</span><small>${escapeHtml(item.category_label)}</small></button>
   `).join("") || `<div class="empty-state">当前筛选下没有词组。</div>`;
@@ -2390,6 +2400,10 @@ async function loadAcademicPhraseRecommendations() {
   const data = await api("/api/academic-phrase-training/recommended?task_type=cloze&limit=10");
   state.academicPhraseRecommendations = data;
   renderAcademicPhrases();
+}
+
+async function recordRecommendationEvent(payload) {
+  try { await api("/api/academic-phrase-training/events", { method: "POST", body: JSON.stringify(payload) }); } catch (_error) { /* analytics must not block study */ }
 }
 
 async function loadDictionaryStatus() {
@@ -4696,6 +4710,7 @@ document.addEventListener("click", async event => {
     }
     if (button.id === "refreshComparisonReviewsBtn") await loadComparisonReviews();
     if (button.dataset.saveComparisonReview) await saveComparisonReview(button.dataset.saveComparisonReview, button);
+    if (button.dataset.recommendationClick) recordRecommendationEvent({ event_type: "click", sense_key: button.dataset.recommendationSense, recommendation_reason: button.dataset.recommendationReason });
     if (button.dataset.startAcademicTraining) await startAcademicPhraseTraining(button.dataset.startAcademicTraining);
     if (button.dataset.submitAcademicTraining) await submitAcademicPhraseTraining(button.dataset.submitAcademicTraining);
     if (button.dataset.nextAcademicTraining && state.academicTraining) {

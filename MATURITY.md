@@ -100,6 +100,8 @@ Current strengths are source traceability, one-material-many-uses, evidence repl
 
 `alpha.25.19` adds transparent recommendation ranking from actual attempts and due state. This improves coach-like navigation without changing the learner profile or pretending that a recommendation caused improvement. The next evidence target is recommendation acceptance and seven-day phrase transfer.
 
+`alpha.25.20` adds the local recommendation funnel and keeps analytics non-blocking after an end-to-end timing audit. The product is now instrumented for evidence, but no maturity score is raised until real seven-day behavior is collected.
+
 Interest and exam modes now use different home workflows: immersion and expression collection versus target, weakness and question-type prescription. They still share one profile so interest activity can later contribute domain evidence without masquerading as exam-score gains.
 
 ## Universal Product Requirements

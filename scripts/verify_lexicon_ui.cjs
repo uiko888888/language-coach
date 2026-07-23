@@ -37,7 +37,7 @@ async function run() {
     } catch (error) {
       throw new Error(`${error.message}${serverError ? `\nBackend stderr:\n${serverError}` : ""}`);
     }
-    if (version.app_version !== "0.8.0-alpha.25.19" || version.database_schema_version !== 24) {
+    if (version.app_version !== "0.8.0-alpha.25.20" || version.database_schema_version !== 25) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const lexicalPayload = await fetch(`${baseUrl}/api/lexicon/search?q=cast`).then(response => response.json());
@@ -175,7 +175,7 @@ async function run() {
     server.kill();
   }
   if (failures.length) throw new Error(failures.join("\n"));
-  process.stdout.write("Lexicon private/open bilingual desktop workflow passed on schema 24.\n");
+  process.stdout.write("Lexicon private/open bilingual desktop workflow passed on schema 25.\n");
 }
 
 run().catch(error => {

@@ -824,6 +824,25 @@ def _academic_phrase_training(conn: sqlite3.Connection) -> None:
     )
 
 
+def _academic_phrase_recommendation_events(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """CREATE TABLE IF NOT EXISTS academic_phrase_recommendation_events (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             sense_key TEXT NOT NULL,
+             event_type TEXT NOT NULL CHECK(event_type IN ('impression', 'click', 'start', 'submit')),
+             task_type TEXT NOT NULL DEFAULT 'cloze',
+             recommendation_reason TEXT NOT NULL DEFAULT '',
+             correct INTEGER,
+             metadata_json TEXT NOT NULL DEFAULT '{}',
+             created_at TEXT NOT NULL
+           );
+           CREATE INDEX IF NOT EXISTS idx_academic_phrase_recommendation_events_time
+           ON academic_phrase_recommendation_events(event_type, created_at DESC);
+           CREATE INDEX IF NOT EXISTS idx_academic_phrase_recommendation_events_sense
+           ON academic_phrase_recommendation_events(sense_key, created_at DESC);"""
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     (1, "consolidate legacy schema", _legacy_schema),
     (2, "add training loop metrics", _training_loop_metrics),
@@ -849,6 +868,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     (22, "add lexical comparison review workflow", _lexical_comparison_review_workflow),
     (23, "add comparison boundary training", _comparison_boundary_training),
     (24, "add academic phrase active training", _academic_phrase_training),
+    (25, "add academic phrase recommendation events", _academic_phrase_recommendation_events),
 )
 
 

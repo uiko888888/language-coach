@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.20] - 2026-07-23
+
+### Added
+
+- Added local recommendation event tracking for impression, click, training start and submission result.
+- Added metrics API for recommendation funnel counts and phrase-attempt accuracy, enabling a real seven-day review.
+- Tracking failures are non-blocking and do not affect studying; events remain local in SQLite.
+
+### Scope Boundary
+
+- Events measure behavior and do not automatically update the learner profile or claim learning improvement.
+- The first seven-day report remains pending until the updated version collects real usage data.
+
+### Verification
+
+- All 260 automated tests pass with 2 optional-dependency tests skipped; migration, compilation, content audit and schema 25 desktop E2E pass.
+- Event reporting is explicitly non-blocking after an E2E timeout exposed and fixed an awaited analytics request.
+
 ## [0.8.0-alpha.25.19] - 2026-07-23
 
 ### Added

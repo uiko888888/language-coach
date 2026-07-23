@@ -6620,6 +6620,21 @@ class App(BaseHTTPRequestHandler):
                     return json_response(self, {"items": items, "count": len(items), "task_type": task_type})
                 except (TypeError, ValueError) as exc:
                     return json_response(self, {"error": str(exc)}, 400)
+            if path == "/api/academic-phrase-training/metrics":
+                since = query.get("since", [""])[0]
+                where = "WHERE created_at >= ?" if since else ""
+                params = (since,) if since else ()
+                with db() as conn:
+                    rows = conn.execute(
+                        f"SELECT event_type, COUNT(*) AS count FROM academic_phrase_recommendation_events {where} GROUP BY event_type",
+                        params,
+                    ).fetchall()
+                    attempts = conn.execute(
+                        f"SELECT COUNT(*) AS total, COALESCE(SUM(correct), 0) AS correct FROM academic_phrase_attempts {where}",
+                        params,
+                    ).fetchone()
+                counts = {row["event_type"]: row["count"] for row in rows}
+                return json_response(self, {"events": counts, "attempts": dict(attempts), "since": since})
             if path == "/api/lexicon/compare":
                 try:
                     return json_response(self, lexical_comparison(query.get("q", [""])[0]))
@@ -6955,6 +6970,21 @@ class App(BaseHTTPRequestHandler):
                          review_card_id, now),
                     )
                 return json_response(self, {"task": item, "result": result, "review_card_id": review_card_id}, 201)
+            if path == "/api/academic-phrase-training/events":
+                event_type = str(payload.get("event_type") or "").strip()
+                sense_key = str(payload.get("sense_key") or "").strip()[:200]
+                if event_type not in {"impression", "click", "start", "submit"} or not sense_key:
+                    return json_response(self, {"error": "event_type and sense_key are required"}, 400)
+                with db() as conn:
+                    conn.execute(
+                        """INSERT INTO academic_phrase_recommendation_events
+                           (sense_key, event_type, task_type, recommendation_reason, correct, metadata_json, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        (sense_key, event_type, str(payload.get("task_type") or "cloze"),
+                         str(payload.get("recommendation_reason") or "")[:300],
+                         payload.get("correct"), json.dumps(payload.get("metadata") or {}, ensure_ascii=False), utc_now()),
+                    )
+                return json_response(self, {"ok": True}, 201)
             match = re.fullmatch(r"/api/articles/(\d+)/output-tasks", path)
             if match:
                 with db() as conn:

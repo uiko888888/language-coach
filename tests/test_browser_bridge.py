@@ -160,6 +160,18 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(len(recommendations["items"]), 10)
         self.assertTrue(all(item["recommendation_reason"] for item in recommendations["items"]))
 
+    def test_academic_phrase_recommendation_events_and_metrics_persist(self):
+        recommendation, _ = self.request("/api/academic-phrase-training/recommended?task_type=cloze&limit=1")
+        item = recommendation["items"][0]
+        for event_type in ("impression", "click", "start"):
+            response, _ = self.request("/api/academic-phrase-training/events", "POST", {
+                "event_type": event_type, "sense_key": item["sense_key"], "recommendation_reason": item["recommendation_reason"],
+            })
+            self.assertTrue(response["ok"])
+        metrics, _ = self.request("/api/academic-phrase-training/metrics")
+        self.assertGreaterEqual(metrics["events"].get("impression", 0), 1)
+        self.assertGreaterEqual(metrics["events"].get("click", 0), 1)
+
     def test_comparison_training_api_saves_wrong_boundary_to_review_and_undoes_rating(self):
         training, _ = self.request("/api/lexicon/comparison-training?topic=charts&task_type=choice&limit=20")
         self.assertGreater(training["summary"]["total"], 20)
