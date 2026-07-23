@@ -37,7 +37,7 @@ async function run() {
     } catch (error) {
       throw new Error(`${error.message}${serverError ? `\nBackend stderr:\n${serverError}` : ""}`);
     }
-    if (version.app_version !== "0.8.0-alpha.25.18" || version.database_schema_version !== 24) {
+    if (version.app_version !== "0.8.0-alpha.25.19" || version.database_schema_version !== 24) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const lexicalPayload = await fetch(`${baseUrl}/api/lexicon/search?q=cast`).then(response => response.json());
@@ -104,6 +104,9 @@ async function run() {
     if (phraseCatalog.count !== 10 || phraseCatalog.categories?.length !== 10) failures.push("academic phrase catalog filters are incomplete");
     await page.goto(`${baseUrl}/?view=lexicon&q=provide%20evidence%20for`, { waitUntil: "networkidle" });
     await page.waitForSelector(".academic-phrase-summary");
+    const recommendations = await fetch(`${baseUrl}/api/academic-phrase-training/recommended?task_type=cloze&limit=10`).then(response => response.json());
+    if (recommendations.count !== 10 || !recommendations.items.every(item => item.recommendation_reason)) failures.push("academic phrase recommendations are not explainable");
+    if (!await page.locator("#academicPhraseRecommendation").getByText("今日推荐", { exact: true }).count()) failures.push("academic phrase recommendation panel is missing");
     if (!await page.locator("#lexiconDetail").getByText("为……提供证据", { exact: true }).count()) failures.push("academic phrase Chinese meaning is missing");
     if (!await page.locator("#lexiconDetail").getByText("provide evidence for + noun", { exact: true }).count()) failures.push("academic phrase grammar frame is missing");
     await Promise.all([

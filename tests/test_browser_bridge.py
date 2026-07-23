@@ -154,6 +154,12 @@ class BrowserBridgeTests(unittest.TestCase):
         })
         self.assertTrue(correct["result"]["correct"])
 
+    def test_academic_phrase_recommendations_explain_their_reason(self):
+        recommendations, _ = self.request("/api/academic-phrase-training/recommended?task_type=cloze&limit=10")
+        self.assertEqual(recommendations["task_type"], "cloze")
+        self.assertEqual(len(recommendations["items"]), 10)
+        self.assertTrue(all(item["recommendation_reason"] for item in recommendations["items"]))
+
     def test_comparison_training_api_saves_wrong_boundary_to_review_and_undoes_rating(self):
         training, _ = self.request("/api/lexicon/comparison-training?topic=charts&task_type=choice&limit=20")
         self.assertGreater(training["summary"]["total"], 20)

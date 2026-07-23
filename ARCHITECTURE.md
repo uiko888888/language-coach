@@ -1,5 +1,12 @@
 # Language Coach Architecture
 
+## Academic phrase recommendation boundary
+
+- `backend/academic_phrase_recommendation.py` ranks reviewed phrase tasks using persisted attempts and existing FSRS due state.
+- Recommendation reasons are explicit and inspectable; the module does not write profile ability or alter user-defined daily targets.
+- The frontend renders recommendations as navigation into the existing phrase detail and training flow, avoiding a second learning state.
+- Seven-day acceptance and transfer metrics remain an experiment, not a runtime claim.
+
 ## Academic phrase active training boundary
 
 - `backend/academic_phrase_training.py` derives stable cloze, Chinese-to-English and personal-sentence tasks from the reviewed catalog without mutating catalog content.

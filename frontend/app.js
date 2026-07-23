@@ -8,7 +8,7 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.25.18";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.25.19";
 const SUPPORTED_API_VERSION = "1";
 const SUPPORTED_SCHEMA_VERSION = "24";
 
@@ -87,6 +87,7 @@ const state = {
   lexicalComparison: null,
   lexicalComparisonCatalog: [],
   academicPhrases: { items: [], categories: [], count: 0 },
+  academicPhraseRecommendations: { items: [], count: 0 },
   academicPhraseCategory: "",
   academicPhraseExam: "",
   academicTraining: null,
@@ -2366,6 +2367,10 @@ function renderAcademicPhrases() {
   if (categorySelect) categorySelect.value = state.academicPhraseCategory;
   $("#academicPhraseExam").value = state.academicPhraseExam;
   $("#academicPhraseCount").textContent = data.count || 0;
+  const recommendations = state.academicPhraseRecommendations?.items || [];
+  $("#academicPhraseRecommendation").innerHTML = recommendations.length
+    ? `<div class="academic-recommendation-head"><strong>今日推荐</strong><span>依据练习记录与到期状态</span></div>${recommendations.slice(0, 5).map(item => `<button data-search-query="${escapeHtml(item.term)}"><strong>${escapeHtml(item.term)}</strong><small>${escapeHtml(item.recommendation_reason)}</small></button>`).join("")}`
+    : `<div class="empty-state">完成一次词组练习后，这里会显示可解释推荐。</div>`;
   $("#academicPhraseCatalog").innerHTML = (data.items || []).map(item => `
     <button data-search-query="${escapeHtml(item.term)}"><strong>${escapeHtml(item.term)}</strong><span>${escapeHtml(item.meaning_zh)}</span><small>${escapeHtml(item.category_label)}</small></button>
   `).join("") || `<div class="empty-state">当前筛选下没有词组。</div>`;
@@ -2378,6 +2383,12 @@ async function loadAcademicPhrases() {
     limit: "100",
   });
   state.academicPhrases = await api(`/api/lexicon/academic-phrases?${params.toString()}`);
+  renderAcademicPhrases();
+}
+
+async function loadAcademicPhraseRecommendations() {
+  const data = await api("/api/academic-phrase-training/recommended?task_type=cloze&limit=10");
+  state.academicPhraseRecommendations = data;
   renderAcademicPhrases();
 }
 
@@ -5299,7 +5310,7 @@ $("#globalLexiconSearch").addEventListener("focus", event => {
 async function boot() {
   await loadHealth();
   await loadActivePracticeData();
-  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadCompleteWordReviews(), loadComparisonTraining(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexicalComparisonCatalog(), loadAcademicPhrases(), loadComparisonReviews(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), loadOutputHistory(), loadOutputSupport(), loadSpeakingHistory(), loadSpeakingSupport(), searchLexicon("", { open: false, history: false })]);
+  await Promise.all([loadArticles(), loadBooks(), loadCards(), loadReviews(), loadCompleteWordReviews(), loadComparisonTraining(), loadMistakes(), loadFeeds(), loadFeedStatus(), loadExtractionQuality(), loadSourceCatalog(), loadSubscriptions(), loadToday(), loadProgress(), loadLearnerSettings(), loadPracticeHistory(), loadPracticePrescription(), loadExamTypes(), loadExamLibrary(), loadArticleTopics(), loadArticleHubs(), loadArticleContentTypes(), loadDictionaryStatus(), loadLexicalComparisonCatalog(), loadAcademicPhrases(), loadAcademicPhraseRecommendations(), loadComparisonReviews(), loadLexiconHistory(), loadBridgeConfig(), loadBackups(), loadOutputHistory(), loadOutputSupport(), loadSpeakingHistory(), loadSpeakingSupport(), searchLexicon("", { open: false, history: false })]);
   const restoredServerRun = await restoreServerPracticeRun();
   if (!restoredServerRun && !state.selectedArticle && state.articles[0]) {
     const data = await api(`/api/articles/${state.articles[0].id}?exam=${encodeURIComponent(state.style)}`);

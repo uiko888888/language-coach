@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.19] - 2026-07-23
+
+### Added
+
+- Added explainable academic phrase recommendations based on due review state, wrong-attempt count and never-practiced status.
+- Added a daily recommendation panel in the dictionary sidebar; clicking a recommendation opens the same phrase detail and active-training entry point.
+
+### Scope Boundary
+
+- Recommendations rank learning actions but do not modify the learner profile or force the daily plan.
+- No recommendation is presented as a proven learning outcome; seven-day transfer measurement remains pending.
+
+### Verification
+
+- All 259 automated tests pass with 2 optional-dependency tests skipped; compilation, content audit and schema 24 desktop Playwright checks pass.
+
 ## [0.8.0-alpha.25.18] - 2026-07-23
 
 ### Added

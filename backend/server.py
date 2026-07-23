@@ -29,6 +29,7 @@ from pathlib import Path
 try:
     from .academic_phrases import CATEGORY_META as ACADEMIC_PHRASE_CATEGORIES, SOURCE as ACADEMIC_PHRASE_SOURCE, search_academic_phrases
     from .academic_phrase_training import TASK_TYPES as ACADEMIC_PHRASE_TASK_TYPES, find_training_item, training_items, evaluate as evaluate_academic_phrase
+    from .academic_phrase_recommendation import recommend_academic_phrases
     from .chinese_text import simplify_chinese_payload
     from .collocations import corpus_collocations
     from .ai_feedback import feedback_provider_status, request_semantic_feedback
@@ -63,6 +64,7 @@ try:
 except ImportError:
     from academic_phrases import CATEGORY_META as ACADEMIC_PHRASE_CATEGORIES, SOURCE as ACADEMIC_PHRASE_SOURCE, search_academic_phrases
     from academic_phrase_training import TASK_TYPES as ACADEMIC_PHRASE_TASK_TYPES, find_training_item, training_items, evaluate as evaluate_academic_phrase
+    from academic_phrase_recommendation import recommend_academic_phrases
     from chinese_text import simplify_chinese_payload
     from collocations import corpus_collocations
     from ai_feedback import feedback_provider_status, request_semantic_feedback
@@ -6607,6 +6609,17 @@ class App(BaseHTTPRequestHandler):
                         ).fetchone()
                         item["latest_attempt"] = dict(attempt) if attempt else None
                 return json_response(self, {"items": items, "count": len(items), "task_types": list(ACADEMIC_PHRASE_TASK_TYPES)})
+            if path == "/api/academic-phrase-training/recommended":
+                try:
+                    task_type = query.get("task_type", ["cloze"])[0]
+                    with db() as conn:
+                        items = recommend_academic_phrases(
+                            conn, query.get("category", [""])[0], query.get("exam", [""])[0],
+                            task_type, int(query.get("limit", [10])[0]),
+                        )
+                    return json_response(self, {"items": items, "count": len(items), "task_type": task_type})
+                except (TypeError, ValueError) as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
             if path == "/api/lexicon/compare":
                 try:
                     return json_response(self, lexical_comparison(query.get("q", [""])[0]))

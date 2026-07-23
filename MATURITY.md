@@ -98,6 +98,8 @@ Current strengths are source traceability, one-material-many-uses, evidence repl
 
 `alpha.25.18` closes the first active phrase-production loop: each reviewed phrase can generate cloze, Chinese-to-English and personal-sentence tasks, with persistent attempts and wrong-answer FSRS cards. This raises contextual output modestly, but deterministic form checks are intentionally weaker than semantic assessment, and personal recommendation plus seven-day transfer remain unproven.
 
+`alpha.25.19` adds transparent recommendation ranking from actual attempts and due state. This improves coach-like navigation without changing the learner profile or pretending that a recommendation caused improvement. The next evidence target is recommendation acceptance and seven-day phrase transfer.
+
 Interest and exam modes now use different home workflows: immersion and expression collection versus target, weakness and question-type prescription. They still share one profile so interest activity can later contribute domain evidence without masquerading as exam-score gains.
 
 ## Universal Product Requirements

@@ -1177,6 +1177,10 @@ label {
 .academic-phrase-catalog button strong { color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
 .academic-phrase-catalog button span { color: var(--teal-dark); font-size: 11px; }
 .academic-phrase-catalog button small { color: var(--muted); font-size: 10px; }
+.academic-recommendation { display: grid; gap: 5px; margin: 10px 0; padding: 9px; border: 1px solid var(--line); background: var(--surface-2); }
+.academic-recommendation-head { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; }
+.academic-recommendation-head span, .academic-recommendation button small { color: var(--muted); }
+.academic-recommendation button { display: flex; justify-content: space-between; gap: 8px; width: 100%; padding: 6px 7px; text-align: left; }
 .history-query-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .history-query-list button { display: inline-flex; min-height: 29px; gap: 5px; align-items: center; padding: 4px 8px; background: var(--surface); }
 .history-query-list small { color: var(--muted); }
