@@ -8,9 +8,9 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const FRONTEND_APP_VERSION = "0.8.0-alpha.25.17";
+const FRONTEND_APP_VERSION = "0.8.0-alpha.25.18";
 const SUPPORTED_API_VERSION = "1";
-const SUPPORTED_SCHEMA_VERSION = "23";
+const SUPPORTED_SCHEMA_VERSION = "24";
 
 const state = {
   articles: [],
@@ -89,6 +89,7 @@ const state = {
   academicPhrases: { items: [], categories: [], count: 0 },
   academicPhraseCategory: "",
   academicPhraseExam: "",
+  academicTraining: null,
   lexicalComparisonFilter: "all",
   comparisonReviews: { items: [], counts: {}, total: 0 },
   lexiconMeta: { resolution: null, suggestions: [] },
@@ -2109,6 +2110,7 @@ function renderLexicalDetail(item) {
       </section>
       ${item.contexts?.length ? `<section class="dictionary-section"><h3>你的真实语境</h3>${contextExamples(item.contexts)}</section>` : ""}
       <details class="lexical-source-disclosure"><summary>编辑来源与版权边界</summary><p><strong>${escapeHtml(item.source_name)} · ${escapeHtml(item.source_version)}</strong></p><p>${escapeHtml(item.source_attribution)}</p><small>${escapeHtml(item.copyright_status)}</small></details>
+      <section class="academic-phrase-practice" id="academicPhrasePractice"><div class="output-empty"><h3>把词组变成主动表达</h3><p>先做语境填空，再尝试中译英或个人造句；答错会进入词组复习队列。</p><button class="primary" data-start-academic-training="${escapeHtml(item.term)}">开始词组训练</button></div></section>
     `;
     finalizeLexicalDetail(item);
     return;
@@ -2210,6 +2212,38 @@ function renderLexicalDetail(item) {
     </div>
   `;
   finalizeLexicalDetail(item);
+}
+
+function renderAcademicPhrasePractice() {
+  const panel = $("#academicPhrasePractice");
+  if (!panel || !state.academicTraining) return;
+  const item = state.academicTraining.items[state.academicTraining.index || 0];
+  if (!item) return;
+  const result = state.academicTraining.result;
+  panel.innerHTML = `
+    <div class="output-section-head"><div><span class="eyebrow">${escapeHtml(item.label)}</span><h3>主动词组训练</h3></div><span>${(state.academicTraining.index || 0) + 1} / ${state.academicTraining.items.length}</span></div>
+    <p class="output-guidance">${escapeHtml(item.instruction)}</p><p class="academic-training-prompt">${escapeHtml(item.prompt)}</p>
+    <textarea id="academicTrainingResponse" rows="3" placeholder="先独立作答，再提交检查。">${escapeHtml(state.academicTraining.response || "")}</textarea>
+    ${result ? `<div class="output-feedback"><strong>${result.correct ? "通过" : "需要复习"}</strong><p>${escapeHtml(result.feedback)}</p>${!result.correct ? `<p>目标词组：${escapeHtml(result.expected)}</p>` : ""}</div>` : ""}
+    <div class="toolbar"><button class="primary" data-submit-academic-training="${escapeHtml(item.task_id)}">提交</button>${result && state.academicTraining.index + 1 < state.academicTraining.items.length ? `<button data-next-academic-training>下一项</button>` : ""}</div>`;
+}
+
+async function startAcademicPhraseTraining(term) {
+  const data = await api(`/api/academic-phrase-training?q=${encodeURIComponent(term)}&limit=1`);
+  state.academicTraining = { items: data.items || [], index: 0, response: "", result: null };
+  renderAcademicPhrasePractice();
+}
+
+async function submitAcademicPhraseTraining(taskId) {
+  const response = $("#academicTrainingResponse")?.value.trim() || "";
+  state.academicTraining.response = response;
+  const data = await api("/api/academic-phrase-training/answer", {
+    method: "POST",
+    body: JSON.stringify({ task_id: taskId, response, elapsed_seconds: 0, confidence: 2 }),
+  });
+  state.academicTraining.result = data.result;
+  await Promise.all([loadCards(), loadReviews(), loadToday()]);
+  renderAcademicPhrasePractice();
 }
 
 function renderLexiconGuidance() {
@@ -4651,6 +4685,14 @@ document.addEventListener("click", async event => {
     }
     if (button.id === "refreshComparisonReviewsBtn") await loadComparisonReviews();
     if (button.dataset.saveComparisonReview) await saveComparisonReview(button.dataset.saveComparisonReview, button);
+    if (button.dataset.startAcademicTraining) await startAcademicPhraseTraining(button.dataset.startAcademicTraining);
+    if (button.dataset.submitAcademicTraining) await submitAcademicPhraseTraining(button.dataset.submitAcademicTraining);
+    if (button.dataset.nextAcademicTraining && state.academicTraining) {
+      state.academicTraining.index += 1;
+      state.academicTraining.response = "";
+      state.academicTraining.result = null;
+      renderAcademicPhrasePractice();
+    }
     if (button.dataset.privateRemove) {
       await removePrivateDictionary(Number(button.dataset.privateRemove), button.dataset.privateName || "该词典");
     }

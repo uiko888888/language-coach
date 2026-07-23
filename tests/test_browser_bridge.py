@@ -139,6 +139,21 @@ class BrowserBridgeTests(unittest.TestCase):
         self.assertEqual(search["results"][0]["type"], "academic_phrase")
         self.assertEqual(search["results"][0]["term"], "provide evidence for")
 
+    def test_academic_phrase_training_answers_and_schedules_wrong_phrase(self):
+        training, _ = self.request("/api/academic-phrase-training?q=provide%20evidence%20for&limit=1")
+        self.assertEqual(training["count"], 3)
+        task = next(item for item in training["items"] if item["task_type"] == "cloze")
+        self.assertNotIn("provide evidence for", task["prompt"].casefold())
+        result, _ = self.request("/api/academic-phrase-training/answer", "POST", {
+            "task_id": task["task_id"], "response": "provide evidence", "elapsed_seconds": 5,
+        })
+        self.assertFalse(result["result"]["correct"])
+        self.assertTrue(result["review_card_id"])
+        correct, _ = self.request("/api/academic-phrase-training/answer", "POST", {
+            "task_id": task["task_id"], "response": "provide evidence for",
+        })
+        self.assertTrue(correct["result"]["correct"])
+
     def test_comparison_training_api_saves_wrong_boundary_to_review_and_undoes_rating(self):
         training, _ = self.request("/api/lexicon/comparison-training?topic=charts&task_type=choice&limit=20")
         self.assertGreater(training["summary"]["total"], 20)

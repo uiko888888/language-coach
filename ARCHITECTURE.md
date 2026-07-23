@@ -1,5 +1,13 @@
 # Language Coach Architecture
 
+## Academic phrase active training boundary
+
+- `backend/academic_phrase_training.py` derives stable cloze, Chinese-to-English and personal-sentence tasks from the reviewed catalog without mutating catalog content.
+- Schema 24 stores attempts and behavior fields separately from the catalog; task IDs combine sense key and task type for replayable history.
+- `backend/server.py` performs deterministic form checks and uses the existing card/review scheduler boundary when an answer is wrong.
+- The frontend starts a task from the phrase detail panel, preserving the fixed sidebar and master-detail workflow.
+- Personal sentence checks are deliberately narrow. Semantic quality, pronunciation and personalized recommendation require separate evidence.
+
 ## Academic phrase catalog boundary
 
 - `backend/academic_phrases.py` owns the versioned 100-entry reviewed catalog, source disclosure and structural validation; it does not read mutable learner data.

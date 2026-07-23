@@ -37,7 +37,7 @@ async function run() {
     } catch (error) {
       throw new Error(`${error.message}${serverError ? `\nBackend stderr:\n${serverError}` : ""}`);
     }
-    if (version.app_version !== "0.8.0-alpha.25.17" || version.database_schema_version !== 23) {
+    if (version.app_version !== "0.8.0-alpha.25.18" || version.database_schema_version !== 24) {
       failures.push(`unexpected runtime version: ${JSON.stringify(version)}`);
     }
     const lexicalPayload = await fetch(`${baseUrl}/api/lexicon/search?q=cast`).then(response => response.json());
@@ -115,6 +115,14 @@ async function run() {
     if (!savedAcademicPhrase || savedAcademicPhrase.kind !== "phrase" || !savedAcademicPhrase.meaning_zh || !savedAcademicPhrase.concept_en || !savedAcademicPhrase.grammar_frame) failures.push("academic phrase did not save rich card metadata");
     const phraseReviews = await fetch(`${baseUrl}/api/reviews?kind=phrase&limit=100`).then(response => response.json());
     if (!phraseReviews.items?.some(item => item.item_id === savedAcademicPhrase?.id)) failures.push("academic phrase did not enter the phrase review queue");
+    const phraseTraining = await fetch(`${baseUrl}/api/academic-phrase-training?q=provide%20evidence%20for&limit=1`).then(response => response.json());
+    if (phraseTraining.count !== 3 || !phraseTraining.items.some(item => item.task_type === "cloze")) failures.push("academic phrase active training tasks are incomplete");
+    await page.click('[data-start-academic-training="provide evidence for"]');
+    await page.waitForSelector("#academicTrainingResponse");
+    await page.fill("#academicTrainingResponse", "provide evidence");
+    await page.click('[data-submit-academic-training]');
+    await page.waitForSelector("#academicPhrasePractice .output-feedback");
+    if (!await page.locator("#academicPhrasePractice").getByText("需要复习", { exact: true }).count()) failures.push("academic phrase active training feedback is missing");
     await page.screenshot({ path: path.join(root, "artifacts", "academic-phrase-desktop.png"), fullPage: true });
     const training = await fetch(`${baseUrl}/api/lexicon/comparison-training?topic=charts&task_type=choice&limit=100`).then(response => response.json());
     const correctionTraining = await fetch(`${baseUrl}/api/lexicon/comparison-training?task_type=correction&limit=100`).then(response => response.json());
@@ -164,7 +172,7 @@ async function run() {
     server.kill();
   }
   if (failures.length) throw new Error(failures.join("\n"));
-  process.stdout.write("Lexicon private/open bilingual desktop workflow passed on schema 23.\n");
+  process.stdout.write("Lexicon private/open bilingual desktop workflow passed on schema 24.\n");
 }
 
 run().catch(error => {

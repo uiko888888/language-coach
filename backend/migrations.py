@@ -800,6 +800,30 @@ def _comparison_boundary_training(conn: sqlite3.Connection) -> None:
     )
 
 
+def _academic_phrase_training(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """CREATE TABLE IF NOT EXISTS academic_phrase_attempts (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             task_id TEXT NOT NULL,
+             sense_key TEXT NOT NULL,
+             term TEXT NOT NULL,
+             task_type TEXT NOT NULL CHECK(task_type IN ('cloze', 'zh_to_en', 'personal')),
+             response_text TEXT NOT NULL,
+             correct INTEGER NOT NULL DEFAULT 0,
+             feedback_json TEXT NOT NULL DEFAULT '{}',
+             elapsed_seconds INTEGER NOT NULL DEFAULT 0,
+             confidence INTEGER,
+             review_card_id INTEGER,
+             created_at TEXT NOT NULL,
+             FOREIGN KEY(review_card_id) REFERENCES cards(id)
+           );
+           CREATE INDEX IF NOT EXISTS idx_academic_phrase_attempt_task
+           ON academic_phrase_attempts(task_id, created_at DESC);
+           CREATE INDEX IF NOT EXISTS idx_academic_phrase_attempt_sense
+           ON academic_phrase_attempts(sense_key, created_at DESC);"""
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     (1, "consolidate legacy schema", _legacy_schema),
     (2, "add training loop metrics", _training_loop_metrics),
@@ -824,6 +848,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     (21, "add private local dictionary index", _private_dictionary_index),
     (22, "add lexical comparison review workflow", _lexical_comparison_review_workflow),
     (23, "add comparison boundary training", _comparison_boundary_training),
+    (24, "add academic phrase active training", _academic_phrase_training),
 )
 
 

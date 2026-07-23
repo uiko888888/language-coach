@@ -1301,6 +1301,8 @@ label {
 .lexical-learning-summary > blockquote small { color: var(--muted); line-height: 1.55; }
 .lexical-learning-summary > footer { display: flex; align-items: center; gap: 10px; margin-top: 13px; }
 .lexical-learning-summary > footer span { color: var(--muted); font-size: 11px; }
+.academic-phrase-practice { margin-top: 18px; padding: 18px; border: 1px solid var(--line); background: var(--surface-2); }
+.academic-training-prompt { padding: 14px; border-left: 3px solid var(--teal); background: var(--surface); font-size: 1.05rem; }
 .comparison-candidate-list { display: grid; gap: 6px; }
 .comparison-candidate { display: grid; grid-template-columns: minmax(0, 1fr) 34px; gap: 5px; }
 .comparison-candidate button { min-height: 34px; background: #f7f5ed; text-align: left; }

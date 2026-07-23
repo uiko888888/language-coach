@@ -28,6 +28,7 @@ from pathlib import Path
 
 try:
     from .academic_phrases import CATEGORY_META as ACADEMIC_PHRASE_CATEGORIES, SOURCE as ACADEMIC_PHRASE_SOURCE, search_academic_phrases
+    from .academic_phrase_training import TASK_TYPES as ACADEMIC_PHRASE_TASK_TYPES, find_training_item, training_items, evaluate as evaluate_academic_phrase
     from .chinese_text import simplify_chinese_payload
     from .collocations import corpus_collocations
     from .ai_feedback import feedback_provider_status, request_semantic_feedback
@@ -61,6 +62,7 @@ try:
     from .usage_contrasts import contrast_by_slug, contrast_catalog
 except ImportError:
     from academic_phrases import CATEGORY_META as ACADEMIC_PHRASE_CATEGORIES, SOURCE as ACADEMIC_PHRASE_SOURCE, search_academic_phrases
+    from academic_phrase_training import TASK_TYPES as ACADEMIC_PHRASE_TASK_TYPES, find_training_item, training_items, evaluate as evaluate_academic_phrase
     from chinese_text import simplify_chinese_payload
     from collocations import corpus_collocations
     from ai_feedback import feedback_provider_status, request_semantic_feedback
@@ -6588,6 +6590,23 @@ class App(BaseHTTPRequestHandler):
                     ],
                     "source": ACADEMIC_PHRASE_SOURCE,
                 })
+            if path == "/api/academic-phrase-training":
+                try:
+                    items = training_items(
+                        query.get("q", [""])[0], query.get("category", [""])[0],
+                        query.get("exam", [""])[0], query.get("task_type", [""])[0],
+                        int(query.get("limit", [20])[0]),
+                    )
+                except (TypeError, ValueError) as exc:
+                    return json_response(self, {"error": str(exc)}, 400)
+                with db() as conn:
+                    for item in items:
+                        attempt = conn.execute(
+                            "SELECT correct, response_text, created_at FROM academic_phrase_attempts WHERE task_id = ? ORDER BY id DESC LIMIT 1",
+                            (item["task_id"],),
+                        ).fetchone()
+                        item["latest_attempt"] = dict(attempt) if attempt else None
+                return json_response(self, {"items": items, "count": len(items), "task_types": list(ACADEMIC_PHRASE_TASK_TYPES)})
             if path == "/api/lexicon/compare":
                 try:
                     return json_response(self, lexical_comparison(query.get("q", [""])[0]))
@@ -6883,6 +6902,46 @@ class App(BaseHTTPRequestHandler):
                 except (TypeError, ValueError) as exc:
                     return json_response(self, {"error": str(exc)}, 422)
                 return json_response(self, result, 201)
+            if path == "/api/academic-phrase-training/answer":
+                task_id = str(payload.get("task_id") or "")
+                item = find_training_item(task_id)
+                if not item:
+                    return json_response(self, {"error": "Academic phrase task not found"}, 404)
+                result = evaluate_academic_phrase(item, str(payload.get("response") or ""))
+                now = utc_now()
+                elapsed = max(0, min(int(payload.get("elapsed_seconds") or 0), 3600))
+                confidence = payload.get("confidence")
+                review_card_id = None
+                with db() as conn:
+                    if not result["correct"]:
+                        card = conn.execute(
+                            "SELECT id FROM cards WHERE kind = 'phrase' AND sense_key = ? ORDER BY id LIMIT 1",
+                            (item["sense_key"],),
+                        ).fetchone()
+                        if card:
+                            review_card_id = int(card["id"])
+                        else:
+                            cursor = conn.execute(
+                                """INSERT INTO cards
+                                   (term, kind, context, source_article_id, status, note, sense_key, part_of_speech,
+                                    meaning_zh, concept_en, grammar_frame, confusion_note, lexical_source, created_at, updated_at)
+                                   VALUES (?, 'phrase', ?, NULL, 'new', ?, ?, '', ?, ?, ?, ?, ?, ?, ?)""",
+                                (item["term"], item["example"], result["feedback"], item["sense_key"], item["meaning_zh"],
+                                 item["concept_en"], item["grammar_frame"], item["instruction"], ACADEMIC_PHRASE_SOURCE["name"], now, now),
+                            )
+                            review_card_id = int(cursor.lastrowid)
+                            increment_daily_progress(conn, "vocabulary", 1)
+                        ensure_review_item(conn, "card", review_card_id, now)
+                    conn.execute(
+                        """INSERT INTO academic_phrase_attempts
+                           (task_id, sense_key, term, task_type, response_text, correct, feedback_json,
+                            elapsed_seconds, confidence, review_card_id, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (task_id, item["sense_key"], item["term"], item["task_type"], result["response"],
+                         int(result["correct"]), json.dumps(result, ensure_ascii=False), elapsed, confidence,
+                         review_card_id, now),
+                    )
+                return json_response(self, {"task": item, "result": result, "review_card_id": review_card_id}, 201)
             match = re.fullmatch(r"/api/articles/(\d+)/output-tasks", path)
             if match:
                 with db() as conn:

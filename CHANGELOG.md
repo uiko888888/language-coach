@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file.
 
 The format follows Keep a Changelog, and the project uses Semantic Versioning.
 
+## [0.8.0-alpha.25.18] - 2026-07-23
+
+### Added
+
+- Added active academic phrase training with three task types: context cloze, Chinese-to-English recall and personal sentence production.
+- Added persistent phrase attempts with response, elapsed time, confidence and deterministic feedback.
+- Wrong phrase answers now create or reuse a rich phrase card and enter the unified FSRS queue; correct answers do not create duplicate review cards.
+- Added a launch point directly in the academic phrase detail view while retaining the fixed sidebar and desktop master-detail layout.
+
+### Reliability
+
+- Added schema 24 migration and API contracts for task generation and answer submission.
+- Task IDs are stable by phrase sense and task type; source examples and rich lexical metadata remain traceable.
+
+### Scope Boundary
+
+- Personal sentence validation checks form and target-phrase use; it does not claim semantic or pronunciation assessment.
+- Recommendations by personal error history and seven-day transfer evidence remain future work.
+
+### Verification
+
+- All 257 automated tests pass with 2 optional-dependency tests skipped; migration, compilation, audit, JavaScript and isolated desktop Playwright checks pass on schema 24.
+
 ## [0.8.0-alpha.25.17] - 2026-07-23
 
 ### Added
